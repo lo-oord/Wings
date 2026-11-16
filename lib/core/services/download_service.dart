@@ -9,24 +9,23 @@ import '../../data/models/library.dart';
 import '../constants/network_constants.dart';
 import '../storage/local_store.dart';
 import 'notification_service.dart';
+import 'storage_service.dart';
 
 /// Real file downloads with a concurrency-limited queue and resumable transfers.
 class DownloadService {
-  DownloadService({
-    required this._dio,
-    required this._store,
-    required this._notifications,
-  });
+  DownloadService(this._dio, this._store, this._notifications, this._storage);
 
   final Dio _dio;
   final LocalStore _store;
   final NotificationService _notifications;
+  final StorageService _storage;
 
   static const int maxConcurrent = 2;
 
   final Map<String, DownloadTask> _tasks = <String, DownloadTask>{};
   final Map<String, CancelToken> _tokens = <String, CancelToken>{};
   final Map<String, DateTime> _lastEmit = <String, DateTime>{};
+  final Map<String, DateTime> _lastNotify = <String, DateTime>{};
   final StreamController<List<DownloadTask>> _controller =
       StreamController<List<DownloadTask>>.broadcast();
 
@@ -210,9 +209,21 @@ class DownloadService {
         return;
       }
 
+      final fileName = _fileName(task);
+      String? publicUri;
+      try {
+        publicUri = await _storage.saveToDownloads(
+          path: file.path,
+          fileName: fileName,
+        );
+      } on Object {
+        publicUri = null;
+      }
       final done = _tasks[task.id]!.copyWith(
         status: DownloadStatus.completed,
         filePath: file.path,
+        fileName: fileName,
+        publicUri: publicUri,
         receivedBytes: startingBytes + received,
         totalBytes: total > 0 ? total : startingBytes + received,
       );
@@ -220,8 +231,9 @@ class DownloadService {
       await _persist(done);
       _emit();
       await _notifications.showDownloadCompleted(
+        id: done.trayId,
         title: done.animeTitle,
-        body: 'اكتمل تنزيل الحلقة ${done.episodeNumber}',
+        body: 'الحلقة ${done.episodeNumber} جاهزة للمشاهدة',
         enabled: notificationsEnabled,
       );
     } on Object catch (error) {
@@ -238,7 +250,9 @@ class DownloadService {
       _tasks[task.id] = failed;
       await _persist(failed);
       _emit();
+      await _notifications.cancel(failed.trayId);
       await _notifications.showDownloadFailed(
+        id: failed.trayId,
         title: failed.animeTitle,
         body: 'تعذّر تنزيل الحلقة ${failed.episodeNumber}',
         enabled: notificationsEnabled,
@@ -258,6 +272,21 @@ class DownloadService {
       totalBytes: total > 0 ? total : task.totalBytes,
     );
     final now = DateTime.now();
+    if (notificationsEnabled) {
+      final lastNotice = _lastNotify[id];
+      if (lastNotice == null ||
+          now.difference(lastNotice) > const Duration(seconds: 1)) {
+        _lastNotify[id] = now;
+        unawaited(
+          _notifications.showDownloadProgress(
+            id: task.trayId,
+            title: '${task.animeTitle} · ${task.episodeNumber}',
+            progress: received,
+            max: total > 0 ? total : 0,
+          ),
+        );
+      }
+    }
     final last = _lastEmit[id];
     if (last == null ||
         now.difference(last) > const Duration(milliseconds: 350)) {
@@ -275,16 +304,14 @@ class DownloadService {
     return directory;
   }
 
+  /// Human-readable name that appears in the user's Downloads folder.
   String _fileName(DownloadTask task) {
-    final base = '${task.animeTitle}_${task.episodeNumber}_${task.quality}'
-        .replaceAll(RegExp(r'[^\w\u0600-\u06FF\-]+'), '_');
-    final uri = Uri.tryParse(task.url);
-    final segment = uri?.pathSegments.isNotEmpty == true
-        ? uri!.pathSegments.last
-        : '';
-    final extension = segment.contains('.') ? segment.split('.').last : 'mp4';
-    final safeExtension = extension.length <= 4 ? extension : 'mp4';
-    return '${base.isEmpty ? task.id : base}.$safeExtension';
+    final title = task.animeTitle
+        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final base = title.isEmpty ? 'Wings' : title;
+    return '$base - الحلقة ${task.episodeNumber} - Wings.mp4';
   }
 
   Future<void> _deleteFile(String? path) async {
