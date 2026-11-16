@@ -1,0 +1,17 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # Flutter 3.50 marks `package:flutter/material.dart` as deprecated in favour
+    # of the new material_ui package. Wings deliberately targets the stable
+    # SDK Material library, so the framework-wide notice is not actionable here.
+    deprecated_member_use: ignore
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    avoid_print: true
