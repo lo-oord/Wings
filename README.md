@@ -95,9 +95,28 @@ flutter test
 ## البناء
 
 ```bash
+# حزم منفصلة لكل معمارية (الحجم الأصغر لكل جهاز)
+flutter build apk --release --split-per-abi
+
+# حزمة واحدة تعمل على كل المعماريات
 flutter build apk --release
+
+# حزمة المتجر
 flutter build appbundle --release
 ```
+
+المخرجات في `build/app/outputs/flutter-apk/`:
+
+| الملف | المعمارية | الحجم (تقريبي) |
+| --- | --- | --- |
+| `app-arm64-v8a-release.apk` | 64-bit — معظم الأجهزة الحديثة | ~35MB |
+| `app-armeabi-v7a-release.apk` | 32-bit — الأجهزة القديمة | ~32MB |
+| `app-x86_64-release.apk` | 64-bit للمحاكيات | ~40MB |
+| `app-release.apk` | universal — كل المعماريات | ~102MB |
+
+GitHub Actions يبني الأربعة في كل دفعة ويرفعها كـ artifacts منفصلة:
+`wings-apk-arm64-v8a`, `wings-apk-armeabi-v7a`, `wings-apk-x86_64`,
+`wings-apk-universal`، إضافة إلى `wings-aab`.
 
 > توقيع الإصدار يستخدم مفتاح debug الافتراضي حتى تُضاف `key.properties`.
 > لا تُودَع المفاتيح أو كلمات المرور في المستودع.
