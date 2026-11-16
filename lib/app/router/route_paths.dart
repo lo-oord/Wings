@@ -5,6 +5,8 @@ abstract final class RoutePaths {
   static const String library = '/library';
   static const String settings = '/settings';
   static const String search = '/search';
+
+  static String catalog(String kind) => '/catalog/$kind';
   static const String downloads = '/downloads';
   static const String profile = '/profile';
   static const String notifications = '/notifications';

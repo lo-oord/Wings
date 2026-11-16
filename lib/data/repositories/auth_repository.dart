@@ -9,12 +9,37 @@ class AuthUser {
     required this.email,
     required this.displayName,
     required this.createdAt,
+    required this.username,
+    required this.country,
+    this.avatarPath,
+    this.bio,
   });
 
   final String id;
   final String email;
   final String displayName;
+  final String username;
+  final String country;
   final DateTime createdAt;
+  final String? avatarPath;
+  final String? bio;
+
+  AuthUser copyWith({
+    String? displayName,
+    String? username,
+    String? country,
+    String? avatarPath,
+    String? bio,
+  }) => AuthUser(
+    id: id,
+    email: email,
+    displayName: displayName ?? this.displayName,
+    username: username ?? this.username,
+    country: country ?? this.country,
+    createdAt: createdAt,
+    avatarPath: avatarPath ?? this.avatarPath,
+    bio: bio ?? this.bio,
+  );
 }
 
 /// Contract for account services.
@@ -33,8 +58,19 @@ abstract interface class AuthRepository {
 
   Future<AuthUser> register({
     required String displayName,
+    required String username,
+    required String country,
     required String email,
     required String password,
+    String? avatarPath,
+  });
+
+  AuthUser updateProfile({
+    String? displayName,
+    String? username,
+    String? country,
+    String? avatarPath,
+    String? bio,
   });
 
   Future<void> sendPasswordReset(String email);
@@ -82,6 +118,8 @@ class LocalDevelopmentAuthRepository implements AuthRepository {
       id: 'local-${email.hashCode}',
       email: email,
       displayName: email.split('@').first,
+      username: email.split('@').first,
+      country: 'SA',
       createdAt: DateTime.now(),
     );
     return _user!;
@@ -90,15 +128,41 @@ class LocalDevelopmentAuthRepository implements AuthRepository {
   @override
   Future<AuthUser> register({
     required String displayName,
+    required String username,
+    required String country,
     required String email,
     required String password,
+    String? avatarPath,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     _user = AuthUser(
       id: 'local-${email.hashCode}',
       email: email,
       displayName: displayName,
+      username: username,
+      country: country,
+      avatarPath: avatarPath,
       createdAt: DateTime.now(),
+    );
+    return _user!;
+  }
+
+  @override
+  AuthUser updateProfile({
+    String? displayName,
+    String? username,
+    String? country,
+    String? avatarPath,
+    String? bio,
+  }) {
+    final current = _user;
+    if (current == null) throw StateError('no signed in user');
+    _user = current.copyWith(
+      displayName: displayName,
+      username: username,
+      country: country,
+      avatarPath: avatarPath,
+      bio: bio,
     );
     return _user!;
   }

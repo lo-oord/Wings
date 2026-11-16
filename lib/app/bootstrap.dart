@@ -5,7 +5,10 @@ import 'package:media_kit/media_kit.dart';
 
 import '../core/network/http_client.dart';
 import '../core/services/download_service.dart';
+import '../core/services/in_app_notifications.dart';
+import '../core/services/new_episode_worker.dart';
 import '../core/services/notification_service.dart';
+import '../core/services/storage_service.dart';
 import '../core/storage/local_store.dart';
 import '../data/repositories/settings_repository.dart';
 import 'app.dart';
@@ -25,15 +28,19 @@ Future<void> bootstrap() async {
   final notifications = NotificationService();
   await notifications.initialize();
 
+  // Fold alerts discovered by the background worker into the app list.
+  await InAppNotificationsService(store).pullPending();
+
+  final settings = SettingsRepository(store).load();
   final downloads = DownloadService(
-    dio: createHttpClient(),
-    store: store,
-    notifications: notifications,
+    createHttpClient(),
+    store,
+    notifications,
+    StorageService(),
   );
   await downloads.initialize();
-  downloads.notificationsEnabled = SettingsRepository(store)
-      .load()
-      .notifyDownloads;
+  downloads.notificationsEnabled = settings.notifyDownloads;
+  await configureNewEpisodeWorker(settings);
 
   runApp(
     ProviderScope(

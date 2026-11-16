@@ -7,6 +7,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import 'settings_screen.dart';
 
@@ -32,27 +33,12 @@ class AboutScreen extends ConsumerWidget {
           Center(
             child: Column(
               children: <Widget>[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(Radii.lg),
-                  child: Image.asset(
-                    'assets/branding/wings_icon.png',
-                    width: 96,
-                    height: 96,
-                    filterQuality: FilterQuality.high,
-                  ),
-                ),
+                const WingsMark(size: 88),
                 const SizedBox(height: Space.md),
                 Text(
                   'Wings',
                   style: context.text.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  l10n.appTagline,
-                  style: context.text.bodySmall?.copyWith(
-                    color: palette.textMuted,
                   ),
                 ),
                 const SizedBox(height: Space.xs),
@@ -66,23 +52,6 @@ class AboutScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: Space.xl),
-          Container(
-            padding: const EdgeInsets.all(Space.md),
-            decoration: BoxDecoration(
-              color: palette.surface,
-              borderRadius: BorderRadius.circular(Radii.md),
-              border: Border.all(color: palette.border),
-            ),
-            child: Text(
-              'Wings واجهة عربية لمتابعة الأنمي: مكتبة شخصية، متابعة الحلقات، وتنزيلات '
-              'محفوظة على جهازك. تُعرض بيانات الأعمال من كتالوج عام، وتبقى مكتبتك '
-              'وسجلك على هذا الجهاز.',
-              style: context.text.bodyMedium?.copyWith(
-                color: palette.textSecondary,
-                height: 1.7,
-              ),
-            ),
-          ),
           const SizedBox(height: Space.lg),
           WingsSettingsGroup(
             title: l10n.settingsAbout,
@@ -98,16 +67,6 @@ class AboutScreen extends ConsumerWidget {
                 title: l10n.settingsTerms,
                 showChevron: true,
                 onTap: () => context.push(RoutePaths.legal('terms')),
-              ),
-              WingsSettingsTile(
-                icon: Icons.code_rounded,
-                title: l10n.settingsLicenses,
-                showChevron: true,
-                onTap: () => showLicensePage(
-                  context: context,
-                  applicationName: 'Wings',
-                  applicationVersion: info?.version,
-                ),
               ),
               WingsSettingsTile(
                 icon: Icons.public_rounded,

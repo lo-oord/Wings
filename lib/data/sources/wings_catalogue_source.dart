@@ -165,14 +165,36 @@ class WingsCatalogueSource implements AnimeSource {
     Anime anime, {
     CancelToken? cancelToken,
   }) async {
-    final path = anime.contentPath ?? 'anime_list/${anime.id}';
-    final fields = await _firestore.getFields(
-      '$path/episodes_summery/summery',
-      cancelToken: cancelToken,
-    );
-    final raw = fields?['episodes'];
-    if (raw is! List) return const [];
+    final paths = <String>{
+      if (anime.contentPath != null && anime.contentPath!.isNotEmpty)
+        anime.contentPath!,
+      'anime_list/${anime.id}',
+    };
 
+    for (final path in paths) {
+      final summary = await _firestore.getFields(
+        '$path/episodes_summery/summery',
+        cancelToken: cancelToken,
+      );
+      final parsed = _parseEpisodeSummary(summary?['episodes'], anime);
+      if (parsed.isNotEmpty) return parsed;
+    }
+
+    // Some titles never got an episode summary document; the per-episode
+    // documents still exist, so read the collection directly.
+    for (final path in paths) {
+      final documents = await _firestore.getDocumentsWithIds(
+        '$path/episodes',
+        cancelToken: cancelToken,
+      );
+      final parsed = _parseEpisodeDocuments(documents, anime);
+      if (parsed.isNotEmpty) return parsed;
+    }
+    return const <AnimeEpisode>[];
+  }
+
+  List<AnimeEpisode> _parseEpisodeSummary(Object? raw, Anime anime) {
+    if (raw is! List || raw.isEmpty) return const <AnimeEpisode>[];
     final episodes = <String, AnimeEpisode>{};
     for (var i = 0; i < raw.length; i++) {
       final item = raw[i];
@@ -181,31 +203,18 @@ class WingsCatalogueSource implements AnimeSource {
         final map = item.cast<String, dynamic>();
         final docId = map['doc_id']?.toString() ?? map['id']?.toString();
         if (docId == null || docId.isEmpty) continue;
-
-        // `title_translated` is usually a {ar: ...} map, but a few older
-        // documents store a plain string instead.
-        final translatedRaw = map['title_translated'];
-        final translated = translatedRaw is Map
-            ? translatedRaw.cast<String, dynamic>()
-            : null;
-        final displayTitle =
-            translated?.str('ar') ??
-            (translatedRaw is String && translatedRaw.trim().isNotEmpty
-                ? translatedRaw
-                : null) ??
-            map['name']?.toString();
+        final displayTitle = _episodeTitle(map);
         final number = map['number'] is num
             ? (map['number'] as num).toInt()
             : int.tryParse(map['number']?.toString() ?? '') ??
                   _firstNumber(displayTitle) ??
                   i + 1;
-
         episodes[docId] = AnimeEpisode(
           id: docId,
           number: number,
           animeId: anime.id,
           title: displayTitle,
-          thumbnailUrl: map['thumb_uri']?.toString(),
+          thumbnailUrl: _episodeThumb(map),
           filler: map['filler'] == true,
         );
       } on Object {
@@ -213,10 +222,62 @@ class WingsCatalogueSource implements AnimeSource {
         continue;
       }
     }
-
     final list = episodes.values.toList()
       ..sort((a, b) => a.number.compareTo(b.number));
     return list;
+  }
+
+  List<AnimeEpisode> _parseEpisodeDocuments(
+    List<(String, Map<String, dynamic>)> documents,
+    Anime anime,
+  ) {
+    final episodes = <AnimeEpisode>[];
+    for (final (id, map) in documents) {
+      try {
+        final displayTitle = _episodeTitle(map);
+        final number = map['number'] is num
+            ? (map['number'] as num).toInt()
+            : int.tryParse(map['number']?.toString() ?? '') ??
+                  _firstNumber(displayTitle) ??
+                  _firstNumber(id) ??
+                  0;
+        if (number <= 0) continue;
+        episodes.add(
+          AnimeEpisode(
+            id: id,
+            number: number,
+            animeId: anime.id,
+            title: displayTitle,
+            thumbnailUrl: _episodeThumb(map),
+            filler: map['filler'] == true,
+          ),
+        );
+      } on Object {
+        continue;
+      }
+    }
+    episodes.sort((a, b) => a.number.compareTo(b.number));
+    return episodes;
+  }
+
+  String? _episodeTitle(Map<String, dynamic> map) {
+    final translatedRaw = map['title_translated'];
+    final translated = translatedRaw is Map
+        ? translatedRaw.cast<String, dynamic>()
+        : null;
+    return translated?.str('ar') ??
+        (translatedRaw is String && translatedRaw.trim().isNotEmpty
+            ? translatedRaw
+            : null) ??
+        map['name']?.toString() ??
+        map['title']?.toString();
+  }
+
+  String? _episodeThumb(Map<String, dynamic> map) {
+    final candidate =
+        map['thumb_uri']?.toString() ?? map['thumbnail']?.toString();
+    if (candidate == null || candidate.trim().isEmpty) return null;
+    return candidate;
   }
 
   @override

@@ -34,6 +34,42 @@ class FirestoreClient {
   }
 
   /// Reads a sub-collection and returns each document's decoded fields.
+  /// Like [getDocuments] but keeps each document's id.
+  Future<List<(String, Map<String, dynamic>)>> getDocumentsWithIds(
+    String path, {
+    CancelToken? cancelToken,
+  }) async {
+    final encoded = path.split('/').map(Uri.encodeComponent).join('/');
+    final url =
+        'https://firestore.googleapis.com/v1/projects/${WingsConfig.firestoreProject}'
+        '/databases/(default)/documents/$encoded';
+    final response = await _dio.get<Map<String, dynamic>>(
+      url,
+      queryParameters: <String, String>{
+        'key': WingsConfig.firestoreClientKey,
+        'pageSize': '2000',
+      },
+      cancelToken: cancelToken,
+    );
+    if (response.statusCode == 404) return const [];
+    final documents = response.data?['documents'];
+    if (documents is! List) return const [];
+    final result = <(String, Map<String, dynamic>)>[];
+    for (final doc in documents.whereType<Map>()) {
+      final fields = doc['fields'];
+      final name = doc['name']?.toString() ?? '';
+      final id = name.split('/').last;
+      if (id.isEmpty) continue;
+      result.add((
+        id,
+        fields is Map
+            ? decodeFields(fields.cast<String, dynamic>())
+            : <String, dynamic>{},
+      ));
+    }
+    return result;
+  }
+
   Future<List<Map<String, dynamic>>> getDocuments(
     String path, {
     CancelToken? cancelToken,

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -43,21 +45,27 @@ class ProfileScreen extends ConsumerWidget {
             child: Row(
               children: <Widget>[
                 Container(
-                  width: 64,
-                  height: 64,
+                  width: 68,
+                  height: 68,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: palette.brandGradient,
+                    color: palette.surfaceAlt,
+                    border: Border.all(color: palette.border),
                   ),
+                  clipBehavior: Clip.antiAlias,
                   alignment: Alignment.center,
                   child: user == null
                       ? const WingsMark(size: 34)
-                      : Text(
-                          user.displayName.characters.first.toUpperCase(),
-                          style: context.text.headlineSmall?.copyWith(
-                            color: Colors.white,
-                          ),
-                        ),
+                      : (user.avatarPath != null &&
+                                File(user.avatarPath!).existsSync()
+                            ? Image.file(
+                                File(user.avatarPath!),
+                                fit: BoxFit.cover,
+                              )
+                            : Text(
+                                user.displayName.characters.first.toUpperCase(),
+                                style: context.text.headlineSmall,
+                              )),
                 ),
                 const SizedBox(width: Space.lg),
                 Expanded(
@@ -70,7 +78,9 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        user?.email ?? l10n.profileSignInPrompt,
+                        user == null
+                            ? l10n.profileSignInPrompt
+                            : '@${user.username} · ${user.email}',
                         style: context.text.bodySmall?.copyWith(
                           color: palette.textMuted,
                         ),

@@ -61,7 +61,6 @@ class DownloadsScreen extends ConsumerWidget {
           ? WingsEmptyState(
               icon: Icons.download_outlined,
               title: l10n.downloadsEmpty,
-              message: l10n.downloadsWifiHint,
             )
           : ListView(
               padding: const EdgeInsets.only(top: Space.sm, bottom: Space.xxxl),
@@ -170,7 +169,8 @@ class _DownloadCard extends ConsumerWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${l10n.commonEpisodeNumber(task.episodeNumber)} · ${task.quality}',
+                        task.fileName ??
+                            '${l10n.commonEpisodeNumber(task.episodeNumber)} · ${task.quality}',
                         style: context.text.labelSmall?.copyWith(
                           color: palette.textMuted,
                         ),
@@ -209,6 +209,23 @@ class _DownloadCard extends ConsumerWidget {
                     size: 34,
                     tooltip: l10n.downloadsRetry,
                     onPressed: () => notifier.retry(task.id),
+                  )
+                else if (isCompleted && task.publicUri != null)
+                  WingsIconButton(
+                    icon: Icons.open_in_new_rounded,
+                    size: 34,
+                    tooltip: l10n.commonPlay,
+                    onPressed: () async {
+                      final opened = await ref
+                          .read(storageServiceProvider)
+                          .openFile(task.publicUri!);
+                      if (!opened && context.mounted) {
+                        context.showSnack(
+                          l10n.playerPlaybackErrorBody,
+                          isError: true,
+                        );
+                      }
+                    },
                   ),
                 WingsIconButton(
                   icon: isCompleted

@@ -419,6 +419,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       onBack: () => Navigator.of(context).maybePop(),
       onQuality: _showQualitySheet,
       onSpeed: _showSpeedSheet,
+      onDownload: _episode == null
+          ? null
+          : () => _showDownloadSheet(_anime!, _episode!),
       onPrevious: _previousEpisode == null
           ? null
           : () => _loadEpisode(_previousEpisode!),
@@ -584,12 +587,88 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             color: item.id == _episode?.id ? palette.surfaceAlt : null,
             child: WingsEpisodeCard(
               episode: item,
+              fallbackImageUrl: anime.imageUrl,
               watched: watched.contains(item.id),
-              showThumbnail: false,
               onPlay: () => _loadEpisode(item),
+              onDownload: () => _showDownloadSheet(anime, item),
             ),
           ),
       ],
+    );
+  }
+
+  Future<void> _showDownloadSheet(Anime anime, AnimeEpisode episode) async {
+    final l10n = AppLocalizations.of(context);
+    List<StreamServer> servers;
+    if (episode.id == _episode?.id && _servers.isNotEmpty) {
+      servers = _servers;
+    } else {
+      try {
+        servers = await ref
+            .read(animeRepositoryProvider)
+            .servers(anime, episode);
+      } on Object {
+        servers = const <StreamServer>[];
+      }
+    }
+    if (!mounted) return;
+    final downloadable = servers
+        .where((server) => !server.requiresBrowser)
+        .toList(growable: false);
+
+    await WingsSheet.show<void>(
+      context,
+      title: l10n.detailsDownloadSheetTitle,
+      builder: (dialogContext) {
+        if (downloadable.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: Space.lg),
+            child: Text(
+              l10n.detailsNoDownloads,
+              style: dialogContext.text.bodySmall,
+            ),
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (final server in downloadable)
+              WingsSettingsTile(
+                icon: Icons.high_quality_rounded,
+                title: server.quality,
+                subtitle: server.name,
+                trailing: const Icon(Icons.download_rounded, size: 18),
+                onTap: () async {
+                  Navigator.of(dialogContext).pop();
+                  final resolved = await ref
+                      .read(animeRepositoryProvider)
+                      .resolve(server);
+                  if (resolved == null) {
+                    if (mounted) {
+                      context.showSnack(l10n.detailsNoDownloads, isError: true);
+                    }
+                    return;
+                  }
+                  final task = DownloadTask(
+                    id: '${anime.id}:${episode.id}:${server.quality}:${DateTime.now().millisecondsSinceEpoch}',
+                    animeId: anime.id,
+                    animeTitle: anime.title,
+                    posterUrl: anime.imageUrl,
+                    episodeId: episode.id,
+                    episodeNumber: episode.number,
+                    episodeTitle: episode.title,
+                    quality: server.quality,
+                    url: resolved.url,
+                    status: DownloadStatus.queued,
+                    createdAt: DateTime.now(),
+                  );
+                  await ref.read(downloadTasksProvider.notifier).enqueue(task);
+                  if (mounted) context.showSnack(l10n.downloadsQueued);
+                },
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -725,6 +804,7 @@ class _PlayerSurface extends StatelessWidget {
     required this.onBack,
     required this.onQuality,
     required this.onSpeed,
+    required this.onDownload,
     required this.onPrevious,
     required this.onNext,
     required this.onAutoplay,
@@ -755,6 +835,7 @@ class _PlayerSurface extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onQuality;
   final VoidCallback onSpeed;
+  final VoidCallback? onDownload;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final VoidCallback onAutoplay;
@@ -973,6 +1054,12 @@ class _PlayerSurface extends StatelessWidget {
                             color: Colors.white,
                             tooltip: l10n.playerQuality,
                             onPressed: onQuality,
+                          ),
+                          WingsIconButton(
+                            icon: Icons.download_rounded,
+                            color: Colors.white,
+                            tooltip: l10n.commonDownload,
+                            onPressed: onDownload,
                           ),
                           WingsIconButton(
                             icon: autoplay

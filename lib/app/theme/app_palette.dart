@@ -49,61 +49,63 @@ class WingsPalette extends ThemeExtension<WingsPalette> {
   final Color skeletonHighlight;
   final bool isDark;
 
+  /// Neutral canvas: green is reserved for accents and primary actions, never
+  /// as a wash over the whole interface.
   static const WingsPalette dark = WingsPalette(
-    background: Color(0xFF07110C),
-    surface: Color(0xFF0D1A13),
-    surfaceAlt: Color(0xFF12241A),
-    surfaceHigh: Color(0xFF183024),
-    border: Color(0xFF1E3A2B),
-    borderStrong: Color(0xFF2A5140),
-    primary: Color(0xFF20B978),
-    primaryBright: Color(0xFF159B62),
+    background: Color(0xFF0A0A0B),
+    surface: Color(0xFF141416),
+    surfaceAlt: Color(0xFF1B1B1E),
+    surfaceHigh: Color(0xFF242427),
+    border: Color(0xFF29292D),
+    borderStrong: Color(0xFF3A3A40),
+    primary: Color(0xFF2ECC87),
+    primaryBright: Color(0xFF25B877),
     accent: Color(0xFF7BD83B),
     mint: Color(0xFF6DE0A6),
     onPrimary: Color(0xFF04120B),
-    textPrimary: Color(0xFFF1FAF5),
-    textSecondary: Color(0xFFA9C3B4),
-    textMuted: Color(0xFF75907F),
+    textPrimary: Color(0xFFF4F4F5),
+    textSecondary: Color(0xFFA6A6AE),
+    textMuted: Color(0xFF71717A),
     danger: Color(0xFFF26D6D),
     warning: Color(0xFFF2C14E),
     success: Color(0xFF4CD787),
-    overlay: Color(0xCC04100A),
-    skeletonBase: Color(0xFF132219),
-    skeletonHighlight: Color(0xFF1E382A),
+    overlay: Color(0xCC000000),
+    skeletonBase: Color(0xFF1C1C20),
+    skeletonHighlight: Color(0xFF2B2B31),
     isDark: true,
   );
 
   static const WingsPalette light = WingsPalette(
-    background: Color(0xFFF5FAF7),
+    background: Color(0xFFF7F7F8),
     surface: Color(0xFFFFFFFF),
-    surfaceAlt: Color(0xFFEDF6F0),
-    surfaceHigh: Color(0xFFE2F1E8),
-    border: Color(0xFFDCEBE2),
-    borderStrong: Color(0xFFC4DDCE),
-    primary: Color(0xFF107F52),
-    primaryBright: Color(0xFF159B62),
+    surfaceAlt: Color(0xFFF1F1F3),
+    surfaceHigh: Color(0xFFE7E7EA),
+    border: Color(0xFFE4E4E8),
+    borderStrong: Color(0xFFD2D2D8),
+    primary: Color(0xFF0F8A59),
+    primaryBright: Color(0xFF14A269),
     accent: Color(0xFF49A81E),
     mint: Color(0xFF2FA46C),
     onPrimary: Color(0xFFFFFFFF),
-    textPrimary: Color(0xFF0A1B13),
-    textSecondary: Color(0xFF4A6255),
-    textMuted: Color(0xFF7A8F83),
+    textPrimary: Color(0xFF101012),
+    textSecondary: Color(0xFF52525B),
+    textMuted: Color(0xFF8A8A93),
     danger: Color(0xFFC44343),
     warning: Color(0xFF9A6B00),
     success: Color(0xFF137A46),
-    overlay: Color(0xCC05130D),
-    skeletonBase: Color(0xFFE7F1EB),
-    skeletonHighlight: Color(0xFFF6FBF8),
+    overlay: Color(0xCC000000),
+    skeletonBase: Color(0xFFE9E9EC),
+    skeletonHighlight: Color(0xFFF7F7F9),
     isDark: false,
   );
 
-  /// Brand gradient used for primary actions and selected states.
+  /// Brand gradient reserved for primary actions and selected affordances.
   LinearGradient get brandGradient => LinearGradient(
     begin: AlignmentDirectional.topStart,
     end: AlignmentDirectional.bottomEnd,
     colors: isDark
-        ? const [Color(0xFF2ECC87), Color(0xFF149C63)]
-        : const [Color(0xFF159B62), Color(0xFF0A6B43)],
+        ? const [Color(0xFF31D68F), Color(0xFF16A96C)]
+        : const [Color(0xFF14A269), Color(0xFF0B6E47)],
   );
 
   /// Higher-contrast gradient reserved for the featured banner.

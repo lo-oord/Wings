@@ -13,9 +13,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appName => 'Wings';
 
   @override
-  String get appTagline => 'Anime without limits';
-
-  @override
   String get navLatest => 'Latest';
 
   @override
@@ -640,9 +637,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsTerms => 'Terms of use';
 
   @override
-  String get settingsLicenses => 'Open-source licenses';
-
-  @override
   String get settingsAccount => 'Account';
 
   @override
@@ -762,9 +756,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'If the email is registered, a reset link is on its way.';
 
   @override
-  String get authDemoNotice => 'Development mode: local account only';
-
-  @override
   String get profileTitle => 'Profile';
 
   @override
@@ -872,4 +863,41 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get searchHistoryRemoved => 'Removed from history';
+
+  @override
+  String get commonNext => 'Next';
+
+  @override
+  String get commonBack => 'Back';
+
+  @override
+  String get authUsername => 'Username';
+
+  @override
+  String get authValidationUsername => '3–20 letters, numbers or underscores';
+
+  @override
+  String get authCountry => 'Country';
+
+  @override
+  String get authChoosePhoto => 'Change photo';
+
+  @override
+  String authStepOf(String current, String total) {
+    return 'Step $current of $total';
+  }
+
+  @override
+  String get authPasswordWeak => 'Weak';
+
+  @override
+  String get authPasswordMedium => 'Fair';
+
+  @override
+  String get authPasswordStrong => 'Strong';
+
+  @override
+  String notificationsEpisodeBody(int number) {
+    return 'Episode $number is now available 🎉 Tap to watch';
+  }
 }

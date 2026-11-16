@@ -171,6 +171,8 @@ class DownloadTask {
     this.posterUrl,
     this.episodeTitle,
     this.filePath,
+    this.fileName,
+    this.publicUri,
     this.receivedBytes = 0,
     this.totalBytes = 0,
     this.error,
@@ -187,6 +189,8 @@ class DownloadTask {
   final String url;
   final DownloadStatus status;
   final String? filePath;
+  final String? fileName;
+  final String? publicUri;
   final int receivedBytes;
   final int totalBytes;
   final String? error;
@@ -195,9 +199,14 @@ class DownloadTask {
   double get progress =>
       totalBytes <= 0 ? 0 : (receivedBytes / totalBytes).clamp(0.0, 1.0);
 
+  /// Stable notification id for this transfer.
+  int get trayId => id.hashCode.abs() % 100000;
+
   DownloadTask copyWith({
     DownloadStatus? status,
     String? filePath,
+    String? fileName,
+    String? publicUri,
     int? receivedBytes,
     int? totalBytes,
     String? error,
@@ -215,6 +224,8 @@ class DownloadTask {
       url: url,
       status: status ?? this.status,
       filePath: filePath ?? this.filePath,
+      fileName: fileName ?? this.fileName,
+      publicUri: publicUri ?? this.publicUri,
       receivedBytes: receivedBytes ?? this.receivedBytes,
       totalBytes: totalBytes ?? this.totalBytes,
       error: clearError ? null : (error ?? this.error),
@@ -234,6 +245,8 @@ class DownloadTask {
     'url': url,
     'status': status.name,
     'filePath': filePath,
+    'fileName': fileName,
+    'publicUri': publicUri,
     'receivedBytes': receivedBytes,
     'totalBytes': totalBytes,
     'error': error,
@@ -255,6 +268,8 @@ class DownloadTask {
       orElse: () => DownloadStatus.failed,
     ),
     filePath: json['filePath'] as String?,
+    fileName: json['fileName'] as String?,
+    publicUri: json['publicUri'] as String?,
     receivedBytes: (json['receivedBytes'] as num?)?.toInt() ?? 0,
     totalBytes: (json['totalBytes'] as num?)?.toInt() ?? 0,
     error: json['error'] as String?,
@@ -276,6 +291,7 @@ class AppSettings {
     this.notifyDownloads = true,
     this.notifyGeneral = false,
     this.onboardingDone = false,
+    this.guestMode = false,
   });
 
   final ThemeMode themeMode;
@@ -288,6 +304,7 @@ class AppSettings {
   final bool notifyDownloads;
   final bool notifyGeneral;
   final bool onboardingDone;
+  final bool guestMode;
 
   Locale get locale => Locale(localeCode);
 
@@ -302,6 +319,7 @@ class AppSettings {
     bool? notifyDownloads,
     bool? notifyGeneral,
     bool? onboardingDone,
+    bool? guestMode,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -314,6 +332,7 @@ class AppSettings {
       notifyDownloads: notifyDownloads ?? this.notifyDownloads,
       notifyGeneral: notifyGeneral ?? this.notifyGeneral,
       onboardingDone: onboardingDone ?? this.onboardingDone,
+      guestMode: guestMode ?? this.guestMode,
     );
   }
 
@@ -328,6 +347,7 @@ class AppSettings {
     'notifyDownloads': notifyDownloads,
     'notifyGeneral': notifyGeneral,
     'onboardingDone': onboardingDone,
+    'guestMode': guestMode,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -344,5 +364,6 @@ class AppSettings {
     notifyDownloads: json['notifyDownloads'] as bool? ?? true,
     notifyGeneral: json['notifyGeneral'] as bool? ?? false,
     onboardingDone: json['onboardingDone'] as bool? ?? false,
+    guestMode: json['guestMode'] as bool? ?? false,
   );
 }

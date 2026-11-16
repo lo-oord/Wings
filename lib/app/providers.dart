@@ -7,10 +7,14 @@ import 'package:media_kit/media_kit.dart';
 import '../core/network/http_client.dart';
 import '../core/services/connectivity_service.dart';
 import '../core/services/download_service.dart';
+import '../core/services/in_app_notifications.dart';
+import '../core/services/new_episode_worker.dart';
 import '../core/services/notification_service.dart';
 import '../core/services/share_service.dart';
+import '../core/services/storage_service.dart';
 import '../core/storage/local_store.dart';
 import '../data/models/anime.dart';
+import '../data/models/app_notification.dart';
 import '../data/models/library.dart';
 import '../data/repositories/anime_repository.dart';
 import '../data/repositories/auth_repository.dart';
@@ -75,15 +79,61 @@ final notificationServiceProvider = Provider<NotificationService>(
   (ref) => NotificationService(),
 );
 
+final storageServiceProvider = Provider<StorageService>(
+  (ref) => StorageService(),
+);
+
 final downloadServiceProvider = Provider<DownloadService>((ref) {
   final service = DownloadService(
-    dio: ref.watch(httpClientProvider),
-    store: ref.watch(localStoreProvider),
-    notifications: ref.watch(notificationServiceProvider),
+    ref.watch(httpClientProvider),
+    ref.watch(localStoreProvider),
+    ref.watch(notificationServiceProvider),
+    ref.watch(storageServiceProvider),
   );
   ref.onDispose(service.dispose);
   return service;
 });
+
+final inAppNotificationsProvider = Provider<InAppNotificationsService>(
+  (ref) => InAppNotificationsService(ref.watch(localStoreProvider)),
+);
+
+/// New-episode alerts shown in the notification centre.
+class NotificationsController extends Notifier<List<AppNotification>> {
+  @override
+  List<AppNotification> build() => _service.all();
+
+  InAppNotificationsService get _service =>
+      ref.read(inAppNotificationsProvider);
+
+  Future<void> refresh() async {
+    await _service.pullPending();
+    state = _service.all();
+  }
+
+  Future<void> markAllRead() async {
+    await _service.markAllRead();
+    state = _service.all();
+  }
+
+  Future<void> clear() async {
+    await _service.clear();
+    state = _service.all();
+  }
+}
+
+final notificationsProvider =
+    NotifierProvider<NotificationsController, List<AppNotification>>(
+      NotificationsController.new,
+    );
+
+final unreadNotificationsProvider = Provider<int>(
+  (ref) => ref
+      .watch(notificationsProvider)
+      .where((item) => !item.read)
+      .length
+      .clamp(0, 99),
+);
 
 final shareServiceProvider = Provider<ShareService>((ref) => ShareService());
 
@@ -111,6 +161,7 @@ class SettingsController extends Notifier<AppSettings> {
     await ref.read(settingsRepositoryProvider).save(state);
     ref.read(downloadServiceProvider).notificationsEnabled =
         state.notifyDownloads;
+    await configureNewEpisodeWorker(state);
   }
 
   Future<void> setThemeMode(ThemeMode mode) =>
@@ -121,6 +172,10 @@ class SettingsController extends Notifier<AppSettings> {
 
   Future<void> completeOnboarding() =>
       update((s) => s.copyWith(onboardingDone: true));
+
+  Future<void> enterGuestMode() => update((s) => s.copyWith(guestMode: true));
+
+  Future<void> leaveGuestMode() => update((s) => s.copyWith(guestMode: false));
 }
 
 final settingsProvider = NotifierProvider<SettingsController, AppSettings>(
@@ -293,12 +348,40 @@ class AuthController extends Notifier<AuthUser?> {
 
   Future<void> register({
     required String displayName,
+    required String username,
+    required String country,
     required String email,
     required String password,
+    String? avatarPath,
   }) async {
     state = await ref
         .read(authRepositoryProvider)
-        .register(displayName: displayName, email: email, password: password);
+        .register(
+          displayName: displayName,
+          username: username,
+          country: country,
+          email: email,
+          password: password,
+          avatarPath: avatarPath,
+        );
+  }
+
+  Future<void> updateProfile({
+    String? displayName,
+    String? username,
+    String? country,
+    String? avatarPath,
+    String? bio,
+  }) async {
+    state = ref
+        .read(authRepositoryProvider)
+        .updateProfile(
+          displayName: displayName,
+          username: username,
+          country: country,
+          avatarPath: avatarPath,
+          bio: bio,
+        );
   }
 
   Future<void> signOut() async {
