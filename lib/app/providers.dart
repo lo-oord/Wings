@@ -22,7 +22,9 @@ import '../data/repositories/library_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/sources/algolia_client.dart';
 import '../data/sources/anime_source.dart';
+import '../data/sources/cartoony_source.dart';
 import '../data/sources/firestore_client.dart';
+import '../data/sources/multi_source_catalogue.dart';
 import '../data/sources/server_resolver.dart';
 import '../data/sources/wings_catalogue_source.dart';
 
@@ -52,11 +54,36 @@ final searchClientProvider = Provider<SearchIndexClient>(
   ),
 );
 
-final animeSourceProvider = Provider<AnimeSource>(
+final wingsSourceProvider = Provider<AnimeSource>(
   (ref) => WingsCatalogueSource(
     index: ref.watch(searchClientProvider),
     firestore: ref.watch(firestoreClientProvider),
   ),
+);
+
+/// «سبيستون غو» catalogue from the public Cartoony / Carateen site.
+final cartoonySpSourceProvider = Provider<AnimeSource>(
+  (ref) => CartoonySource(
+    ref.watch(httpClientProvider),
+    catalog: CartoonyCatalog.spacetoonGo,
+  ),
+);
+
+/// «كرتون أيام زمان» catalogue from the same site.
+final cartoonyTgSourceProvider = Provider<AnimeSource>(
+  (ref) => CartoonySource(
+    ref.watch(httpClientProvider),
+    catalog: CartoonyCatalog.classic,
+  ),
+);
+
+/// Every configured catalogue, merged behind one contract.
+final animeSourceProvider = Provider<AnimeSource>(
+  (ref) => MultiSourceCatalogue(<AnimeSource>[
+    ref.watch(wingsSourceProvider),
+    ref.watch(cartoonySpSourceProvider),
+    ref.watch(cartoonyTgSourceProvider),
+  ]),
 );
 
 final animeRepositoryProvider = Provider<AnimeRepository>((ref) {
