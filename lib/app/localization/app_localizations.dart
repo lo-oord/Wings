@@ -104,12 +104,6 @@ abstract class AppLocalizations {
   /// **'Wings'**
   String get appName;
 
-  /// No description provided for @appTagline.
-  ///
-  /// In ar, this message translates to:
-  /// **'أنمي بلا حدود'**
-  String get appTagline;
-
   /// No description provided for @navLatest.
   ///
   /// In ar, this message translates to:
@@ -1322,12 +1316,6 @@ abstract class AppLocalizations {
   /// **'شروط الاستخدام'**
   String get settingsTerms;
 
-  /// No description provided for @settingsLicenses.
-  ///
-  /// In ar, this message translates to:
-  /// **'تراخيص مفتوحة المصدر'**
-  String get settingsLicenses;
-
   /// No description provided for @settingsAccount.
   ///
   /// In ar, this message translates to:
@@ -1556,12 +1544,6 @@ abstract class AppLocalizations {
   /// **'إذا كان البريد مسجلاً، فسيصلك رابط الاستعادة.'**
   String get authResetSent;
 
-  /// No description provided for @authDemoNotice.
-  ///
-  /// In ar, this message translates to:
-  /// **'وضع تطوير: الحساب محلي فقط'**
-  String get authDemoNotice;
-
   /// No description provided for @profileTitle.
   ///
   /// In ar, this message translates to:
@@ -1765,6 +1747,72 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'حُذف من السجل'**
   String get searchHistoryRemoved;
+
+  /// No description provided for @commonNext.
+  ///
+  /// In ar, this message translates to:
+  /// **'التالي'**
+  String get commonNext;
+
+  /// No description provided for @commonBack.
+  ///
+  /// In ar, this message translates to:
+  /// **'رجوع'**
+  String get commonBack;
+
+  /// No description provided for @authUsername.
+  ///
+  /// In ar, this message translates to:
+  /// **'اسم المستخدم'**
+  String get authUsername;
+
+  /// No description provided for @authValidationUsername.
+  ///
+  /// In ar, this message translates to:
+  /// **'3–20 حرفاً إنجليزياً أو رقماً أو _'**
+  String get authValidationUsername;
+
+  /// No description provided for @authCountry.
+  ///
+  /// In ar, this message translates to:
+  /// **'الدولة'**
+  String get authCountry;
+
+  /// No description provided for @authChoosePhoto.
+  ///
+  /// In ar, this message translates to:
+  /// **'تغيير الصورة'**
+  String get authChoosePhoto;
+
+  /// No description provided for @authStepOf.
+  ///
+  /// In ar, this message translates to:
+  /// **'الخطوة {current} من {total}'**
+  String authStepOf(String current, String total);
+
+  /// No description provided for @authPasswordWeak.
+  ///
+  /// In ar, this message translates to:
+  /// **'ضعيفة'**
+  String get authPasswordWeak;
+
+  /// No description provided for @authPasswordMedium.
+  ///
+  /// In ar, this message translates to:
+  /// **'متوسطة'**
+  String get authPasswordMedium;
+
+  /// No description provided for @authPasswordStrong.
+  ///
+  /// In ar, this message translates to:
+  /// **'قوية'**
+  String get authPasswordStrong;
+
+  /// No description provided for @notificationsEpisodeBody.
+  ///
+  /// In ar, this message translates to:
+  /// **'الحلقة {number} متاحة الآن 🎉 اضغط للمشاهدة'**
+  String notificationsEpisodeBody(int number);
 }
 
 class _AppLocalizationsDelegate

@@ -1,7 +1,6 @@
 {
   "@@locale": "en",
   "appName": "Wings",
-  "appTagline": "Anime without limits",
   "navLatest": "Latest",
   "navExplore": "Explore",
   "navLibrary": "Library",
@@ -204,7 +203,6 @@
   "settingsVersion": "Version",
   "settingsPrivacyPolicy": "Privacy policy",
   "settingsTerms": "Terms of use",
-  "settingsLicenses": "Open-source licenses",
   "settingsAccount": "Account",
   "settingsSignIn": "Sign in",
   "settingsSignOut": "Sign out",
@@ -243,7 +241,6 @@
   "authValidationConfirm": "Passwords do not match",
   "authAcceptTerms": "I agree to the terms of use and privacy policy",
   "authResetSent": "If the email is registered, a reset link is on its way.",
-  "authDemoNotice": "Development mode: local account only",
   "profileTitle": "Profile",
   "profileGuest": "Guest account",
   "profileEdit": "Edit profile",
@@ -277,5 +274,33 @@
   "typeSeries": "Series",
   "typeMovie": "Movie",
   "errorNoEpisodes": "No episodes",
-  "searchHistoryRemoved": "Removed from history"
+  "searchHistoryRemoved": "Removed from history",
+  "commonNext": "Next",
+  "commonBack": "Back",
+  "authUsername": "Username",
+  "authValidationUsername": "3–20 letters, numbers or underscores",
+  "authCountry": "Country",
+  "authChoosePhoto": "Change photo",
+  "authStepOf": "Step {current} of {total}",
+  "@authStepOf": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "authPasswordWeak": "Weak",
+  "authPasswordMedium": "Fair",
+  "authPasswordStrong": "Strong",
+  "notificationsEpisodeBody": "Episode {number} is now available 🎉 Tap to watch",
+  "@notificationsEpisodeBody": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  }
 }

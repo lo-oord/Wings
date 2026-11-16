@@ -1,7 +1,6 @@
 {
   "@@locale": "ar",
   "appName": "Wings",
-  "appTagline": "أنمي بلا حدود",
   "navLatest": "الأحدث",
   "navExplore": "استكشف",
   "navLibrary": "مكتبتي",
@@ -246,7 +245,6 @@
   "settingsVersion": "الإصدار",
   "settingsPrivacyPolicy": "سياسة الخصوصية",
   "settingsTerms": "شروط الاستخدام",
-  "settingsLicenses": "تراخيص مفتوحة المصدر",
   "settingsAccount": "الحساب",
   "settingsSignIn": "تسجيل الدخول",
   "settingsSignOut": "تسجيل الخروج",
@@ -285,7 +283,6 @@
   "authValidationConfirm": "كلمتا المرور غير متطابقتين",
   "authAcceptTerms": "أوافق على شروط الاستخدام وسياسة الخصوصية",
   "authResetSent": "إذا كان البريد مسجلاً، فسيصلك رابط الاستعادة.",
-  "authDemoNotice": "وضع تطوير: الحساب محلي فقط",
   "profileTitle": "الملف الشخصي",
   "profileGuest": "حساب الزائر",
   "profileEdit": "تعديل الملف",
@@ -326,5 +323,33 @@
   "typeSeries": "مسلسل",
   "typeMovie": "فيلم",
   "errorNoEpisodes": "لا توجد حلقات",
-  "searchHistoryRemoved": "حُذف من السجل"
+  "searchHistoryRemoved": "حُذف من السجل",
+  "commonNext": "التالي",
+  "commonBack": "رجوع",
+  "authUsername": "اسم المستخدم",
+  "authValidationUsername": "3–20 حرفاً إنجليزياً أو رقماً أو _",
+  "authCountry": "الدولة",
+  "authChoosePhoto": "تغيير الصورة",
+  "authStepOf": "الخطوة {current} من {total}",
+  "@authStepOf": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "authPasswordWeak": "ضعيفة",
+  "authPasswordMedium": "متوسطة",
+  "authPasswordStrong": "قوية",
+  "notificationsEpisodeBody": "الحلقة {number} متاحة الآن 🎉 اضغط للمشاهدة",
+  "@notificationsEpisodeBody": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  }
 }

@@ -1,18 +1,59 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme/app_palette.dart';
 import '../../app/providers.dart';
 import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/errors/app_failure.dart';
 import '../../core/widgets/wings_buttons.dart';
+import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 
-class WelcomeScreen extends StatelessWidget {
+const List<(String, String)> kCountries = <(String, String)>[
+  ('SA', 'السعودية'),
+  ('AE', 'الإمارات'),
+  ('EG', 'مصر'),
+  ('KW', 'الكويت'),
+  ('QA', 'قطر'),
+  ('BH', 'البحرين'),
+  ('OM', 'عُمان'),
+  ('JO', 'الأردن'),
+  ('IQ', 'العراق'),
+  ('SY', 'سوريا'),
+  ('LB', 'لبنان'),
+  ('PS', 'فلسطين'),
+  ('YE', 'اليمن'),
+  ('SD', 'السودان'),
+  ('LY', 'ليبيا'),
+  ('TN', 'تونس'),
+  ('DZ', 'الجزائر'),
+  ('MA', 'المغرب'),
+  ('MR', 'موريتانيا'),
+  ('SO', 'الصومال'),
+  ('DJ', 'جيبوتي'),
+  ('KM', 'جزر القمر'),
+  ('TR', 'تركيا'),
+];
+
+class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
+
+  @override
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
+  Future<void> _continueAsGuest() async {
+    await ref.read(settingsProvider.notifier).enterGuestMode();
+    if (mounted) context.go(RoutePaths.latest);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,19 +70,12 @@ class WelcomeScreen extends StatelessWidget {
                 alignment: AlignmentDirectional.centerStart,
                 child: WingsIconButton(
                   icon: Icons.close_rounded,
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  onPressed: () => context.go(RoutePaths.latest),
                 ),
               ),
               const Spacer(),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(Radii.lg),
-                child: Image.asset(
-                  'assets/branding/wings_icon.png',
-                  width: 88,
-                  height: 88,
-                ),
-              ),
-              const SizedBox(height: Space.lg),
+              WingsMark(size: 116),
+              const SizedBox(height: Space.xl),
               Text(
                 l10n.authWelcomeTitle,
                 textAlign: TextAlign.center,
@@ -53,33 +87,27 @@ class WelcomeScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: context.text.bodyMedium?.copyWith(
                   color: palette.textSecondary,
+                  height: 1.7,
                 ),
               ),
               const Spacer(),
               WingsButton(
+                label: l10n.authRegister,
+                expand: true,
+                icon: Icons.person_add_alt_1_rounded,
+                onPressed: () => context.push(RoutePaths.register),
+              ),
+              const SizedBox(height: Space.sm),
+              WingsButton(
                 label: l10n.authLogin,
+                variant: WingsButtonVariant.outline,
                 expand: true,
                 onPressed: () => context.push(RoutePaths.login),
               ),
               const SizedBox(height: Space.sm),
-              WingsButton(
-                label: l10n.authRegister,
-                variant: WingsButtonVariant.outline,
-                expand: true,
-                onPressed: () => context.push(RoutePaths.register),
-              ),
-              const SizedBox(height: Space.sm),
               TextButton(
-                onPressed: () => context.go(RoutePaths.latest),
+                onPressed: _continueAsGuest,
                 child: Text(l10n.authContinueGuest),
-              ),
-              const SizedBox(height: Space.sm),
-              Text(
-                l10n.authDemoNotice,
-                textAlign: TextAlign.center,
-                style: context.text.labelSmall?.copyWith(
-                  color: palette.textMuted,
-                ),
               ),
             ],
           ),
@@ -101,6 +129,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   bool _loading = false;
+  bool _remember = true;
   String? _error;
 
   @override
@@ -113,6 +142,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     final l10n = AppLocalizations.of(context);
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    FocusScope.of(context).unfocus();
     setState(() {
       _loading = true;
       _error = null;
@@ -121,6 +151,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref
           .read(authProvider.notifier)
           .signIn(email: _email.text.trim(), password: _password.text);
+      await ref.read(settingsProvider.notifier).leaveGuestMode();
       if (!mounted) return;
       context.go(RoutePaths.profile);
     } on Object catch (error) {
@@ -140,16 +171,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       appBar: WingsAppBar(showBack: true),
       body: ListView(
-        padding: const EdgeInsets.all(Space.xl),
+        padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl),
         children: <Widget>[
+          const WingsMark(size: 64),
+          const SizedBox(height: Space.lg),
           Text(l10n.authLogin, style: context.text.headlineSmall),
-          const SizedBox(height: Space.xs),
-          Text(
-            l10n.authUnavailableBody,
-            style: context.text.bodySmall?.copyWith(
-              color: context.palette.textMuted,
-            ),
-          ),
           const SizedBox(height: Space.xl),
           Form(
             key: _formKey,
@@ -159,7 +185,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(labelText: l10n.authEmail),
+                  autofillHints: const <String>[AutofillHints.email],
+                  decoration: InputDecoration(
+                    labelText: l10n.authEmail,
+                    prefixIcon: const Icon(
+                      Icons.alternate_email_rounded,
+                      size: 18,
+                    ),
+                  ),
                   validator: (value) {
                     final text = value?.trim() ?? '';
                     if (!text.contains('@') || !text.contains('.')) {
@@ -182,8 +215,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ],
             ),
           ),
+          const SizedBox(height: Space.sm),
+          Row(
+            children: <Widget>[
+              Checkbox(
+                value: _remember,
+                onChanged: (value) => setState(() => _remember = value ?? true),
+              ),
+              Text(l10n.authRemember, style: context.text.bodySmall),
+              const Spacer(),
+              TextButton(
+                onPressed: () => context.push(RoutePaths.forgot),
+                child: Text(l10n.authForgot),
+              ),
+            ],
+          ),
           if (_error != null) ...<Widget>[
-            const SizedBox(height: Space.md),
+            const SizedBox(height: Space.sm),
             Text(
               _error!,
               style: context.text.bodySmall?.copyWith(
@@ -191,25 +239,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ),
           ],
-          const SizedBox(height: Space.lg),
+          const SizedBox(height: Space.md),
           WingsButton(
             label: l10n.authLogin,
             expand: true,
             loading: _loading,
             onPressed: _loading ? null : _submit,
           ),
-          Row(
-            children: <Widget>[
-              TextButton(
-                onPressed: () => context.push(RoutePaths.forgot),
-                child: Text(l10n.authForgot),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed: () => context.pushReplacement(RoutePaths.register),
-                child: Text(l10n.authRegister),
-              ),
-            ],
+          const SizedBox(height: Space.md),
+          Center(
+            child: TextButton(
+              onPressed: () => context.pushReplacement(RoutePaths.register),
+              child: Text(l10n.authNoAccount),
+            ),
           ),
         ],
       ),
@@ -225,11 +267,18 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  static const int _stepCount = 3;
+
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _name = TextEditingController();
+  final TextEditingController _username = TextEditingController();
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirm = TextEditingController();
+
+  int _step = 0;
+  String _country = 'SA';
+  String? _avatarPath;
   bool _acceptedTerms = false;
   bool _termsError = false;
   bool _loading = false;
@@ -237,10 +286,35 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _username.dispose();
     _email.dispose();
     _password.dispose();
     _confirm.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickAvatar() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 640,
+      imageQuality: 85,
+    );
+    if (file == null || !mounted) return;
+    setState(() => _avatarPath = file.path);
+  }
+
+  void _next() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _step = (_step + 1).clamp(0, _stepCount - 1));
+  }
+
+  void _back() {
+    if (_step == 0) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    setState(() => _step -= 1);
   }
 
   Future<void> _submit() async {
@@ -248,15 +322,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final valid = _formKey.currentState?.validate() ?? false;
     setState(() => _termsError = !_acceptedTerms);
     if (!valid || !_acceptedTerms) return;
+    FocusScope.of(context).unfocus();
     setState(() => _loading = true);
     try {
       await ref
           .read(authProvider.notifier)
           .register(
             displayName: _name.text.trim(),
+            username: _username.text.trim(),
+            country: _country,
             email: _email.text.trim(),
             password: _password.text,
+            avatarPath: _avatarPath,
           );
+      await ref.read(settingsProvider.notifier).leaveGuestMode();
       if (!mounted) return;
       context.go(RoutePaths.verify);
     } on Object {
@@ -269,107 +348,382 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final palette = context.palette;
+
     return Scaffold(
       appBar: WingsAppBar(showBack: true),
-      body: ListView(
-        padding: const EdgeInsets.all(Space.xl),
-        children: <Widget>[
-          Text(l10n.authRegister, style: context.text.headlineSmall),
-          const SizedBox(height: Space.xs),
-          Text(
-            l10n.authUnavailableBody,
-            style: context.text.bodySmall?.copyWith(
-              color: context.palette.textMuted,
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl),
+          children: <Widget>[
+            Text(l10n.authRegister, style: context.text.headlineSmall),
+            const SizedBox(height: Space.sm),
+            Text(
+              l10n.authStepOf('${_step + 1}', '$_stepCount'),
+              style: context.text.bodySmall?.copyWith(color: palette.textMuted),
             ),
-          ),
-          const SizedBox(height: Space.xl),
-          Form(
-            key: _formKey,
-            child: Column(
+            const SizedBox(height: Space.md),
+            Row(
               children: <Widget>[
-                TextFormField(
-                  controller: _name,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(labelText: l10n.authName),
-                  validator: (value) => (value?.trim().length ?? 0) < 2
-                      ? l10n.authValidationName
-                      : null,
+                for (var index = 0; index < _stepCount; index++)
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: Motion.normal,
+                      curve: Motion.standard,
+                      height: 4,
+                      margin: EdgeInsetsDirectional.only(
+                        end: index == _stepCount - 1 ? 0 : Space.xs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: index <= _step
+                            ? palette.primary
+                            : palette.surfaceHigh,
+                        borderRadius: BorderRadius.circular(Radii.pill),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: Space.xl),
+            AnimatedSize(
+              duration: Motion.normal,
+              curve: Motion.standard,
+              alignment: AlignmentDirectional.topCenter,
+              child: switch (_step) {
+                0 => _IdentityStep(
+                  name: _name,
+                  username: _username,
+                  onNext: _next,
                 ),
-                const SizedBox(height: Space.md),
-                TextFormField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(labelText: l10n.authEmail),
-                  validator: (value) {
-                    final text = value?.trim() ?? '';
-                    if (!text.contains('@') || !text.contains('.')) {
-                      return l10n.authValidationEmail;
-                    }
-                    return null;
-                  },
+                1 => _CredentialsStep(
+                  email: _email,
+                  password: _password,
+                  confirm: _confirm,
                 ),
-                const SizedBox(height: Space.md),
+                _ => _ProfileStep(
+                  country: _country,
+                  onCountry: (value) => setState(() => _country = value),
+                  avatarPath: _avatarPath,
+                  onPickAvatar: _pickAvatar,
+                  acceptedTerms: _acceptedTerms,
+                  termsError: _termsError,
+                  onTerms: (value) => setState(() {
+                    _acceptedTerms = value;
+                    _termsError = false;
+                  }),
+                ),
+              },
+            ),
+            const SizedBox(height: Space.lg),
+            Row(
+              children: <Widget>[
+                if (_step > 0) ...<Widget>[
+                  Expanded(
+                    child: WingsButton(
+                      label: l10n.commonBack,
+                      variant: WingsButtonVariant.outline,
+                      onPressed: _loading ? null : _back,
+                    ),
+                  ),
+                  const SizedBox(width: Space.sm),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: WingsButton(
+                    label: _step == _stepCount - 1
+                        ? l10n.authRegister
+                        : l10n.commonNext,
+                    expand: true,
+                    loading: _loading,
+                    onPressed: _loading
+                        ? null
+                        : (_step == _stepCount - 1 ? _submit : _next),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: Space.sm),
+            Center(
+              child: TextButton(
+                onPressed: () => context.pushReplacement(RoutePaths.login),
+                child: Text(l10n.authHaveAccount),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IdentityStep extends StatelessWidget {
+  const _IdentityStep({
+    required this.name,
+    required this.username,
+    required this.onNext,
+  });
+
+  final TextEditingController name;
+  final TextEditingController username;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      children: <Widget>[
+        TextFormField(
+          controller: name,
+          textInputAction: TextInputAction.next,
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(
+            labelText: l10n.authName,
+            prefixIcon: const Icon(Icons.person_outline_rounded, size: 18),
+          ),
+          validator: (value) =>
+              (value?.trim().length ?? 0) < 2 ? l10n.authValidationName : null,
+        ),
+        const SizedBox(height: Space.md),
+        TextFormField(
+          controller: username,
+          textInputAction: TextInputAction.next,
+          onFieldSubmitted: (_) => onNext(),
+          decoration: InputDecoration(
+            labelText: l10n.authUsername,
+            prefixIcon: const Icon(Icons.alternate_email_rounded, size: 18),
+          ),
+          validator: (value) {
+            final text = value?.trim() ?? '';
+            if (!RegExp(r'^[a-zA-Z0-9_]{3,20}$').hasMatch(text)) {
+              return l10n.authValidationUsername;
+            }
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _CredentialsStep extends StatelessWidget {
+  const _CredentialsStep({
+    required this.email,
+    required this.password,
+    required this.confirm,
+  });
+
+  final TextEditingController email;
+  final TextEditingController password;
+  final TextEditingController confirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final palette = context.palette;
+    return Column(
+      children: <Widget>[
+        TextFormField(
+          controller: email,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
+            labelText: l10n.authEmail,
+            prefixIcon: const Icon(Icons.mail_outline_rounded, size: 18),
+          ),
+          validator: (value) {
+            final text = value?.trim() ?? '';
+            if (!text.contains('@') || !text.contains('.')) {
+              return l10n.authValidationEmail;
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: Space.md),
+        StatefulBuilder(
+          builder: (context, setState) {
+            final current = _strength(password.text);
+            return Column(
+              children: <Widget>[
                 _PasswordField(
-                  controller: _password,
+                  controller: password,
                   label: l10n.authPassword,
+                  onChanged: (_) => setState(() {}),
                   validator: (value) => (value ?? '').length < 8
                       ? l10n.authValidationPassword
                       : null,
                 ),
-                const SizedBox(height: Space.md),
-                _PasswordField(
-                  controller: _confirm,
-                  label: l10n.authConfirmPassword,
-                  validator: (value) => value != _password.text
-                      ? l10n.authValidationConfirm
-                      : null,
+                const SizedBox(height: Space.sm),
+                Row(
+                  children: <Widget>[
+                    for (var index = 0; index < 3; index++)
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsetsDirectional.only(
+                            end: index == 2 ? 0 : Space.xs,
+                          ),
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: index < current.score
+                                  ? current.color(palette)
+                                  : palette.surfaceHigh,
+                              borderRadius: BorderRadius.circular(Radii.pill),
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: Space.sm),
+                    Text(
+                      current.score == 0
+                          ? ''
+                          : (current.score == 1
+                                ? l10n.authPasswordWeak
+                                : (current.score == 2
+                                      ? l10n.authPasswordMedium
+                                      : l10n.authPasswordStrong)),
+                      style: context.text.labelSmall?.copyWith(
+                        color: current.color(palette),
+                      ),
+                    ),
+                  ],
                 ),
               ],
+            );
+          },
+        ),
+        const SizedBox(height: Space.md),
+        _PasswordField(
+          controller: confirm,
+          label: l10n.authConfirmPassword,
+          validator: (value) =>
+              value != password.text ? l10n.authValidationConfirm : null,
+        ),
+      ],
+    );
+  }
+
+  _Strength _strength(String value) {
+    var score = 0;
+    if (value.length >= 8) score++;
+    if (RegExp(r'[A-Za-z]').hasMatch(value) &&
+        RegExp(r'[0-9]').hasMatch(value)) {
+      score++;
+    }
+    if (value.length >= 12 ||
+        (RegExp(r'[^A-Za-z0-9]').hasMatch(value) && value.length >= 10)) {
+      score++;
+    }
+    return _Strength(score.clamp(0, 3));
+  }
+}
+
+class _Strength {
+  const _Strength(this.score);
+
+  final int score;
+
+  Color color(WingsPalette palette) => switch (score) {
+    <= 1 => palette.danger,
+    2 => palette.warning,
+    _ => palette.success,
+  };
+}
+
+class _ProfileStep extends StatelessWidget {
+  const _ProfileStep({
+    required this.country,
+    required this.onCountry,
+    required this.avatarPath,
+    required this.onPickAvatar,
+    required this.acceptedTerms,
+    required this.termsError,
+    required this.onTerms,
+  });
+
+  final String country;
+  final ValueChanged<String> onCountry;
+  final String? avatarPath;
+  final VoidCallback onPickAvatar;
+  final bool acceptedTerms;
+  final bool termsError;
+  final ValueChanged<bool> onTerms;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final palette = context.palette;
+
+    return Column(
+      children: <Widget>[
+        GestureDetector(
+          onTap: onPickAvatar,
+          child: Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: palette.surfaceAlt,
+              border: Border.all(color: palette.border),
             ),
+            clipBehavior: Clip.antiAlias,
+            child: avatarPath == null
+                ? Icon(
+                    Icons.add_a_photo_outlined,
+                    color: palette.textMuted,
+                    size: 26,
+                  )
+                : Image.file(File(avatarPath!), fit: BoxFit.cover),
           ),
-          const SizedBox(height: Space.md),
-          InkWell(
-            onTap: () => setState(() {
-              _acceptedTerms = !_acceptedTerms;
-              _termsError = false;
-            }),
+        ),
+        const SizedBox(height: Space.sm),
+        Text(
+          l10n.authChoosePhoto,
+          style: context.text.labelMedium?.copyWith(color: palette.primary),
+        ),
+        const SizedBox(height: Space.xl),
+        DropdownButtonFormField<String>(
+          initialValue: country,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: l10n.authCountry,
+            prefixIcon: const Icon(Icons.public_rounded, size: 18),
+          ),
+          items: <DropdownMenuItem<String>>[
+            for (final item in kCountries)
+              DropdownMenuItem<String>(value: item.$1, child: Text(item.$2)),
+          ],
+          onChanged: (value) {
+            if (value != null) onCountry(value);
+          },
+        ),
+        const SizedBox(height: Space.lg),
+        InkWell(
+          onTap: () => onTerms(!acceptedTerms),
+          borderRadius: BorderRadius.circular(Radii.sm),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: Space.xs),
             child: Row(
               children: <Widget>[
                 Checkbox(
-                  value: _acceptedTerms,
-                  onChanged: (value) => setState(() {
-                    _acceptedTerms = value ?? false;
-                    _termsError = false;
-                  }),
+                  value: acceptedTerms,
+                  onChanged: (value) => onTerms(value ?? false),
                 ),
                 Expanded(
                   child: Text(
                     l10n.authAcceptTerms,
                     style: context.text.bodySmall?.copyWith(
-                      color: _termsError ? context.palette.danger : null,
+                      color: termsError
+                          ? palette.danger
+                          : palette.textSecondary,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: Space.md),
-          WingsButton(
-            label: l10n.authRegister,
-            expand: true,
-            loading: _loading,
-            onPressed: _loading ? null : _submit,
-          ),
-          const SizedBox(height: Space.md),
-          Center(
-            child: TextButton(
-              onPressed: () => context.pushReplacement(RoutePaths.login),
-              child: Text(l10n.authHaveAccount),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -458,12 +812,11 @@ class VerifyEmailScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Container(
-                width: 72,
-                height: 72,
+                width: 76,
+                height: 76,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: palette.surfaceAlt,
-                  border: Border.all(color: palette.border),
+                  color: palette.primary.withValues(alpha: 0.12),
                 ),
                 child: Icon(
                   Icons.mark_email_read_outlined,
@@ -500,11 +853,13 @@ class _PasswordField extends StatefulWidget {
     required this.controller,
     required this.label,
     required this.validator,
+    this.onChanged,
   });
 
   final TextEditingController controller;
   final String label;
   final String? Function(String?) validator;
+  final ValueChanged<String>? onChanged;
 
   @override
   State<_PasswordField> createState() => _PasswordFieldState();
@@ -519,8 +874,10 @@ class _PasswordFieldState extends State<_PasswordField> {
       controller: widget.controller,
       obscureText: _obscured,
       validator: widget.validator,
+      onChanged: widget.onChanged,
       decoration: InputDecoration(
         labelText: widget.label,
+        prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
         suffixIcon: IconButton(
           icon: Icon(
             _obscured

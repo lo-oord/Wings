@@ -6,6 +6,7 @@ import '../../data/models/anime.dart';
 import '../../features/auth/auth_screens.dart';
 import '../../features/details/anime_details_screen.dart';
 import '../../features/downloads/downloads_screen.dart';
+import '../../features/explore/catalog_screen.dart';
 import '../../features/explore/explore_screen.dart';
 import '../../features/explore/genre_screen.dart';
 import '../../features/home/home_screen.dart';
@@ -24,9 +25,13 @@ import '../theme/context_ext.dart';
 import 'route_paths.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final initialLocation = ref.read(settingsProvider).onboardingDone
-      ? RoutePaths.latest
-      : RoutePaths.onboarding;
+  final settings = ref.read(settingsProvider);
+  final signedIn = ref.read(authProvider) != null;
+  final initialLocation = !settings.onboardingDone
+      ? RoutePaths.onboarding
+      : (!signedIn && !settings.guestMode
+            ? RoutePaths.welcome
+            : RoutePaths.latest);
 
   return GoRouter(
     initialLocation: initialLocation,
@@ -82,6 +87,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => AnimeDetailsScreen(
           animeId: Uri.decodeComponent(state.pathParameters['id'] ?? ''),
         ),
+      ),
+      GoRoute(
+        path: '/catalog/:kind',
+        builder: (context, state) =>
+            CatalogScreen(kind: state.pathParameters['kind'] ?? 'newest'),
       ),
       GoRoute(
         path: '/genre/:name',

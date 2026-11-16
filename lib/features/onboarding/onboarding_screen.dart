@@ -18,163 +18,103 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  final PageController _controller = PageController();
-  int _index = 0;
+  bool _busy = false;
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _finish() async {
-    await ref.read(settingsProvider.notifier).completeOnboarding();
-    if (mounted) context.go(RoutePaths.latest);
+  Future<void> _finish({bool guest = false}) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final notifier = ref.read(settingsProvider.notifier);
+    await notifier.completeOnboarding();
+    if (guest) await notifier.enterGuestMode();
+    if (!mounted) return;
+    context.go(guest ? RoutePaths.latest : RoutePaths.welcome);
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.palette;
-    final pages = <(IconData, String, String)>[
-      (Icons.auto_awesome_rounded, l10n.onboardingTitle1, l10n.onboardingBody1),
-      (
-        Icons.play_circle_outline_rounded,
-        l10n.onboardingTitle2,
-        l10n.onboardingBody2,
-      ),
-      (
-        Icons.video_library_outlined,
-        l10n.onboardingTitle3,
-        l10n.onboardingBody3,
-      ),
+
+    final features = <(IconData, String)>[
+      (Icons.play_circle_fill_rounded, l10n.onboardingTitle1),
+      (Icons.download_for_offline_rounded, l10n.onboardingTitle2),
+      (Icons.notifications_active_rounded, l10n.onboardingTitle3),
     ];
 
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Space.lg,
-                Space.sm,
-                Space.lg,
-                0,
-              ),
-              child: Row(
-                children: <Widget>[
-                  const WingsLockup(size: 26),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _finish,
-                    child: Text(l10n.onboardingSkip),
+        child: Padding(
+          padding: const EdgeInsets.all(Space.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Spacer(),
+              Center(child: WingsMark(size: 96)),
+              const SizedBox(height: Space.xl),
+              Center(
+                child: Text(
+                  'Wings',
+                  style: context.text.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.8,
                   ),
-                ],
+                ),
               ),
-            ),
-            Expanded(
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: pages.length,
-                onPageChanged: (value) => setState(() => _index = value),
-                itemBuilder: (context, index) {
-                  final page = pages[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: Space.xxl),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(height: Space.xl),
+              for (final feature in features)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Space.md),
+                  child: Container(
+                    padding: const EdgeInsets.all(Space.md),
+                    decoration: BoxDecoration(
+                      color: palette.surface,
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      border: Border.all(color: palette.border),
+                    ),
+                    child: Row(
                       children: <Widget>[
                         Container(
-                          width: 132,
-                          height: 132,
+                          width: 40,
+                          height: 40,
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: AlignmentDirectional.topStart,
-                              end: AlignmentDirectional.bottomEnd,
-                              colors: <Color>[
-                                palette.surfaceAlt,
-                                palette.surfaceHigh,
-                              ],
-                            ),
-                            border: Border.all(color: palette.border),
+                            color: palette.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(Radii.sm),
                           ),
                           child: Icon(
-                            page.$1,
-                            size: 52,
+                            feature.$1,
+                            size: 21,
                             color: palette.primary,
                           ),
                         ),
-                        const SizedBox(height: Space.xxl),
-                        Text(
-                          page.$2,
-                          textAlign: TextAlign.center,
-                          style: context.text.headlineSmall?.copyWith(
-                            height: 1.35,
-                          ),
-                        ),
-                        const SizedBox(height: Space.md),
-                        Text(
-                          page.$3,
-                          textAlign: TextAlign.center,
-                          style: context.text.bodyMedium?.copyWith(
-                            color: palette.textSecondary,
-                            height: 1.7,
+                        const SizedBox(width: Space.md),
+                        Expanded(
+                          child: Text(
+                            feature.$2,
+                            style: context.text.bodyLarge?.copyWith(
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: Space.md),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  for (var dot = 0; dot < pages.length; dot++)
-                    AnimatedContainer(
-                      duration: Motion.normal,
-                      curve: Motion.standard,
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: dot == _index ? 20 : 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: dot == _index
-                            ? palette.primary
-                            : palette.borderStrong,
-                        borderRadius: BorderRadius.circular(Radii.pill),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Space.xl,
-                0,
-                Space.xl,
-                Space.xl,
-              ),
-              child: WingsButton(
-                label: _index == pages.length - 1
-                    ? l10n.onboardingStart
-                    : l10n.onboardingNext,
+                  ),
+                ),
+              const Spacer(),
+              WingsButton(
+                label: l10n.authRegister,
                 expand: true,
-                onPressed: () {
-                  if (_index == pages.length - 1) {
-                    _finish();
-                  } else {
-                    _controller.nextPage(
-                      duration: Motion.page,
-                      curve: Motion.standard,
-                    );
-                  }
-                },
+                loading: _busy,
+                onPressed: _busy ? null : () => _finish(),
               ),
-            ),
-          ],
+              const SizedBox(height: Space.sm),
+              WingsButton(
+                label: l10n.authContinueGuest,
+                variant: WingsButtonVariant.ghost,
+                expand: true,
+                onPressed: _busy ? null : () => _finish(guest: true),
+              ),
+            ],
+          ),
         ),
       ),
     );

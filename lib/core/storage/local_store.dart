@@ -17,6 +17,7 @@ class LocalStore {
   static const String cacheBox = 'cache';
   static const String downloadsBox = 'downloads';
   static const String searchBox = 'search';
+  static const String notificationsBox = 'notifications';
 
   static Future<LocalStore> open({String? directory}) async {
     if (directory == null) {
@@ -32,6 +33,7 @@ class LocalStore {
       cacheBox,
       downloadsBox,
       searchBox,
+      notificationsBox,
     ]) {
       boxes[name] = await Hive.openBox<String>(name);
     }

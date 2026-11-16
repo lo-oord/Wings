@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../core/widgets/wings_feedback.dart';
 import 'localization/app_localizations.dart';
@@ -8,13 +9,56 @@ import 'router/app_router.dart';
 import 'theme/app_palette.dart';
 import 'theme/app_theme.dart';
 
-class WingsApp extends ConsumerWidget {
+class WingsApp extends ConsumerStatefulWidget {
   const WingsApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WingsApp> createState() => _WingsAppState();
+}
+
+class _WingsAppState extends ConsumerState<WingsApp>
+    with WidgetsBindingObserver {
+  GoRouter? _router;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final notifications = ref.read(notificationServiceProvider);
+    notifications.taps.listen(_openPayload);
+    final cold = notifications.takeColdPayload();
+    if (cold != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openPayload(cold));
+    }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => ref.read(notificationsProvider.notifier).refresh(),
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _openPayload(String payload) {
+    final router = _router;
+    if (payload.isEmpty || router == null) return;
+    router.push(payload);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(notificationsProvider.notifier).refresh();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final router = ref.watch(routerProvider);
+    _router = router;
 
     return MaterialApp.router(
       title: 'Wings',

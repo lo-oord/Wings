@@ -13,9 +13,6 @@ class AppLocalizationsAr extends AppLocalizations {
   String get appName => 'Wings';
 
   @override
-  String get appTagline => 'أنمي بلا حدود';
-
-  @override
   String get navLatest => 'الأحدث';
 
   @override
@@ -638,9 +635,6 @@ class AppLocalizationsAr extends AppLocalizations {
   String get settingsTerms => 'شروط الاستخدام';
 
   @override
-  String get settingsLicenses => 'تراخيص مفتوحة المصدر';
-
-  @override
   String get settingsAccount => 'الحساب';
 
   @override
@@ -759,9 +753,6 @@ class AppLocalizationsAr extends AppLocalizations {
   String get authResetSent => 'إذا كان البريد مسجلاً، فسيصلك رابط الاستعادة.';
 
   @override
-  String get authDemoNotice => 'وضع تطوير: الحساب محلي فقط';
-
-  @override
   String get profileTitle => 'الملف الشخصي';
 
   @override
@@ -868,4 +859,41 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get searchHistoryRemoved => 'حُذف من السجل';
+
+  @override
+  String get commonNext => 'التالي';
+
+  @override
+  String get commonBack => 'رجوع';
+
+  @override
+  String get authUsername => 'اسم المستخدم';
+
+  @override
+  String get authValidationUsername => '3–20 حرفاً إنجليزياً أو رقماً أو _';
+
+  @override
+  String get authCountry => 'الدولة';
+
+  @override
+  String get authChoosePhoto => 'تغيير الصورة';
+
+  @override
+  String authStepOf(String current, String total) {
+    return 'الخطوة $current من $total';
+  }
+
+  @override
+  String get authPasswordWeak => 'ضعيفة';
+
+  @override
+  String get authPasswordMedium => 'متوسطة';
+
+  @override
+  String get authPasswordStrong => 'قوية';
+
+  @override
+  String notificationsEpisodeBody(int number) {
+    return 'الحلقة $number متاحة الآن 🎉 اضغط للمشاهدة';
+  }
 }
