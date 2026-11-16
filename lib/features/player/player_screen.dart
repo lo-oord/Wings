@@ -1,0 +1,1090 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../app/localization/app_localizations.dart';
+import '../../app/providers.dart';
+import '../../app/theme/app_tokens.dart';
+import '../../app/theme/context_ext.dart';
+import '../../core/utils/formatters.dart';
+import '../../core/widgets/wings_buttons.dart';
+import '../../core/widgets/wings_cards.dart';
+import '../../core/widgets/wings_layout.dart';
+import '../../data/models/anime.dart';
+import '../../data/models/library.dart';
+
+class PlayerScreen extends ConsumerStatefulWidget {
+  const PlayerScreen({
+    super.key,
+    required this.animeId,
+    required this.episodeId,
+    this.initialAnime,
+  });
+
+  final String animeId;
+  final String episodeId;
+  final Anime? initialAnime;
+
+  @override
+  ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
+}
+
+class _PlayerScreenState extends ConsumerState<PlayerScreen>
+    with WidgetsBindingObserver {
+  late final Player _player;
+  late final VideoController _videoController;
+  final List<StreamSubscription<dynamic>> _subscriptions =
+      <StreamSubscription<dynamic>>[];
+
+  Anime? _anime;
+  List<AnimeEpisode> _episodes = const <AnimeEpisode>[];
+  AnimeEpisode? _episode;
+  List<StreamServer> _servers = const <StreamServer>[];
+  String? _activeQuality;
+
+  bool _loading = true;
+  Object? _error;
+  bool _controlsVisible = true;
+  bool _fullscreen = false;
+  bool _completed = false;
+  bool _seeking = false;
+  double _seekValue = 0;
+
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  bool _playing = false;
+  bool _buffering = false;
+  String? _playbackError;
+  double _speed = 1;
+
+  Timer? _hideTimer;
+  Timer? _saveTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _player = Player(configuration: const PlayerConfiguration(title: 'Wings'));
+    _videoController = VideoController(_player);
+    _attachStreams();
+    _bootstrap();
+    _saveTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _saveProgress(),
+    );
+    _scheduleHide();
+  }
+
+  void _attachStreams() {
+    _subscriptions.add(
+      _player.stream.playing.listen((value) {
+        if (mounted) setState(() => _playing = value);
+      }),
+    );
+    _subscriptions.add(
+      _player.stream.position.listen((value) {
+        if (mounted && !_seeking) setState(() => _position = value);
+      }),
+    );
+    _subscriptions.add(
+      _player.stream.duration.listen((value) {
+        if (mounted) setState(() => _duration = value);
+      }),
+    );
+    _subscriptions.add(
+      _player.stream.buffering.listen((value) {
+        if (mounted) setState(() => _buffering = value);
+      }),
+    );
+    _subscriptions.add(
+      _player.stream.completed.listen((value) {
+        if (value && mounted) _onCompleted();
+      }),
+    );
+    _subscriptions.add(
+      _player.stream.error.listen((value) {
+        if (mounted && value.isNotEmpty) setState(() => _playbackError = value);
+      }),
+    );
+  }
+
+  Future<void> _bootstrap() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final repository = ref.read(animeRepositoryProvider);
+      final anime =
+          widget.initialAnime ?? await repository.details(widget.animeId);
+      final episodes = await repository.episodes(anime);
+      final episode =
+          episodes.cast<AnimeEpisode?>().firstWhere(
+            (item) => item?.id == widget.episodeId,
+            orElse: () => null,
+          ) ??
+          (episodes.isNotEmpty ? episodes.first : null);
+      if (!mounted) return;
+      setState(() {
+        _anime = anime;
+        _episodes = episodes;
+        _episode = episode;
+      });
+      if (episode == null) {
+        setState(() {
+          _loading = false;
+          _error = const _NoEpisodes();
+        });
+        return;
+      }
+      await _loadEpisode(episode, initial: true);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error;
+      });
+    }
+  }
+
+  Future<void> _loadEpisode(
+    AnimeEpisode episode, {
+    bool initial = false,
+  }) async {
+    final anime = _anime;
+    if (anime == null) return;
+    if (!initial) {
+      await _saveProgress(force: true);
+      await _player.pause();
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+      _playbackError = null;
+      _completed = false;
+      _episode = episode;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+    });
+
+    try {
+      final repository = ref.read(animeRepositoryProvider);
+      final servers = await repository.servers(anime, episode);
+      _servers = servers;
+      final settings = ref.read(settingsProvider);
+      final resolved = await repository.resolveFirstPlayable(
+        servers,
+        preferredQuality: settings.preferredQuality,
+      );
+      if (!mounted) return;
+      if (resolved == null) {
+        setState(() {
+          _loading = false;
+          _error = const _NoPlayableServer();
+        });
+        return;
+      }
+      _activeQuality = resolved.quality;
+      await _player.open(
+        Media(resolved.url, httpHeaders: resolved.headers),
+        play: true,
+      );
+      if (settings.playbackSpeed != 1) {
+        _speed = settings.playbackSpeed;
+        await _player.setRate(_speed);
+      }
+      final history = ref
+          .read(libraryProvider)
+          .history
+          .cast<WatchHistoryEntry?>()
+          .firstWhere(
+            (entry) =>
+                entry?.animeId == anime.id && entry?.episodeId == episode.id,
+            orElse: () => null,
+          );
+      if (settings.rememberPosition &&
+          history != null &&
+          history.position.inSeconds > 5 &&
+          !history.completed) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        await _player.seek(history.position);
+      }
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error;
+      });
+    }
+  }
+
+  Future<void> _switchQuality(StreamServer server) async {
+    final position = _position;
+    final resolved = await ref.read(animeRepositoryProvider).resolve(server);
+    if (resolved == null) {
+      if (mounted) {
+        context.showSnack(
+          AppLocalizations.of(context).playerPlaybackErrorBody,
+          isError: true,
+        );
+      }
+      return;
+    }
+    setState(() {
+      _activeQuality = server.quality;
+      _loading = true;
+      _playbackError = null;
+    });
+    await _player.open(
+      Media(resolved.url, httpHeaders: resolved.headers),
+      play: true,
+    );
+    await _player.setRate(_speed);
+    if (position > Duration.zero) await _player.seek(position);
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _onCompleted() {
+    if (_completed) return;
+    _completed = true;
+    unawaited(_saveProgress(force: true));
+    final settings = ref.read(settingsProvider);
+    final next = _nextEpisode;
+    if (settings.autoplayNext && next != null) {
+      unawaited(_loadEpisode(next));
+    }
+  }
+
+  AnimeEpisode? get _nextEpisode {
+    final episode = _episode;
+    if (episode == null) return null;
+    final index = _episodes.indexWhere((item) => item.id == episode.id);
+    if (index < 0 || index + 1 >= _episodes.length) return null;
+    return _episodes[index + 1];
+  }
+
+  AnimeEpisode? get _previousEpisode {
+    final episode = _episode;
+    if (episode == null) return null;
+    final index = _episodes.indexWhere((item) => item.id == episode.id);
+    if (index <= 0) return null;
+    return _episodes[index - 1];
+  }
+
+  Future<void> _saveProgress({bool force = false}) async {
+    final anime = _anime;
+    final episode = _episode;
+    if (anime == null || episode == null) return;
+    if (!ref.read(settingsProvider).rememberPosition && !force) return;
+    if (_position <= Duration.zero && _duration <= Duration.zero) return;
+    final entry = WatchHistoryEntry(
+      animeId: anime.id,
+      animeTitle: anime.title,
+      posterUrl: anime.imageUrl,
+      contentPath: anime.contentPath,
+      episodeId: episode.id,
+      episodeNumber: episode.number,
+      episodeTitle: episode.title,
+      position: _position,
+      duration: _duration,
+      completed: _completed,
+      updatedAt: DateTime.now(),
+    );
+    await ref
+        .read(libraryProvider.notifier)
+        .saveProgress(entry, completed: _completed);
+  }
+
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      if (_playing) setState(() => _controlsVisible = false);
+    });
+  }
+
+  void _toggleControls() {
+    setState(() => _controlsVisible = !_controlsVisible);
+    if (_controlsVisible) _scheduleHide();
+  }
+
+  Future<void> _togglePlay() async {
+    if (_playing) {
+      await _player.pause();
+      unawaited(_saveProgress(force: true));
+    } else {
+      await _player.play();
+    }
+    _scheduleHide();
+  }
+
+  Future<void> _seekBy(int seconds) async {
+    final target = _position + Duration(seconds: seconds);
+    final clamped = target < Duration.zero
+        ? Duration.zero
+        : (target > _duration && _duration > Duration.zero
+              ? _duration
+              : target);
+    await _player.seek(clamped);
+    if (mounted) setState(() => _position = clamped);
+    _scheduleHide();
+  }
+
+  Future<void> _toggleFullscreen() async {
+    setState(() => _fullscreen = !_fullscreen);
+    if (_fullscreen) {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+        DeviceOrientation.portraitUp,
+      ]);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      unawaited(_saveProgress(force: true));
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _hideTimer?.cancel();
+    _saveTimer?.cancel();
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    unawaited(_saveProgress(force: true));
+    _player.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+    ]);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final surface = _PlayerSurface(
+      videoController: _videoController,
+      playing: _playing,
+      buffering: _buffering,
+      position: _seeking
+          ? Duration(milliseconds: _seekValue.round())
+          : _position,
+      duration: _duration,
+      controlsVisible: _controlsVisible,
+      fullscreen: _fullscreen,
+      loading: _loading,
+      error:
+          _error ??
+          (_playbackError == null ? null : _PlaybackFailure(_playbackError!)),
+      title: _anime?.title ?? '',
+      episodeLabel: _episode == null
+          ? ''
+          : AppLocalizations.of(context).commonEpisodeNumber(_episode!.number),
+      onTapSurface: _toggleControls,
+      onTogglePlay: _togglePlay,
+      onSeekBack: () => _seekBy(-10),
+      onSeekForward: () => _seekBy(10),
+      onSeekStart: (value) {
+        setState(() {
+          _seeking = true;
+          _seekValue = value;
+        });
+      },
+      onSeekChanged: (value) => setState(() => _seekValue = value),
+      onSeekEnd: (value) async {
+        setState(() => _seeking = false);
+        await _player.seek(Duration(milliseconds: value.round()));
+      },
+      onToggleFullscreen: _toggleFullscreen,
+      onRetry: _bootstrap,
+      onBack: () => Navigator.of(context).maybePop(),
+      onQuality: _showQualitySheet,
+      onSpeed: _showSpeedSheet,
+      onPrevious: _previousEpisode == null
+          ? null
+          : () => _loadEpisode(_previousEpisode!),
+      onNext: _nextEpisode == null ? null : () => _loadEpisode(_nextEpisode!),
+      onAutoplay: () => ref
+          .read(settingsProvider.notifier)
+          .update(
+            (current) => current.copyWith(autoplayNext: !current.autoplayNext),
+          ),
+      autoplay: settings.autoplayNext,
+      activeQuality: _activeQuality,
+    );
+
+    if (_fullscreen) {
+      return PopScope(
+        canPop: true,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) {
+            SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+            SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+              DeviceOrientation.portraitUp,
+            ]);
+          }
+        },
+        child: Scaffold(backgroundColor: Colors.black, body: surface),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: context.palette.background,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: <Widget>[
+            AspectRatio(aspectRatio: 16 / 9, child: surface),
+            Expanded(child: _buildEpisodePanel(context, settings)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEpisodePanel(BuildContext context, AppSettings settings) {
+    final l10n = AppLocalizations.of(context);
+    final palette = context.palette;
+    final anime = _anime;
+    final episode = _episode;
+    if (anime == null) {
+      return const SizedBox.shrink();
+    }
+    final watched = ref.watch(libraryProvider).watchedEpisodeIds(anime.id);
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: Space.xxl),
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Space.lg,
+            Space.md,
+            Space.lg,
+            Space.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                anime.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: context.text.titleMedium,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                episode == null ? '' : l10n.commonEpisodeNumber(episode.number),
+                style: context.text.bodySmall?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: WingsButton(
+                  label: l10n.playerServers,
+                  icon: Icons.hd_outlined,
+                  variant: WingsButtonVariant.tonal,
+                  onPressed: _showQualitySheet,
+                ),
+              ),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: WingsButton(
+                  label: _previousEpisode == null
+                      ? l10n.playerPrevious
+                      : l10n.playerPrevious,
+                  icon: Icons.skip_previous_rounded,
+                  variant: WingsButtonVariant.outline,
+                  onPressed: _previousEpisode == null
+                      ? null
+                      : () => _loadEpisode(_previousEpisode!),
+                ),
+              ),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: WingsButton(
+                  label: l10n.playerNext,
+                  icon: Icons.skip_next_rounded,
+                  variant: WingsButtonVariant.outline,
+                  onPressed: _nextEpisode == null
+                      ? null
+                      : () => _loadEpisode(_nextEpisode!),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 0),
+          child: Row(
+            children: <Widget>[
+              Icon(
+                settings.autoplayNext
+                    ? Icons.check_circle_rounded
+                    : Icons.circle_outlined,
+                size: 16,
+                color: settings.autoplayNext
+                    ? palette.primary
+                    : palette.textMuted,
+              ),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: Text(
+                  settings.autoplayNext
+                      ? l10n.playerAutoNextOn
+                      : l10n.playerAutoNextOff,
+                  style: context.text.bodySmall,
+                ),
+              ),
+              Switch(
+                value: settings.autoplayNext,
+                onChanged: (value) => ref
+                    .read(settingsProvider.notifier)
+                    .update((current) => current.copyWith(autoplayNext: value)),
+              ),
+            ],
+          ),
+        ),
+        WingsSectionHeader(
+          title: l10n.detailsEpisodes,
+          padding: const EdgeInsets.fromLTRB(
+            Space.lg,
+            Space.lg,
+            Space.lg,
+            Space.sm,
+          ),
+        ),
+        for (final item in _episodes)
+          Container(
+            color: item.id == _episode?.id ? palette.surfaceAlt : null,
+            child: WingsEpisodeCard(
+              episode: item,
+              watched: watched.contains(item.id),
+              showThumbnail: false,
+              onPlay: () => _loadEpisode(item),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showSpeedSheet() async {
+    final l10n = AppLocalizations.of(context);
+    await WingsSheet.show<void>(
+      context,
+      title: l10n.playerSpeed,
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          for (final speed in const <double>[0.5, 0.75, 1, 1.25, 1.5, 2])
+            WingsSettingsTile(
+              title: speed == 1 ? '1.0×' : '$speed×',
+              trailing: _speed == speed
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: sheetContext.palette.primary,
+                    )
+                  : null,
+              onTap: () async {
+                setState(() => _speed = speed);
+                await _player.setRate(speed);
+                await ref
+                    .read(settingsProvider.notifier)
+                    .update(
+                      (current) => current.copyWith(playbackSpeed: speed),
+                    );
+                if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showQualitySheet() async {
+    final l10n = AppLocalizations.of(context);
+    await WingsSheet.show<void>(
+      context,
+      title: l10n.playerSelectServer,
+      builder: (sheetContext) {
+        if (_servers.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: Space.lg),
+            child: Text(
+              l10n.playerNoServers,
+              style: context.text.bodyMedium?.copyWith(
+                color: sheetContext.palette.textSecondary,
+              ),
+            ),
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (final server in _servers)
+              WingsSettingsTile(
+                icon: server.requiresBrowser
+                    ? Icons.open_in_browser_rounded
+                    : Icons.play_circle_outline_rounded,
+                title: server.quality,
+                subtitle: server.requiresBrowser
+                    ? l10n.playerOpenInBrowser
+                    : l10n.playerDirect,
+                trailing:
+                    !server.requiresBrowser && server.quality == _activeQuality
+                    ? Icon(
+                        Icons.check_rounded,
+                        size: 18,
+                        color: sheetContext.palette.primary,
+                      )
+                    : null,
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  if (server.requiresBrowser) {
+                    final uri = Uri.tryParse(server.url);
+                    if (uri != null) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                    return;
+                  }
+                  await _switchQuality(server);
+                },
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _NoEpisodes implements Exception {
+  const _NoEpisodes();
+}
+
+class _NoPlayableServer implements Exception {
+  const _NoPlayableServer();
+}
+
+class _PlaybackFailure implements Exception {
+  const _PlaybackFailure(this.details);
+
+  final String details;
+}
+
+class _PlayerSurface extends StatelessWidget {
+  const _PlayerSurface({
+    required this.videoController,
+    required this.playing,
+    required this.buffering,
+    required this.position,
+    required this.duration,
+    required this.controlsVisible,
+    required this.fullscreen,
+    required this.loading,
+    required this.error,
+    required this.title,
+    required this.episodeLabel,
+    required this.onTapSurface,
+    required this.onTogglePlay,
+    required this.onSeekBack,
+    required this.onSeekForward,
+    required this.onSeekStart,
+    required this.onSeekChanged,
+    required this.onSeekEnd,
+    required this.onToggleFullscreen,
+    required this.onRetry,
+    required this.onBack,
+    required this.onQuality,
+    required this.onSpeed,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onAutoplay,
+    required this.autoplay,
+    required this.activeQuality,
+  });
+
+  final VideoController videoController;
+  final bool playing;
+  final bool buffering;
+  final Duration position;
+  final Duration duration;
+  final bool controlsVisible;
+  final bool fullscreen;
+  final bool loading;
+  final Object? error;
+  final String title;
+  final String episodeLabel;
+  final VoidCallback onTapSurface;
+  final VoidCallback onTogglePlay;
+  final VoidCallback onSeekBack;
+  final VoidCallback onSeekForward;
+  final ValueChanged<double> onSeekStart;
+  final ValueChanged<double> onSeekChanged;
+  final ValueChanged<double> onSeekEnd;
+  final VoidCallback onToggleFullscreen;
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+  final VoidCallback onQuality;
+  final VoidCallback onSpeed;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+  final VoidCallback onAutoplay;
+  final bool autoplay;
+  final String? activeQuality;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final maxMs = duration.inMilliseconds.toDouble();
+    final progress = maxMs <= 0 ? 0.0 : position.inMilliseconds / maxMs;
+
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          Center(
+            child: Video(
+              controller: videoController,
+              controls: NoVideoControls,
+              fit: BoxFit.contain,
+              fill: Colors.black,
+            ),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTapSurface,
+            onDoubleTapDown: (details) {
+              final width = context.size?.width ?? 1;
+              final dx = details.localPosition.dx;
+              final isRtl = Directionality.of(context) == TextDirection.rtl;
+              final forwardSide = isRtl ? dx < width / 2 : dx > width / 2;
+              if (forwardSide) {
+                onSeekForward();
+              } else {
+                onSeekBack();
+              }
+            },
+            child: const SizedBox.expand(),
+          ),
+          if (buffering || loading)
+            const Center(
+              child: SizedBox(
+                width: 34,
+                height: 34,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          if (error != null)
+            _PlayerError(
+              message: _errorMessage(context, error!),
+              onRetry: onRetry,
+            ),
+          AnimatedOpacity(
+            opacity: controlsVisible ? 1 : 0,
+            duration: Motion.fast,
+            child: IgnorePointer(
+              ignoring: !controlsVisible,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[
+                      Colors.black54,
+                      Colors.transparent,
+                      Colors.black87,
+                    ],
+                    stops: <double>[0, 0.45, 1],
+                  ),
+                ),
+                child: Column(
+                  children: <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Space.sm,
+                        Space.sm,
+                        Space.md,
+                        0,
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          WingsIconButton(
+                            icon: Icons.arrow_back_rounded,
+                            tooltip: l10n.commonClose,
+                            color: Colors.white,
+                            onPressed: onBack,
+                          ),
+                          const SizedBox(width: Space.sm),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: context.text.titleSmall?.copyWith(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                if (episodeLabel.isNotEmpty)
+                                  Text(
+                                    episodeLabel,
+                                    style: context.text.labelSmall?.copyWith(
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (activeQuality != null)
+                            WingsBadge(
+                              activeQuality!,
+                              style: WingsBadgeStyle.overlay,
+                              compact: true,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        _RoundControl(
+                          icon: Icons.replay_10_rounded,
+                          onTap: onSeekBack,
+                        ),
+                        const SizedBox(width: Space.xl),
+                        _RoundControl(
+                          icon: playing
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 58,
+                          onTap: onTogglePlay,
+                        ),
+                        const SizedBox(width: Space.xl),
+                        _RoundControl(
+                          icon: Icons.forward_10_rounded,
+                          onTap: onSeekForward,
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Space.md,
+                        0,
+                        Space.md,
+                        Space.xs,
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Text(
+                            formatDuration(position),
+                            style: context.text.labelSmall?.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
+                          Expanded(
+                            child: SliderTheme(
+                              data: SliderThemeData(
+                                trackHeight: 2.5,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 6,
+                                ),
+                                overlayShape: SliderComponentShape.noOverlay,
+                                activeTrackColor: context.palette.primary,
+                                inactiveTrackColor: Colors.white24,
+                                thumbColor: context.palette.primary,
+                              ),
+                              child: Slider(
+                                value: (progress.clamp(0.0, 1.0)) * maxMs,
+                                max: maxMs <= 0 ? 1 : maxMs,
+                                onChangeStart: onSeekStart,
+                                onChanged: onSeekChanged,
+                                onChangeEnd: onSeekEnd,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            formatDuration(duration),
+                            style: context.text.labelSmall?.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Space.sm,
+                        0,
+                        Space.sm,
+                        Space.sm,
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          WingsIconButton(
+                            icon: Icons.skip_previous_rounded,
+                            color: Colors.white,
+                            onPressed: onPrevious,
+                          ),
+                          WingsIconButton(
+                            icon: Icons.speed_rounded,
+                            color: Colors.white,
+                            tooltip: l10n.playerSpeed,
+                            onPressed: onSpeed,
+                          ),
+                          WingsIconButton(
+                            icon: Icons.hd_outlined,
+                            color: Colors.white,
+                            tooltip: l10n.playerQuality,
+                            onPressed: onQuality,
+                          ),
+                          WingsIconButton(
+                            icon: autoplay
+                                ? Icons.playlist_play_rounded
+                                : Icons.playlist_remove_rounded,
+                            color: autoplay
+                                ? context.palette.primary
+                                : Colors.white,
+                            tooltip: l10n.playerAutoNext,
+                            onPressed: onAutoplay,
+                          ),
+                          const Spacer(),
+                          WingsIconButton(
+                            icon: Icons.skip_next_rounded,
+                            color: Colors.white,
+                            onPressed: onNext,
+                          ),
+                          WingsIconButton(
+                            icon: fullscreen
+                                ? Icons.fullscreen_exit_rounded
+                                : Icons.fullscreen_rounded,
+                            color: Colors.white,
+                            onPressed: onToggleFullscreen,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _errorMessage(BuildContext context, Object error) {
+    final l10n = AppLocalizations.of(context);
+    if (error is _NoEpisodes) return l10n.detailsNoEpisodes;
+    if (error is _NoPlayableServer) return l10n.playerNoServers;
+    return l10n.playerPlaybackErrorBody;
+  }
+}
+
+class _RoundControl extends StatelessWidget {
+  const _RoundControl({
+    required this.icon,
+    required this.onTap,
+    this.size = 44,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.black38,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Icon(icon, color: Colors.white, size: size * 0.5),
+      ),
+    );
+  }
+}
+
+class _PlayerError extends StatelessWidget {
+  const _PlayerError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Container(
+      color: Colors.black54,
+      alignment: Alignment.center,
+      child: Padding(
+        padding: const EdgeInsets.all(Space.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Colors.white70,
+              size: 28,
+            ),
+            const SizedBox(height: Space.sm),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: context.text.bodySmall?.copyWith(color: Colors.white),
+            ),
+            const SizedBox(height: Space.md),
+            WingsButton(
+              label: l10n.commonRetry,
+              variant: WingsButtonVariant.tonal,
+              icon: Icons.refresh_rounded,
+              onPressed: onRetry,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
