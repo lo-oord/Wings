@@ -254,6 +254,12 @@ class CartoonySource implements AnimeSource {
         url: link,
         quality: _qualityForId(showId),
         flavor: ServerFlavor.direct,
+        headers: <String, String>{
+          'Referer': '${_bases.first}/',
+          'Origin': _bases.first,
+          'Accept':
+              'application/vnd.apple.mpegurl, application/x-mpegURL, */*',
+        },
       ),
     ];
   }

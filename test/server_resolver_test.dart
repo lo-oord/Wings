@@ -66,6 +66,42 @@ void main() {
     expect(resolved.quality, '1080p');
   });
 
+  test(
+    'direct servers merge provider headers without changing defaults',
+    () async {
+      final resolver = ServerResolver(
+        _dioWith(
+          _FakeAdapter((options) async {
+            fail('no network request expected for direct links');
+          }),
+        ),
+      );
+      const plain = StreamServer(
+        name: 'direct',
+        url: 'https://example.com/video.m3u8',
+        quality: '720p',
+        flavor: ServerFlavor.direct,
+      );
+      const cartoony = StreamServer(
+        name: 'Cartoony',
+        url: 'https://pegasus.example/api/hls/1/playlist.m3u8',
+        quality: '1080p',
+        flavor: ServerFlavor.direct,
+        headers: <String, String>{
+          'Referer': 'https://cartoony.net/',
+          'Origin': 'https://cartoony.net',
+        },
+      );
+
+      final plainResolved = await resolver.resolve(plain);
+      final cartoonyResolved = await resolver.resolve(cartoony);
+
+      expect(plainResolved?.headers.containsKey('Referer'), isFalse);
+      expect(cartoonyResolved?.headers['Referer'], 'https://cartoony.net/');
+      expect(cartoonyResolved?.headers['Origin'], 'https://cartoony.net');
+    },
+  );
+
   test('pixelDrain albums resolve to their largest file', () async {
     final resolver = ServerResolver(
       _dioWith(

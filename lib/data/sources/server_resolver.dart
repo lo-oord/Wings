@@ -35,7 +35,10 @@ class ServerResolver {
     return ResolvedStream(
       url: url,
       server: server,
-      headers: const <String, String>{'User-Agent': kBrowserUserAgent},
+      headers: <String, String>{
+        'User-Agent': kBrowserUserAgent,
+        ...server.headers,
+      },
     );
   }
 
