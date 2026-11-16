@@ -64,11 +64,7 @@ class WingsImage extends StatelessWidget {
       height: height,
       color: palette.surfaceAlt,
       alignment: Alignment.center,
-      child: Icon(
-        Icons.broken_image_outlined,
-        color: palette.textMuted,
-        size: 22,
-      ),
+      child: WingsMark(size: 26, opacity: 0.35),
     );
   }
 }
@@ -101,40 +97,25 @@ class WingsMark extends StatelessWidget {
 
 /// App branding lockup: wing mark plus wordmark.
 class WingsLockup extends StatelessWidget {
-  const WingsLockup({super.key, this.size = 28, this.showTagline = false});
+  const WingsLockup({super.key, this.size = 34});
 
   final double size;
-  final bool showTagline;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         WingsMark(size: size),
         const SizedBox(width: Space.sm),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              'Wings',
-              style: context.text.titleLarge?.copyWith(
-                fontSize: size * 0.62,
-                fontWeight: FontWeight.w700,
-                height: 1.05,
-                letterSpacing: -0.4,
-              ),
-            ),
-            if (showTagline)
-              Text(
-                context.l10n.appTagline,
-                style: context.text.labelSmall?.copyWith(
-                  color: palette.textMuted,
-                ),
-              ),
-          ],
+        Text(
+          'Wings',
+          style: context.text.titleLarge?.copyWith(
+            fontSize: size * 0.64,
+            fontWeight: FontWeight.w700,
+            height: 1.05,
+            letterSpacing: -0.4,
+          ),
         ),
       ],
     );

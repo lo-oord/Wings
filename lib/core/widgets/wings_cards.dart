@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/localization/app_localizations.dart';
@@ -17,7 +19,7 @@ class WingsPosterCard extends StatelessWidget {
     super.key,
     required this.anime,
     this.onTap,
-    this.width = 132,
+    this.width = 144,
     this.showTitle = true,
     this.badge,
     this.rank,
@@ -145,8 +147,10 @@ class WingsPosterCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: context.text.titleSmall?.copyWith(
-                  height: 1.35,
-                  fontSize: 12.5,
+                  height: 1.4,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: palette.textPrimary,
                 ),
               ),
             ],
@@ -362,6 +366,7 @@ class WingsEpisodeCard extends StatelessWidget {
     this.watched = false,
     this.onPlay,
     this.onDownload,
+    this.fallbackImageUrl,
     this.showThumbnail = true,
   });
 
@@ -369,6 +374,9 @@ class WingsEpisodeCard extends StatelessWidget {
   final bool watched;
   final VoidCallback? onPlay;
   final VoidCallback? onDownload;
+
+  /// Shown when the episode has no artwork of its own.
+  final String? fallbackImageUrl;
   final bool showThumbnail;
 
   @override
@@ -388,7 +396,9 @@ class WingsEpisodeCard extends StatelessWidget {
               Stack(
                 children: <Widget>[
                   WingsImage(
-                    url: episode.thumbnailUrl,
+                    url: (episode.thumbnailUrl?.trim().isNotEmpty ?? false)
+                        ? episode.thumbnailUrl
+                        : fallbackImageUrl,
                     width: 104,
                     height: 60,
                     borderRadius: BorderRadius.circular(Radii.xs),
@@ -561,10 +571,127 @@ class WingsContinueCard extends StatelessWidget {
   }
 }
 
-/// Large editorial banner for the home screen.
-class WingsFeaturedBanner extends StatelessWidget {
+/// Swipeable featured carousel for the home screen.
+class WingsFeaturedBanner extends StatefulWidget {
   const WingsFeaturedBanner({
     super.key,
+    required this.items,
+    required this.onWatch,
+    required this.onDetails,
+  });
+
+  final List<Anime> items;
+  final ValueChanged<Anime> onWatch;
+  final ValueChanged<Anime> onDetails;
+
+  @override
+  State<WingsFeaturedBanner> createState() => _WingsFeaturedBannerState();
+}
+
+class _WingsFeaturedBannerState extends State<WingsFeaturedBanner> {
+  final PageController _controller = PageController(viewportFraction: 0.92);
+  Timer? _timer;
+  int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restartTimer());
+  }
+
+  @override
+  void didUpdateWidget(covariant WingsFeaturedBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.items.length != widget.items.length) _restartTimer();
+  }
+
+  void _restartTimer() {
+    _timer?.cancel();
+    if (widget.items.length < 2) return;
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return;
+    _timer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (!mounted || !_controller.hasClients) return;
+      final next = (_index + 1) % widget.items.length;
+      _controller.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 620),
+        curve: Curves.easeInOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.items.isEmpty) return const SizedBox.shrink();
+    final palette = context.palette;
+    final width = MediaQuery.sizeOf(context).width;
+    final height = (width * 0.56).clamp(184.0, 252.0);
+
+    return Column(
+      children: <Widget>[
+        SizedBox(
+          height: height,
+          child: PageView.builder(
+            controller: _controller,
+            padEnds: false,
+            itemCount: widget.items.length,
+            onPageChanged: (index) {
+              setState(() => _index = index);
+              _restartTimer();
+            },
+            itemBuilder: (context, index) {
+              final anime = widget.items[index];
+              return Padding(
+                padding: EdgeInsetsDirectional.only(
+                  start: index == 0 ? Space.lg : Space.sm,
+                  end: index == widget.items.length - 1 ? Space.lg : 0,
+                ),
+                child: _FeaturedCard(
+                  anime: anime,
+                  onWatch: () => widget.onWatch(anime),
+                  onDetails: () => widget.onDetails(anime),
+                ),
+              );
+            },
+          ),
+        ),
+        if (widget.items.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: Space.sm),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                for (var dot = 0; dot < widget.items.length; dot++)
+                  AnimatedContainer(
+                    duration: Motion.normal,
+                    curve: Motion.standard,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: dot == _index ? 18 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: dot == _index
+                          ? palette.primary
+                          : palette.borderStrong,
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _FeaturedCard extends StatelessWidget {
+  const _FeaturedCard({
     required this.anime,
     required this.onWatch,
     required this.onDetails,
@@ -576,8 +703,8 @@ class WingsFeaturedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
     final l10n = AppLocalizations.of(context);
+    final palette = context.palette;
     final meta = <String>[
       if (anime.rating != null) '★ ${anime.rating!.toStringAsFixed(1)}',
       if (anime.year != null) '${anime.year}',
@@ -586,109 +713,98 @@ class WingsFeaturedBanner extends StatelessWidget {
         '${anime.episodeCount} ${l10n.detailsEpisodes}',
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(Radii.md),
-        child: AspectRatio(
-          aspectRatio: 4 / 5,
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              WingsImage(
-                url: anime.backdropUrl ?? anime.posterUrl,
-                fit: BoxFit.cover,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(Radii.lg),
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          WingsImage(
+            url: anime.backdropUrl ?? anime.posterUrl,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[
+                  palette.overlay.withValues(alpha: 0.05),
+                  palette.overlay.withValues(alpha: 0.45),
+                  palette.overlay.withValues(alpha: 0.94),
+                ],
+                stops: const <double>[0, 0.45, 1],
               ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: <Color>[
-                      palette.overlay.withValues(alpha: 0.25),
-                      palette.overlay.withValues(alpha: 0.55),
-                      palette.overlay.withValues(alpha: 0.96),
-                    ],
-                    stops: const <double>[0, 0.45, 1],
+            ),
+          ),
+          PositionedDirectional(
+            top: Space.md,
+            start: Space.md,
+            child: WingsBadge(
+              l10n.homeFeatured,
+              style: WingsBadgeStyle.brand,
+              icon: Icons.auto_awesome_rounded,
+              compact: true,
+            ),
+          ),
+          PositionedDirectional(
+            start: Space.md,
+            end: Space.md,
+            bottom: Space.md,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  anime.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.text.titleLarge?.copyWith(
+                    color: Colors.white,
+                    fontSize: 18,
+                    height: 1.3,
                   ),
                 ),
-              ),
-              PositionedDirectional(
-                top: Space.lg,
-                start: Space.lg,
-                child: WingsBadge(
-                  l10n.homeFeatured,
-                  style: WingsBadgeStyle.brand,
-                  icon: Icons.auto_awesome_rounded,
-                ),
-              ),
-              PositionedDirectional(
-                start: Space.lg,
-                end: Space.lg,
-                bottom: Space.lg,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                if (meta.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    meta.join('  •  '),
+                    style: context.text.labelSmall?.copyWith(
+                      color: Colors.white70,
+                      fontSize: 11,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: Space.md),
+                Row(
                   children: <Widget>[
-                    Text(
-                      anime.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.text.headlineMedium?.copyWith(
-                        color: Colors.white,
-                        fontSize: 23,
-                        height: 1.25,
+                    Expanded(
+                      flex: 3,
+                      child: WingsButton(
+                        label: l10n.homeWatchNow,
+                        icon: Icons.play_arrow_rounded,
+                        height: 38,
+                        onPressed: onWatch,
                       ),
                     ),
-                    if (meta.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: Space.sm),
-                      Text(
-                        meta.join('  •  '),
-                        style: context.text.labelMedium?.copyWith(
-                          color: Colors.white70,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: Space.sm),
+                    Expanded(
+                      flex: 2,
+                      child: WingsButton(
+                        label: l10n.homeMoreDetails,
+                        variant: WingsButtonVariant.tonal,
+                        height: 38,
+                        onPressed: onDetails,
                       ),
-                    ],
-                    if (anime.synopsis != null) ...<Widget>[
-                      const SizedBox(height: Space.sm),
-                      Text(
-                        anime.synopsis!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.text.bodySmall?.copyWith(
-                          color: Colors.white70,
-                          height: 1.55,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: Space.lg),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: WingsButton(
-                            label: l10n.homeWatchNow,
-                            icon: Icons.play_arrow_rounded,
-                            onPressed: onWatch,
-                          ),
-                        ),
-                        const SizedBox(width: Space.sm),
-                        Expanded(
-                          child: WingsButton(
-                            label: l10n.homeMoreDetails,
-                            variant: WingsButtonVariant.tonal,
-                            onPressed: onDetails,
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

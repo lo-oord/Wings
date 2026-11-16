@@ -181,12 +181,6 @@ class SettingsScreen extends ConsumerWidget {
                   showChevron: true,
                   onTap: () => context.push(RoutePaths.downloads),
                 ),
-                WingsSettingsTile(
-                  icon: Icons.wifi_rounded,
-                  title: l10n.downloadsWifiHint,
-                  subtitle: l10n.downloadsStorage,
-                  showChevron: false,
-                ),
               ],
             ),
             WingsSettingsGroup(
@@ -277,20 +271,6 @@ class SettingsScreen extends ConsumerWidget {
                   title: l10n.settingsTerms,
                   showChevron: true,
                   onTap: () => context.push(RoutePaths.legal('terms')),
-                ),
-                WingsSettingsTile(
-                  icon: Icons.code_rounded,
-                  title: l10n.settingsLicenses,
-                  showChevron: true,
-                  onTap: () => showLicensePage(
-                    context: context,
-                    applicationName: 'Wings',
-                    applicationVersion: info?.version,
-                    applicationIcon: const Padding(
-                      padding: EdgeInsets.all(Space.sm),
-                      child: WingsMark(size: 40),
-                    ),
-                  ),
                 ),
                 if (user != null)
                   WingsSettingsTile(

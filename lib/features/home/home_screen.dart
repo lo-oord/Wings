@@ -11,8 +11,8 @@ import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_cards.dart';
 import '../../core/widgets/wings_feedback.dart';
 import '../../core/widgets/wings_image.dart';
-import '../../core/utils/formatters.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../core/utils/formatters.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/library.dart';
 import 'home_providers.dart';
@@ -36,7 +36,7 @@ class HomeScreen extends ConsumerWidget {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: <Widget>[
-              SliverToBoxAdapter(child: _HomeHeader(online: online)),
+              const SliverToBoxAdapter(child: _HomeHeader()),
               if (!online) const SliverToBoxAdapter(child: WingsOfflineStrip()),
               ...feed.when(
                 data: (value) =>
@@ -69,29 +69,32 @@ class HomeScreen extends ConsumerWidget {
     List<WatchHistoryEntry> continueWatching,
   ) {
     final l10n = AppLocalizations.of(context);
+    final featured = feed.recentlyAdded.take(6).toList(growable: false);
+
     return <Widget>[
-      if (feed.featured != null)
+      if (featured.isNotEmpty)
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.only(top: Space.sm),
             child: WingsFeaturedBanner(
-              anime: feed.featured!,
-              onWatch: () {
-                final episode = feed.featuredEpisode;
-                if (episode == null) {
-                  context.push(RoutePaths.anime(feed.featured!.id));
-                  return;
+              items: featured,
+              onWatch: (anime) {
+                AnimeEpisode? episode;
+                for (final item in feed.latest) {
+                  if (item.anime.id == anime.id) {
+                    episode = item.episode;
+                    break;
+                  }
                 }
                 context.push(
                   RoutePaths.watch(
-                    animeId: feed.featured!.id,
-                    episodeId: episode.id,
+                    animeId: anime.id,
+                    episodeId: episode?.id ?? '-',
                   ),
-                  extra: feed.featured,
+                  extra: anime,
                 );
               },
-              onDetails: () =>
-                  context.push(RoutePaths.anime(feed.featured!.id)),
+              onDetails: (anime) => context.push(RoutePaths.anime(anime.id)),
             ),
           ),
         ),
@@ -101,7 +104,7 @@ class HomeScreen extends ConsumerWidget {
         ),
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 170,
+            height: 190,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: Space.lg),
@@ -128,7 +131,7 @@ class HomeScreen extends ConsumerWidget {
           child: WingsSectionHeader(
             title: l10n.homeRecentlyAdded,
             actionLabel: l10n.commonSeeAll,
-            onAction: () => context.go(RoutePaths.explore),
+            onAction: () => context.push(RoutePaths.catalog('newest')),
           ),
         ),
         SliverToBoxAdapter(child: _PosterRail(items: feed.recentlyAdded)),
@@ -141,17 +144,14 @@ class HomeScreen extends ConsumerWidget {
           itemCount: feed.latest.length,
           itemBuilder: (context, index) {
             final item = feed.latest[index];
-            return _LatestEpisodeRow(
-              item: item,
-              onOpen: () => context.push(RoutePaths.anime(item.anime.id)),
-              onPlay: () => context.push(
-                RoutePaths.watch(
-                  animeId: item.anime.id,
-                  episodeId: item.episode.id,
-                ),
-                extra: item.anime,
+            void play() => context.push(
+              RoutePaths.watch(
+                animeId: item.anime.id,
+                episodeId: item.episode.id,
               ),
+              extra: item.anime,
             );
+            return _LatestEpisodeRow(item: item, onPlay: play);
           },
         ),
         if (feed.latestHasMore)
@@ -179,14 +179,24 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
       if (feed.popular.isNotEmpty) ...<Widget>[
-        SliverToBoxAdapter(child: WingsSectionHeader(title: l10n.homePopular)),
+        SliverToBoxAdapter(
+          child: WingsSectionHeader(
+            title: l10n.homePopular,
+            actionLabel: l10n.commonSeeAll,
+            onAction: () => context.push(RoutePaths.catalog('popular')),
+          ),
+        ),
         SliverToBoxAdapter(
           child: _PosterRail(items: feed.popular, ranked: true),
         ),
       ],
       if (feed.recommended.isNotEmpty) ...<Widget>[
         SliverToBoxAdapter(
-          child: WingsSectionHeader(title: l10n.homeRecommended),
+          child: WingsSectionHeader(
+            title: l10n.homeRecommended,
+            actionLabel: l10n.commonSeeAll,
+            onAction: () => context.push(RoutePaths.catalog('rating')),
+          ),
         ),
         SliverToBoxAdapter(child: _PosterRail(items: feed.recommended)),
       ],
@@ -194,34 +204,71 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.online});
-
-  final bool online;
+class _HomeHeader extends ConsumerWidget {
+  const _HomeHeader();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = ref.watch(unreadNotificationsProvider);
+    final palette = context.palette;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         Space.lg,
         Space.md,
         Space.lg,
-        Space.sm,
+        Space.xs,
       ),
       child: Row(
         children: <Widget>[
-          const WingsLockup(size: 30, showTagline: true),
+          const WingsLockup(size: 38),
           const Spacer(),
-          WingsIconButton(
-            icon: Icons.search_rounded,
-            tooltip: AppLocalizations.of(context).searchTitle,
-            onPressed: () => context.push(RoutePaths.search),
-          ),
-          const SizedBox(width: Space.xs),
-          WingsIconButton(
-            icon: Icons.notifications_none_rounded,
-            tooltip: AppLocalizations.of(context).notificationsTitle,
-            onPressed: () => context.push(RoutePaths.notifications),
+          Semantics(
+            button: true,
+            label: AppLocalizations.of(context).notificationsTitle,
+            child: InkResponse(
+              onTap: () => context.push(RoutePaths.notifications),
+              radius: 24,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: <Widget>[
+                    Icon(
+                      unread > 0
+                          ? Icons.notifications_rounded
+                          : Icons.notifications_none_rounded,
+                      size: 24,
+                      color: palette.textPrimary,
+                    ),
+                    if (unread > 0)
+                      PositionedDirectional(
+                        top: 6,
+                        end: 4,
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 17),
+                          height: 17,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: palette.primary,
+                            borderRadius: BorderRadius.circular(Radii.pill),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            unread > 9 ? '9+' : '$unread',
+                            style: context.text.labelSmall?.copyWith(
+                              color: palette.onPrimary,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -238,7 +285,7 @@ class _PosterRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 214,
+      height: 268,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: Space.lg),
@@ -258,14 +305,9 @@ class _PosterRail extends StatelessWidget {
 }
 
 class _LatestEpisodeRow extends StatelessWidget {
-  const _LatestEpisodeRow({
-    required this.item,
-    required this.onOpen,
-    required this.onPlay,
-  });
+  const _LatestEpisodeRow({required this.item, required this.onPlay});
 
   final LatestEpisode item;
-  final VoidCallback onOpen;
   final VoidCallback onPlay;
 
   @override
@@ -273,7 +315,7 @@ class _LatestEpisodeRow extends StatelessWidget {
     final palette = context.palette;
     final l10n = AppLocalizations.of(context);
     return InkWell(
-      onTap: onOpen,
+      onTap: onPlay,
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: Space.lg,
@@ -307,7 +349,7 @@ class _LatestEpisodeRow extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     item.anime.title,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: context.text.titleSmall,
                   ),
@@ -320,18 +362,15 @@ class _LatestEpisodeRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: Space.xs),
-                  Row(
-                    children: <Widget>[
-                      if (item.releasedAt != null)
-                        Text(
-                          relativeTime(item.releasedAt, l10n),
-                          style: context.text.labelSmall?.copyWith(
-                            color: palette.textMuted,
-                          ),
-                        ),
-                    ],
-                  ),
+                  if (item.releasedAt != null) ...<Widget>[
+                    const SizedBox(height: Space.xs),
+                    Text(
+                      relativeTime(item.releasedAt, l10n),
+                      style: context.text.labelSmall?.copyWith(
+                        color: palette.textMuted,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -359,20 +398,20 @@ class _HomeSkeleton extends StatelessWidget {
         children: <Widget>[
           const SizedBox(height: Space.sm),
           AspectRatio(
-            aspectRatio: 4 / 5,
-            child: WingsSkeleton(borderRadius: BorderRadius.circular(Radii.md)),
+            aspectRatio: 16 / 9,
+            child: WingsSkeleton(borderRadius: BorderRadius.circular(Radii.lg)),
           ),
           const SizedBox(height: Space.xl),
           const WingsSkeleton(height: 16, width: 140),
           const SizedBox(height: Space.md),
           SizedBox(
-            height: 180,
+            height: 220,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: 3,
               separatorBuilder: (_, _) => const SizedBox(width: Space.md),
-              itemBuilder: (_, _) => const WingsPosterSkeleton(width: 132),
+              itemBuilder: (_, _) => const WingsPosterSkeleton(width: 144),
             ),
           ),
         ],

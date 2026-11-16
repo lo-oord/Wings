@@ -80,12 +80,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 tooltip: l10n.exploreRandom,
                 onPressed: _loadingRandom ? null : _openRandom,
               ),
-              const SizedBox(width: Space.xs),
-              WingsIconButton(
-                icon: Icons.search_rounded,
-                tooltip: l10n.searchTitle,
-                onPressed: () => context.push(RoutePaths.search),
-              ),
             ],
           ),
         ),

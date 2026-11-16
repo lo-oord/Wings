@@ -88,7 +88,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
         SliverAppBar(
           expandedHeight: 300,
           pinned: true,
-          stretch: true,
+          stretch: false,
           backgroundColor: palette.background,
           surfaceTintColor: Colors.transparent,
           automaticallyImplyLeading: false,
@@ -454,6 +454,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
               final episode = episodes[index];
               return WingsEpisodeCard(
                 episode: episode,
+                fallbackImageUrl: anime.imageUrl,
                 watched: watched.contains(episode.id),
                 onPlay: () =>
                     _watch(anime, episode: episode, episodes: bundle.episodes),
@@ -643,13 +644,6 @@ class _DownloadSheetState extends ConsumerState<_DownloadSheet> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.only(bottom: Space.sm),
-              child: Text(
-                l10n.detailsDownloadSheetBody,
-                style: context.text.bodySmall,
-              ),
-            ),
             for (var index = 0; index < downloadable.length; index++)
               WingsSettingsTile(
                 icon: Icons.high_quality_rounded,

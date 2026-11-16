@@ -225,7 +225,7 @@ class WingsAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// The persistent four-destination navigation bar.
+/// Floating, pill-shaped navigation bar with an animated selected capsule.
 class WingsBottomNav extends StatelessWidget {
   const WingsBottomNav({
     super.key,
@@ -242,31 +242,46 @@ class WingsBottomNav extends StatelessWidget {
     final localizations = AppLocalizations.of(context);
     final destinations = <(IconData, IconData, String)>[
       (
-        Icons.auto_awesome_outlined,
-        Icons.auto_awesome,
+        Icons.play_circle_outline_rounded,
+        Icons.play_circle_fill_rounded,
         localizations.navLatest,
       ),
-      (Icons.explore_outlined, Icons.explore, localizations.navExplore),
       (
-        Icons.video_library_outlined,
-        Icons.video_library,
+        Icons.travel_explore_rounded,
+        Icons.travel_explore_rounded,
+        localizations.navExplore,
+      ),
+      (
+        Icons.collections_bookmark_outlined,
+        Icons.collections_bookmark_rounded,
         localizations.navLibrary,
       ),
-      (Icons.tune_outlined, Icons.tune, localizations.navSettings),
+      (
+        Icons.settings_outlined,
+        Icons.settings_rounded,
+        localizations.navSettings,
+      ),
     ];
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.surface,
-        border: Border(top: BorderSide(color: palette.border)),
-      ),
-      child: SafeArea(
-        top: false,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.sm),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.surface,
+          borderRadius: BorderRadius.circular(Radii.pill),
+          border: Border.all(color: palette.border),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(
+                alpha: palette.isDark ? 0.4 : 0.08,
+              ),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: Space.sm,
-            vertical: Space.xs + 2,
-          ),
+          padding: const EdgeInsets.all(Space.xs + 2),
           child: Row(
             children: <Widget>[
               for (var index = 0; index < destinations.length; index++)
@@ -305,39 +320,69 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final foreground = selected ? palette.onPrimary : palette.textMuted;
+    final foreground = selected ? palette.primary : palette.textMuted;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return Semantics(
       selected: selected,
       button: true,
       label: label,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.sm),
-        child: AnimatedContainer(
-          duration: Motion.normal,
-          curve: Motion.standard,
-          padding: const EdgeInsets.symmetric(vertical: Space.sm),
-          decoration: BoxDecoration(
-            gradient: selected ? palette.brandGradient : null,
-            borderRadius: BorderRadius.circular(Radii.sm),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(selected ? activeIcon : icon, size: 20, color: foreground),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.text.labelSmall?.copyWith(
-                  color: foreground,
-                  fontSize: 10.5,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+        borderRadius: BorderRadius.circular(Radii.pill),
+        splashFactory: NoSplash.splashFactory,
+        child: Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            Positioned.fill(
+              child: AnimatedOpacity(
+                opacity: selected ? 1 : 0,
+                duration: reduceMotion ? Duration.zero : Motion.normal,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: palette.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(Radii.pill),
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: Space.sm - 2),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  AnimatedScale(
+                    scale: selected ? 1.08 : 1,
+                    duration: reduceMotion ? Duration.zero : Motion.fast,
+                    curve: Motion.emphasized,
+                    child: AnimatedSwitcher(
+                      duration: reduceMotion ? Duration.zero : Motion.fast,
+                      child: Icon(
+                        selected ? activeIcon : icon,
+                        key: ValueKey<bool>(selected),
+                        size: 21,
+                        color: foreground,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  AnimatedDefaultTextStyle(
+                    duration: reduceMotion ? Duration.zero : Motion.fast,
+                    style: context.text.labelSmall!.copyWith(
+                      color: foreground,
+                      fontSize: 10.5,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      height: 1.2,
+                    ),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -510,60 +555,71 @@ class WingsSettingsGroup extends StatelessWidget {
 }
 
 abstract final class WingsSheet {
+  /// Shows a compact card in the middle of the screen rather than a sheet.
   static Future<T?> show<T>(
     BuildContext context, {
     required String title,
     required WidgetBuilder builder,
     bool scrollable = false,
   }) {
-    return showModalBottomSheet<T>(
+    final palette = context.palette;
+    return showDialog<T>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: context.palette.surface,
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: Space.xxl,
+            vertical: Space.xxl,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.only(top: Space.md, bottom: Space.xs),
-                child: Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: sheetContext.palette.borderStrong,
-                      borderRadius: BorderRadius.circular(Radii.pill),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Space.lg,
-                  Space.sm,
-                  Space.lg,
-                  Space.sm,
-                ),
-                child: Text(title, style: sheetContext.text.titleMedium),
-              ),
-              Flexible(
-                child: SingleChildScrollView(
+          backgroundColor: palette.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Radii.lg),
+            side: BorderSide(color: palette.border),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 460),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Padding(
                   padding: const EdgeInsets.fromLTRB(
                     Space.lg,
+                    Space.md,
                     Space.sm,
-                    Space.lg,
-                    Space.xl,
+                    Space.xs,
                   ),
-                  child: builder(sheetContext),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: dialogContext.text.titleMedium,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        color: palette.textMuted,
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(
+                      Space.md,
+                      Space.xs,
+                      Space.md,
+                      Space.md,
+                    ),
+                    child: builder(dialogContext),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
