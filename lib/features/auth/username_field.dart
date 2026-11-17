@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -122,7 +123,12 @@ class _UsernameFieldState extends ConsumerState<UsernameField> {
       widget.onAvailabilityChanged?.call(
         result.status == UsernameStatus.available,
       );
-    } on Object {
+    } on Object catch (error) {
+      if (kDebugMode) {
+        // The generic message below is intentional; the real reason (rules not
+        // published, database missing, offline) is only useful in the console.
+        debugPrint('username availability check failed: $error');
+      }
       if (!mounted || generation != _generation) return;
       setState(() {
         _checking = false;

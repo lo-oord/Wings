@@ -191,8 +191,13 @@ service cloud.firestore {
     // --------------------------------------------------------- usernames
     // Exact document lookups only: listing is forbidden so the registry cannot
     // be enumerated.
+    //
+    // Reads are allowed before sign-in on purpose: the registration form asks
+    // for the handle on its first step, when no account exists yet. The only
+    // thing revealed is whether one specific guessed handle is taken, which the
+    // public profile mirror already shows for every existing user.
     match /usernames/{normalized} {
-      allow get: if signedIn();
+      allow get: if true;
       allow list: if false;
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid

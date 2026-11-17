@@ -15,7 +15,7 @@ no Firebase Storage, no Cloud Run, no billing upgrade.
 | `users/{uid}/meta/stats` | Same numbers as the profile statistics | Owner | Owner |
 | `users/{uid}/activity/{id}` | Index of the user's own comments/reactions, used for deletion | Owner | Owner |
 | `profiles/{uid}` | **Public mirror**: username, display name, badges, photo version, plus country / age group / stats **only when the owner allowed them** | Any signed-in user | Owner |
-| `usernames/{normalized}` | `{uid, username, createdAt}` reservation | Exact lookup only; listing is denied | Owner of the handle |
+| `usernames/{normalized}` | `{uid, username, createdAt}` reservation | Exact lookup (`get`) only, even before sign-in so the sign-up form can check; listing is denied | Owner of the handle |
 | `episodes/{episodeId}/reactions/{uid}` | One reaction document per user (`like` / `dislike`) | Signed-in users | The matching uid |
 | `episodes/{episodeId}/comments/{commentId}` | Comment with a denormalized author snapshot | Signed-in users | Author, plus a +1 `replyCount` bump |
 | `episodes/{episodeId}/comments/{commentId}/replies/{replyId}` | Reply | Signed-in users | Author |
@@ -49,7 +49,13 @@ stored, never a birth date.
   reservation. Rules only accept a new username when a reservation owned by the
   caller already exists.
 * Availability checks are exact document `get`s; `list` is denied, so the
-  registry cannot be enumerated.
+  registry cannot be enumerated. `get` is allowed even for signed-out devices,
+  because the sign-up form asks for the handle before the account exists.
+* If the field shows “Could not check the username now”, the console log prints
+  the real Firestore error. `permission-denied` means these rules are not
+  published yet; `unavailable` / `not-found` means the Firestore database has
+  not been created in the project (Console → Firestore Database → Create
+  database).
 * Live checks are debounced (450 ms), identical values are cached, empty or
   invalid values never reach Firestore, and outdated responses are ignored.
 
