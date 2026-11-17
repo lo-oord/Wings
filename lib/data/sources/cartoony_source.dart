@@ -257,8 +257,7 @@ class CartoonySource implements AnimeSource {
         headers: <String, String>{
           'Referer': '${_bases.first}/',
           'Origin': _bases.first,
-          'Accept':
-              'application/vnd.apple.mpegurl, application/x-mpegURL, */*',
+          'Accept': 'application/vnd.apple.mpegurl, application/x-mpegURL, */*',
         },
       ),
     ];

@@ -187,6 +187,7 @@ class StreamServer {
   final ServerFlavor flavor;
   final bool requiresBrowser;
   final bool isDirectFile;
+
   /// Extra request headers required by the provider's media endpoint.
   /// Existing sources leave this empty.
   final Map<String, String> headers;
