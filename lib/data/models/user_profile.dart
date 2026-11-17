@@ -14,6 +14,16 @@ class ProfileBadges {
 
   bool get any => verified || developer;
 
+  /// A handle that carries both marks is drawn with the royal gradient.
+  bool get both => verified && developer;
+
+  /// The signature an administrator granted; used by the UI to pick the
+  /// colour and the badge set of a handle.
+  ProfileBadges merge(ProfileBadges other) => ProfileBadges(
+    verified: verified || other.verified,
+    developer: developer || other.developer,
+  );
+
   factory ProfileBadges.fromMap(Object? raw) {
     if (raw is! Map) return none;
     return ProfileBadges(
@@ -212,6 +222,7 @@ class UserProfile {
     this.coverVersion = 0,
     this.pendingDeletion = false,
     this.profileHidden = false,
+    this.usernameChangedAt,
   });
 
   final String uid;
@@ -240,6 +251,31 @@ class UserProfile {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// When the handle was last changed. A regular account may rename once every
+  /// [usernameChangeInterval]; verified and developer accounts rename freely.
+  final DateTime? usernameChangedAt;
+
+  static const Duration usernameChangeInterval = Duration(hours: 48);
+
+  /// Official accounts (verified or developer) are exempt from the cooldown.
+  bool get freeUsernameChanges => badges.any;
+
+  /// The moment the next rename becomes possible, or null when it is possible
+  /// right now.
+  DateTime? get nextUsernameChangeAt {
+    if (freeUsernameChanges) return null;
+    final changed = usernameChangedAt;
+    if (changed == null) return null;
+    final next = changed.add(usernameChangeInterval);
+    return next;
+  }
+
+  bool canChangeUsernameAt(DateTime now) {
+    if (freeUsernameChanges) return true;
+    final next = nextUsernameChangeAt;
+    return next == null || !now.isBefore(next);
+  }
+
   String get normalizedUsername => username.trim().toLowerCase();
 
   String get handle => '@$username';
@@ -258,6 +294,7 @@ class UserProfile {
     int? coverVersion,
     bool? pendingDeletion,
     bool? profileHidden,
+    DateTime? usernameChangedAt,
     DateTime? updatedAt,
   }) => UserProfile(
     uid: uid,
@@ -274,6 +311,7 @@ class UserProfile {
     coverVersion: coverVersion ?? this.coverVersion,
     pendingDeletion: pendingDeletion ?? this.pendingDeletion,
     profileHidden: profileHidden ?? this.profileHidden,
+    usernameChangedAt: usernameChangedAt ?? this.usernameChangedAt,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -293,6 +331,8 @@ class UserProfile {
     'photoVersion': photoVersion,
     'coverVersion': coverVersion,
     'pendingDeletion': pendingDeletion,
+    if (usernameChangedAt != null)
+      'usernameChangedAt': Timestamp.fromDate(usernameChangedAt!),
     'createdAt': Timestamp.fromDate(createdAt),
     'updatedAt': Timestamp.fromDate(updatedAt),
   };
@@ -336,6 +376,13 @@ class UserProfile {
       return DateTime.now();
     }
 
+    DateTime? readOptionalDate(String key) {
+      final value = raw[key];
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      return null;
+    }
+
     return UserProfile(
       uid: uid,
       username: raw['username'] as String? ?? '',
@@ -356,6 +403,7 @@ class UserProfile {
       coverVersion: (raw['coverVersion'] as num?)?.toInt() ?? 0,
       pendingDeletion: raw['pendingDeletion'] == true,
       profileHidden: raw['private'] == true,
+      usernameChangedAt: readOptionalDate('usernameChangedAt'),
       createdAt: readDate('createdAt'),
       updatedAt: readDate('updatedAt'),
     );

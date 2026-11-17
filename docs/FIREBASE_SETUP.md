@@ -37,6 +37,7 @@ Other setup that must exist before Google sign-in can work:
 | `users/{uid}/meta/stats` | Same numbers as the profile statistics | Owner | Owner |
 | `users/{uid}/activity/{id}` | Index of the user's own comments/reactions, used for deletion | Owner | Owner |
 | `profiles/{uid}` | **Public mirror**: username, display name, badges, photo version, plus country / age group / stats **only when the owner allowed them** | Any signed-in user | Owner |
+| `badges/{uid}` | **Official marks** granted by an administrator: `{verified: bool, developer: bool}`. Authoritative over the copies in the profile documents | Any signed-in user | Administrators only |
 | `usernames/{normalized}` | `{uid, username, createdAt}` reservation | Exact lookup (`get`) only, even before sign-in so the sign-up form can check; listing is denied | Owner of the handle |
 | `episodes/{episodeId}/reactions/{uid}` | One reaction document per user (`like` / `dislike`) | Signed-in users | The matching uid |
 | `episodes/{episodeId}/comments/{commentId}` | Comment with a denormalized author snapshot | Signed-in users | Author (text/snapshot), `replyCount` ±1 |
@@ -101,21 +102,51 @@ UI.
 * Live checks are debounced (450 ms), identical values are cached, empty or
   invalid values never reach Firestore, and outdated responses are ignored.
 
-## 4. Badges (verified / developer)
+## 4. Badges (verified / developer) and usernames
 
-Badges live in `users/{uid}.badges` and the public mirror, and **no client may
-change them**: the update rule requires
-`request.resource.data.badges == resource.data.badges` unless the caller is in
-`config/admins`.
+Official marks live in **`badges/{uid}`**, a document with exactly two fields:
+
+```json
+{ "verified": true, "developer": false }
+```
+
+* The document is readable by every signed-in user and writable **only** by an
+  administrator (`config/admins`) or from the Firebase console, which bypasses
+  the rules.
+* It is the authoritative source. The app copies the value into
+  `users/{uid}.badges` and `profiles/{uid}.badges`; the rules accept that copy
+  only when it equals the `badges/{uid}` value, so the client can never grant
+  or silently revoke a mark.
+* Because the app reads `badges/{uid}` live, granting or removing a mark shows
+  up on every device — the owner's handle, their profile frame and every
+  existing comment — without reinstalling or signing out.
+* If `badges/{uid}` does not exist, the app still honours the older copies in
+  `profiles/{uid}` and `users/{uid}`.
+
+**How the marks look**
+
+| Account | Handle | Badges | Profile frame |
+| --- | --- | --- | --- |
+| Regular | blue accent | none | none |
+| Verified | **gold** with a glow | gold seal | **gold** ring |
+| Developer | **red** | blue Wings mark | blue ring |
+| Verified + developer | **purple-gold gradient**, bold and glowing | gold seal **and** blue mark | purple-gold ring |
+
+**Usernames**
+
+* A regular account may change its handle **once every 48 hours** (both the app
+  and the rules enforce it through `users/{uid}.usernameChangedAt`).
+* A verified or developer account changes it freely.
+* A rename is reflected everywhere, including comments written before the
+  change, because handles are resolved live from `profiles/{uid}`.
 
 Free-plan administrative procedure:
 
 1. In the Firebase console create `config/admins` with
    `{ "uids": ["<admin uid>"] }`. Only the console (or Admin SDK) can write it,
    because rules deny all writes to `config`.
-2. To verify a user, the admin signs in with an allowlisted account and updates
-   `users/{uid}.badges` (and the mirror) from an administrative tool, or edits
-   the document directly in the console.
+2. Create or edit `badges/{uid}` in the console and set `verified` and/or
+   `developer` to `true`.
 3. Remove the uid from `config/admins` when the admin role ends.
 
 There is no self-service verification, and hidden UI is never used as a security

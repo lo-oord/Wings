@@ -27,6 +27,43 @@ service cloud.firestore {
         && request.auth.uid in adminUids();
     }
 
+    // Official marks live in `badges/{uid}` and only an administrator writes
+    // them. Clients read the document so a verified or developer handle is
+    // drawn the same way on every device, and the owner's profile documents
+    // are allowed to copy the value instead of being rejected.
+    function badgeData(uid) {
+      return get(/databases/$(database)/documents/badges/$(uid)).data;
+    }
+
+    // A grant made before `badges/{uid}` existed lives on the public mirror;
+    // it still counts, so an already verified account keeps its free renames.
+    function hasLegacyBadge(uid) {
+      return exists(/databases/$(database)/documents/profiles/$(uid))
+        && ('badges' in get(/databases/$(database)/documents/profiles/$(uid)).data)
+        && (
+          get(/databases/$(database)/documents/profiles/$(uid)).data.badges.get('verified', false) == true
+          || get(/databases/$(database)/documents/profiles/$(uid)).data.badges.get('developer', false) == true
+        );
+    }
+
+    function hasOfficialBadge(uid) {
+      return (
+          exists(/databases/$(database)/documents/badges/$(uid))
+          && (
+            badgeData(uid).get('verified', false) == true
+            || badgeData(uid).get('developer', false) == true
+          )
+        )
+        || hasLegacyBadge(uid);
+    }
+
+    // True when the badges being written are exactly the administrator's.
+    function badgeOverrideMatches(uid, value) {
+      return exists(/databases/$(database)/documents/badges/$(uid))
+        && value.verified == badgeData(uid).get('verified', false)
+        && value.developer == badgeData(uid).get('developer', false);
+    }
+
     function validUsername(value) {
       return value is string
         && value.size() >= 3
@@ -149,6 +186,7 @@ service cloud.firestore {
             validBadges(request.resource.data.badges)
             && (
               request.resource.data.badges == resource.data.badges
+              || badgeOverrideMatches(uid, request.resource.data.badges)
               || (
                 exists(/databases/$(database)/documents/profiles/$(uid))
                 && request.resource.data.badges
@@ -177,6 +215,17 @@ service cloud.firestore {
             && request.resource.data.normalizedUsername == request.resource.data.username.lower()
             && exists(/databases/$(database)/documents/usernames/$(request.resource.data.normalizedUsername))
             && get(/databases/$(database)/documents/usernames/$(request.resource.data.normalizedUsername)).data.uid == uid
+            // A regular account renames once every 48 hours; a verified or
+            // developer account renames freely. Documents written before this
+            // field existed are allowed their first change.
+            && (
+              isAdmin()
+              || hasOfficialBadge(uid)
+              || !('usernameChangedAt' in resource.data)
+              || request.time
+                  > resource.data.usernameChangedAt + duration.value(48, 'h')
+            )
+            && request.resource.data.usernameChangedAt is timestamp
           )
         );
 
@@ -297,6 +346,15 @@ service cloud.firestore {
         && (
           isAdmin()
           || request.resource.data.badges == resource.data.badges
+          || badgeOverrideMatches(uid, request.resource.data.badges)
+          // The mirror may copy the badges the owner document already holds,
+          // which is how a grant made only in the console reaches the mirror.
+          || (
+            exists(/databases/$(database)/documents/users/$(uid))
+            && ('badges' in get(/databases/$(database)/documents/users/$(uid)).data)
+            && request.resource.data.badges
+                == get(/databases/$(database)/documents/users/$(uid)).data.badges
+          )
         );
 
       allow delete: if isSelf(uid) || isAdmin();
@@ -469,6 +527,17 @@ service cloud.firestore {
         allow create: if signedIn() && viewerId == request.auth.uid;
         allow update, delete: if false;
       }
+    }
+
+    // ------------------------------------------------------------ badges
+    // Administrator-granted official marks. Readable by every signed-in user
+    // so a handle shows its gold seal or blue developer mark everywhere, and
+    // writable only by an administrator (the console bypasses these rules).
+    //
+    // Shape: `{verified: bool, developer: bool}`.
+    match /badges/{uid} {
+      allow get, list: if signedIn();
+      allow write: if isAdmin();
     }
 
     // ----------------------------------------------------------- reports

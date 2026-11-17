@@ -14,6 +14,7 @@ import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/app_notification.dart';
 import '../../data/models/social_notification.dart';
+import '../social/user_handle.dart';
 
 /// Everything the viewer needs to catch up: new episodes discovered on the
 /// device and replies other members wrote on their comments.
@@ -220,6 +221,13 @@ class _ReplyTile extends StatelessWidget {
                           ),
                         ),
                     ],
+                  ),
+                  const SizedBox(height: 2),
+                  UserHandle(
+                    uid: notification.actorUid,
+                    username: notification.actorUsername,
+                    badges: notification.badges,
+                    style: context.text.labelSmall,
                   ),
                   const SizedBox(height: 3),
                   Text(

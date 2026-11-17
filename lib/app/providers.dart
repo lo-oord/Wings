@@ -647,6 +647,10 @@ class AuthController extends Notifier<AuthUser?> {
   String? _syncedUid;
   DateTime? _lastSync;
 
+  /// Watches the administrator-managed badge document of the signed-in
+  /// account, so a grant appears without relaunching the app.
+  StreamSubscription<ProfileBadges?>? _badgesSubscription;
+
   /// Links (or re-pulls) the cloud copy of the library.
   ///
   /// Restoring a saved Firebase session never went through `AccountService`, so
@@ -691,6 +695,9 @@ class AuthController extends Notifier<AuthUser?> {
     final repository = ref.watch(authRepositoryProvider);
     final subscription = repository.authChanges.listen(_onAuthChanged);
     ref.onDispose(subscription.cancel);
+    ref.onDispose(() {
+      _badgesSubscription?.cancel();
+    });
     final current = repository.currentUser;
     if (current != null) {
       Future<void>.microtask(() => _refresh(current));
@@ -700,11 +707,47 @@ class AuthController extends Notifier<AuthUser?> {
 
   Future<void> _onAuthChanged(AuthUser? user) async {
     if (user == null) {
+      await _badgesSubscription?.cancel();
+      _badgesSubscription = null;
       ref.read(profileProvider.notifier).apply(null);
       state = null;
       return;
     }
     await _refresh(user);
+  }
+
+  /// Keeps the signature of the signed-in account live. An administrator grant
+  /// (or a removal) is applied to the profile, copied into both profile
+  /// documents and pushed onto every existing comment of the account.
+  void _watchBadges(String uid) {
+    _badgesSubscription?.cancel();
+    _badgesSubscription = ref
+        .read(userRepositoryProvider)
+        .watchBadges(uid)
+        .listen(
+          (badges) {
+            if (badges == null) return;
+            final current = ref.read(profileProvider);
+            if (current == null || current.badges == badges) return;
+            final next = current.copyWith(badges: badges);
+            ref.read(profileProvider.notifier).apply(next);
+            unawaited(ref.read(socialRepositoryProvider).syncAuthor(next));
+            unawaited(_publishBadges(next));
+          },
+          onError: (Object _) {
+            // Badge rules not published yet: the stored copies keep working.
+          },
+        );
+  }
+
+  Future<void> _publishBadges(UserProfile profile) async {
+    try {
+      await ref
+          .read(userRepositoryProvider)
+          .publishBadges(profile.uid, profile.badges);
+    } on Object {
+      // Offline or denied; the badge document stays authoritative.
+    }
   }
 
   /// Loads the profile document so screens always read the authoritative
@@ -722,6 +765,7 @@ class AuthController extends Notifier<AuthUser?> {
         // authoritative source for the signature that colours a handle.
         profile = await _withPublicBadges(profile);
         ref.read(profileProvider.notifier).apply(profile);
+        _watchBadges(profile.uid);
         state = user.copyWith(
           displayName: profile.displayName,
           username: profile.username,
@@ -742,13 +786,20 @@ class AuthController extends Notifier<AuthUser?> {
     await _afterAccountReady();
   }
 
+  /// Combines the stored copies of the badges. The public mirror can carry a
+  /// grant that the owner document has not received yet, and the badge
+  /// document (when present) is already applied by the repository, so a union
+  /// never drops a mark an administrator gave.
   Future<UserProfile> _withPublicBadges(UserProfile profile) async {
     try {
       final public = await ref
           .read(userRepositoryProvider)
           .fetchPublic(profile.uid);
-      if (public != null && public.badges != profile.badges) {
-        return profile.copyWith(badges: public.badges);
+      if (public != null) {
+        final badges = profile.badges.merge(public.badges);
+        if (badges != profile.badges) {
+          return profile.copyWith(badges: badges);
+        }
       }
     } on Object {
       // Public mirror unavailable: keep the owner document's badges.
@@ -956,6 +1007,8 @@ class AuthController extends Notifier<AuthUser?> {
   Future<void> signOut() async {
     _syncedUid = null;
     _lastSync = null;
+    await _badgesSubscription?.cancel();
+    _badgesSubscription = null;
     final service = ref.read(accountServiceProvider);
     if (service != null) {
       await service.signOut();

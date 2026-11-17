@@ -46,8 +46,29 @@ abstract final class Motion {
 
 /// Brand colours that are identical in light and dark mode (official badges).
 abstract final class BrandColors {
-  /// The gold used for verified and developer handles and their badges.
+  /// The gold of a verified handle, its seal and its profile frame.
   static const Color gold = Color(0xFFE3B341);
+
+  /// The deep gold used for the second stop of the royal gradient.
+  static const Color goldDeep = Color(0xFFB8860B);
+
+  /// The blue mark of a developer account.
+  static const Color developerBlue = Color(0xFF2F80ED);
+
+  /// The red handle of a developer account.
+  static const Color developerRed = Color(0xFFE5484D);
+
+  /// The royal purple that starts the gradient of an account that is both
+  /// verified and a developer.
+  static const Color royalPurple = Color(0xFF8B5CF6);
+
+  /// Gold → royal → gold sweep used by the "both badges" handle.
+  static const LinearGradient royalGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: <Color>[royalPurple, gold, goldDeep, royalPurple],
+    stops: <double>[0, 0.35, 0.65, 1],
+  );
 
   static const Color googleBlue = Color(0xFF4285F4);
 

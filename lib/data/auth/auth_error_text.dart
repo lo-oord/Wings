@@ -214,6 +214,11 @@ String? _byCode(BuildContext context, String code) => switch (code) {
     ar: 'اسم المستخدم غير صالح. استخدم 3–20 حرفًا إنجليزيًا أو رقمًا أو _.',
     en: 'Invalid username. Use 3–20 English letters, numbers or underscores.',
   ),
+  'username-cooldown' => Tr.of(
+    context,
+    ar: 'يمكن تغيير اسم المستخدم مرة واحدة كل 48 ساعة. الحسابات الموثقة والمطورة فقط تغيّره بحرية.',
+    en: 'A username can be changed once every 48 hours. Only verified and developer accounts change it freely.',
+  ),
   'username-unavailable' => Tr.of(
     context,
     ar: 'تعذر إيجاد اسم مستخدم متاح. حاول مرة أخرى.',

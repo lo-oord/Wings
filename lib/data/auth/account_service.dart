@@ -298,9 +298,20 @@ class AccountService {
         technical: 'username-invalid',
       );
     }
+    // Regular accounts rename once every 48 hours; a verified or developer
+    // account may rename as often as it likes. The rule mirrors this check, so
+    // a tampered client cannot skip the wait.
+    final now = DateTime.now();
+    if (!profile.canChangeUsernameAt(now)) {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'username-cooldown',
+      );
+    }
     final next = profile.copyWith(
       username: username.trim(),
-      updatedAt: DateTime.now(),
+      usernameChangedAt: now,
+      updatedAt: now,
     );
     final previous = profile.normalizedUsername;
     await _usernames.claim(uid: profile.uid, normalized: validation.normalized);

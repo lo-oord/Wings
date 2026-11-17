@@ -28,7 +28,7 @@ class _WingsSkeletonState extends State<WingsSkeleton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1400),
+    duration: const Duration(milliseconds: 1250),
   )..repeat();
 
   @override
@@ -41,36 +41,104 @@ class _WingsSkeletonState extends State<WingsSkeleton>
   Widget build(BuildContext context) {
     final palette = context.palette;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    Widget block(double t) {
-      final center = -0.4 + t * 1.8;
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: widget.borderRadius,
-          gradient: LinearGradient(
-            begin: Alignment(center - 0.6, 0),
-            end: Alignment(center + 0.6, 0),
-            colors: <Color>[
-              palette.skeletonBase,
-              palette.skeletonHighlight,
-              palette.skeletonBase,
-            ],
-            stops: const <double>[0.25, 0.5, 0.75],
+    // The shimmer is painted, never rebuilt: one repaint per frame instead of
+    // rebuilding a gradient widget tree, which is what made a screen full of
+    // placeholders janky on the first frame.
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: CustomPaint(
+          painter: _ShimmerPainter(
+            base: palette.skeletonBase,
+            highlight: palette.skeletonHighlight,
+            border: palette.border,
+            borderRadius: widget.borderRadius,
+            animation: _controller,
+            still: reduceMotion,
           ),
-        ),
-        child: SizedBox(
-          width: widget.width,
-          height: widget.height,
           child: widget.child,
         ),
-      );
-    }
-
-    if (reduceMotion) return block(0.5);
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) => block(_controller.value),
+      ),
     );
   }
+}
+
+/// Paints the rounded placeholder and a diagonal highlight sweeping across it.
+///
+/// Repainting is driven by the animation through [CustomPainter.repaint], so no
+/// widget is rebuilt while it runs.
+class _ShimmerPainter extends CustomPainter {
+  _ShimmerPainter({
+    required this.base,
+    required this.highlight,
+    required this.border,
+    required this.borderRadius,
+    required this.animation,
+    required this.still,
+  }) : super(repaint: still ? null : animation);
+
+  final Color base;
+  final Color highlight;
+  final Color border;
+  final BorderRadius borderRadius;
+  final Animation<double> animation;
+  final bool still;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final rect = Offset.zero & size;
+    final shape = RRect.fromRectAndCorners(
+      rect,
+      topLeft: borderRadius.topLeft,
+      topRight: borderRadius.topRight,
+      bottomLeft: borderRadius.bottomLeft,
+      bottomRight: borderRadius.bottomRight,
+    );
+    canvas.save();
+    canvas.clipRRect(shape);
+    canvas.drawRect(rect, Paint()..color = base);
+
+    final progress = still ? 0.5 : animation.value;
+    final band = size.width * 0.75;
+    final left = (size.width + band) * progress - band;
+    final sweep = Rect.fromLTWH(
+      left,
+      -size.height * 0.25,
+      band,
+      size.height * 1.5,
+    );
+    final shader = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: <Color>[
+        highlight.withValues(alpha: 0),
+        highlight.withValues(alpha: 0.85),
+        highlight.withValues(alpha: 0),
+      ],
+      stops: const <double>[0.15, 0.5, 0.85],
+    ).createShader(sweep);
+    canvas.drawRect(rect, Paint()..shader = shader);
+    canvas.restore();
+
+    // A hairline edge keeps a placeholder readable on a dark surface where the
+    // base colour is almost the background colour.
+    canvas.drawRRect(
+      shape.deflate(0.5),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = border.withValues(alpha: 0.55),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ShimmerPainter oldDelegate) =>
+      oldDelegate.base != base ||
+      oldDelegate.highlight != highlight ||
+      oldDelegate.border != border ||
+      oldDelegate.still != still;
 }
 
 /// A poster-shaped loading placeholder.
@@ -88,12 +156,16 @@ class WingsPosterSkeleton extends StatelessWidget {
         children: <Widget>[
           AspectRatio(
             aspectRatio: Ratios.poster,
-            child: WingsSkeleton(borderRadius: BorderRadius.circular(Radii.sm)),
+            child: WingsSkeleton(borderRadius: BorderRadius.circular(Radii.md)),
           ),
           const SizedBox(height: Space.sm),
-          const WingsSkeleton(height: 12, width: 120),
+          const WingsSkeleton(
+            height: 12,
+            width: double.infinity,
+            borderRadius: BorderRadius.all(Radius.circular(Radii.xs)),
+          ),
           const SizedBox(height: Space.xs + 2),
-          const WingsSkeleton(height: 10, width: 80),
+          const WingsSkeleton(height: 10, width: 72),
         ],
       ),
     );

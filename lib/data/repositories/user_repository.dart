@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/user_profile.dart';
@@ -18,11 +20,19 @@ class UserRepository {
   static const String usersCollection = 'users';
   static const String profilesCollection = 'profiles';
 
+  /// Administrator-managed official marks. A document here always wins over
+  /// the badge copies in the profile documents, which is what stops a client
+  /// write from turning a fresh grant back to `false`.
+  static const String badgesCollection = 'badges';
+
   DocumentReference<Map<String, dynamic>> _user(String uid) =>
       _db.collection(usersCollection).doc(uid);
 
   DocumentReference<Map<String, dynamic>> _public(String uid) =>
       _db.collection(profilesCollection).doc(uid);
+
+  DocumentReference<Map<String, dynamic>> _badges(String uid) =>
+      _db.collection(badgesCollection).doc(uid);
 
   Stream<UserProfile?> watch(String uid) => _user(uid).snapshots().map(
     (snapshot) => snapshot.exists && snapshot.data() != null
@@ -34,20 +44,90 @@ class UserRepository {
     final snapshot = await _user(uid).get();
     final data = snapshot.data();
     if (!snapshot.exists || data == null) return null;
-    return UserProfile.fromMap(uid, data);
+    final profile = UserProfile.fromMap(uid, data);
+    final badges = await fetchBadges(uid);
+    return badges == null ? profile : profile.copyWith(badges: badges);
   }
 
-  Stream<UserProfile?> watchPublic(String uid) => _public(uid).snapshots().map(
-    (snapshot) => snapshot.exists && snapshot.data() != null
-        ? UserProfile.fromPublicMap(uid, snapshot.data()!)
-        : null,
-  );
+  /// The authoritative badge document, or null when no administrator has
+  /// granted anything yet.
+  Future<ProfileBadges?> fetchBadges(String uid) async {
+    try {
+      final snapshot = await _badges(uid).get();
+      final data = snapshot.data();
+      if (!snapshot.exists || data == null) return null;
+      return ProfileBadges.fromMap(data);
+    } on Object {
+      // Rules not published yet or offline: fall back to the profile copies.
+      return null;
+    }
+  }
+
+  Stream<ProfileBadges?> watchBadges(String uid) =>
+      _badges(uid).snapshots().map((snapshot) {
+        final data = snapshot.data();
+        if (!snapshot.exists || data == null) return null;
+        return ProfileBadges.fromMap(data);
+      });
+
+  /// The public mirror plus the official badges, merged into one stream so a
+  /// handle in a comment picks up both a rename and a new grant immediately.
+  Stream<UserProfile?> watchPublic(String uid) {
+    final controller = StreamController<UserProfile?>();
+    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? profileSub;
+    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? badgeSub;
+    Map<String, dynamic>? profileData;
+    ProfileBadges? badges;
+    var hasProfile = false;
+    var hasBadges = false;
+
+    void emit() {
+      if (!hasProfile) return;
+      final data = profileData;
+      if (data == null) {
+        controller.add(null);
+        return;
+      }
+      var profile = UserProfile.fromPublicMap(uid, data);
+      if (hasBadges && badges != null) {
+        profile = profile.copyWith(badges: badges);
+      }
+      controller.add(profile);
+    }
+
+    controller.onListen = () {
+      profileSub = _public(uid).snapshots().listen((snapshot) {
+        hasProfile = true;
+        profileData = snapshot.data();
+        emit();
+      }, onError: controller.addError);
+      // A missing or unreadable badge document never breaks the profile; the
+      // stored badges keep rendering until the rules are published.
+      badgeSub = _badges(uid).snapshots().listen((snapshot) {
+        hasBadges = true;
+        final data = snapshot.data();
+        badges = snapshot.exists && data != null
+            ? ProfileBadges.fromMap(data)
+            : null;
+        emit();
+      }, onError: (Object _) {});
+    };
+    controller.onCancel = () async {
+      await profileSub?.cancel();
+      await badgeSub?.cancel();
+      profileSub = null;
+      badgeSub = null;
+    };
+    return controller.stream;
+  }
 
   Future<UserProfile?> fetchPublic(String uid) async {
     final snapshot = await _public(uid).get();
     final data = snapshot.data();
     if (!snapshot.exists || data == null) return null;
-    return UserProfile.fromPublicMap(uid, data);
+    final profile = UserProfile.fromPublicMap(uid, data);
+    final badges = await fetchBadges(uid);
+    return badges == null ? profile : profile.copyWith(badges: badges);
   }
 
   /// Creates the owner document, its public mirror and the stats document.
@@ -143,5 +223,16 @@ class UserRepository {
       'normalizedUsername': username.trim().toLowerCase(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  /// Copies the official badges into the two profile documents so the stored
+  /// snapshots on existing comments are refreshed by [SocialRepository].
+  Future<void> publishBadges(String uid, ProfileBadges badges) async {
+    final batch = _db.batch();
+    batch.update(_user(uid), <String, dynamic>{'badges': badges.toMap()});
+    batch.set(_public(uid), <String, dynamic>{
+      'badges': badges.toMap(),
+    }, SetOptions(merge: true));
+    await batch.commit();
   }
 }

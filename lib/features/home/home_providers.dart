@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
@@ -45,10 +47,66 @@ class HomeFeed {
 
 class HomeFeedController extends AsyncNotifier<HomeFeed> {
   bool _loadingMore = false;
+  bool _disposed = false;
+
+  /// Last successful feed, so a cold start paints real content on the first
+  /// frame instead of holding a skeleton for as long as the network needs.
+  static const String _cacheKey = 'home_feed_v1';
 
   @override
   Future<HomeFeed> build() async {
-    final repository = ref.watch(animeRepositoryProvider);
+    _disposed = false;
+    ref.onDispose(() => _disposed = true);
+    final cached = _readCache();
+    if (cached != null) {
+      // The cached feed is shown at once; the network copy replaces it in the
+      // background as soon as it arrives.
+      unawaited(_refreshFromNetwork());
+      return cached;
+    }
+    return _fetch();
+  }
+
+  Future<void> _refreshFromNetwork() async {
+    try {
+      final fresh = await _fetch();
+      if (_disposed) return;
+      state = AsyncData(fresh);
+    } on Object {
+      // Keep the cached feed when the catalogue is unreachable.
+    }
+  }
+
+  HomeFeed? _readCache() {
+    try {
+      final raw = ref
+          .read(localStoreProvider)
+          .readCache(_cacheKey, allowStale: true);
+      if (raw is! Map) return null;
+      return _feedFromJson(raw.cast<String, dynamic>());
+    } on Object {
+      return null;
+    }
+  }
+
+  void _writeCache(HomeFeed feed) {
+    try {
+      unawaited(
+        ref
+            .read(localStoreProvider)
+            .putCache(
+              _cacheKey,
+              _feedToJson(feed),
+              ttl: const Duration(minutes: 15),
+            ),
+      );
+    } on Object {
+      // A cache write never blocks the feed.
+    }
+  }
+
+  Future<HomeFeed> _fetch() async {
+    final repository = ref.read(animeRepositoryProvider);
     final favorites = ref.read(libraryProvider).favorites;
 
     final results = await Future.wait<Object>(<Future<Object>>[
@@ -93,7 +151,7 @@ class HomeFeedController extends AsyncNotifier<HomeFeed> {
       }
     }
 
-    return HomeFeed(
+    final feed = HomeFeed(
       featured: featured,
       featuredEpisode: featuredEpisode,
       latest: latest.items,
@@ -106,11 +164,13 @@ class HomeFeedController extends AsyncNotifier<HomeFeed> {
       latestHasMore: latest.hasMore,
       latestPage: latest.page,
     );
+    _writeCache(feed);
+    return feed;
   }
 
   Future<void> refresh() async {
     final previous = state;
-    final result = await AsyncValue.guard(build);
+    final result = await AsyncValue.guard(_fetch);
     if (result.hasValue) {
       state = result;
     } else if (!previous.hasValue) {
@@ -139,6 +199,79 @@ class HomeFeedController extends AsyncNotifier<HomeFeed> {
       _loadingMore = false;
     }
   }
+}
+
+Map<String, dynamic> _feedToJson(HomeFeed feed) => <String, dynamic>{
+  'latest': <Map<String, dynamic>>[
+    for (final item in feed.latest)
+      <String, dynamic>{
+        'anime': item.anime.toJson(),
+        'episode': item.episode.toJson(),
+        if (item.releasedAt != null)
+          'releasedAt': item.releasedAt!.toIso8601String(),
+      },
+  ],
+  'recentlyAdded': feed.recentlyAdded.map((anime) => anime.toJson()).toList(),
+  'popular': feed.popular.map((anime) => anime.toJson()).toList(),
+  'recommended': feed.recommended.map((anime) => anime.toJson()).toList(),
+  'hasMore': feed.latestHasMore,
+  'page': feed.latestPage,
+};
+
+HomeFeed? _feedFromJson(Map<String, dynamic> raw) {
+  List<Anime> readAnime(Object? value) {
+    if (value is! List) return const <Anime>[];
+    return value
+        .whereType<Map>()
+        .map((item) => Anime.fromJson(item.cast<String, dynamic>()))
+        .where((anime) => anime.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  final latest = <LatestEpisode>[];
+  final rawLatest = raw['latest'];
+  if (rawLatest is List) {
+    for (final item in rawLatest.whereType<Map>()) {
+      final map = item.cast<String, dynamic>();
+      final anime = map['anime'];
+      final episode = map['episode'];
+      if (anime is! Map || episode is! Map) continue;
+      latest.add(
+        LatestEpisode(
+          anime: Anime.fromJson(anime.cast<String, dynamic>()),
+          episode: AnimeEpisode.fromJson(episode.cast<String, dynamic>()),
+          releasedAt: map['releasedAt'] is String
+              ? DateTime.tryParse(map['releasedAt'] as String)
+              : null,
+        ),
+      );
+    }
+  }
+
+  final recentlyAdded = readAnime(raw['recentlyAdded']);
+  final popular = readAnime(raw['popular']);
+  final recommended = readAnime(raw['recommended']);
+  if (recentlyAdded.isEmpty && latest.isEmpty && popular.isEmpty) return null;
+  final featured = recentlyAdded.isNotEmpty
+      ? recentlyAdded.first
+      : (latest.isNotEmpty ? latest.first.anime : null);
+  AnimeEpisode? featuredEpisode;
+  for (final item in latest) {
+    if (item.anime.id == featured?.id) {
+      featuredEpisode = item.episode;
+      break;
+    }
+  }
+  return HomeFeed(
+    featured: featured,
+    featuredEpisode: featuredEpisode,
+    latest: latest,
+    recentlyAdded: recentlyAdded,
+    popular: popular,
+    recommended: recommended,
+    latestHasMore: raw['hasMore'] == true,
+    latestPage: (raw['page'] as num?)?.toInt() ?? 0,
+  );
 }
 
 final homeFeedProvider = AsyncNotifierProvider<HomeFeedController, HomeFeed>(

@@ -11,7 +11,7 @@ import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/social.dart';
 import '../profile/avatar_view.dart';
-import 'username_text.dart';
+import 'user_handle.dart';
 
 /// One comment and its replies, shared by the player preview and the full
 /// comments page so the two never drift apart.
@@ -71,7 +71,8 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                   Row(
                     children: <Widget>[
                       Flexible(
-                        child: UsernameText(
+                        child: UserHandle(
+                          uid: comment.authorUid,
                           username: comment.authorUsername,
                           badges: comment.badges,
                           onTap: () =>
@@ -184,7 +185,8 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: <Widget>[
-                                          UsernameText(
+                                          UserHandle(
+                                            uid: reply.authorUid,
                                             username: reply.authorUsername,
                                             badges: reply.badges,
                                             style: context.text.labelSmall,

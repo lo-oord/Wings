@@ -95,11 +95,15 @@ class _Body extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: palette.background, width: 3),
                 ),
-                child: UserAvatar(
-                  uid: profile.uid,
-                  photoVersion: profile.photoVersion,
-                  name: profile.displayName,
-                  size: 84,
+                child: ProfileAvatarFrame(
+                  badges: profile.badges,
+                  padding: 3,
+                  child: UserAvatar(
+                    uid: profile.uid,
+                    photoVersion: profile.photoVersion,
+                    name: profile.displayName,
+                    size: 84,
+                  ),
                 ),
               ),
               const SizedBox(height: Space.sm),

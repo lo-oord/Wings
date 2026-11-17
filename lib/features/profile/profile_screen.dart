@@ -121,12 +121,15 @@ class ProfileScreen extends ConsumerWidget {
               children: <Widget>[
                 GestureDetector(
                   onTap: user == null ? null : () => _pickAvatar(context, ref),
-                  child: UserAvatar(
-                    uid: user?.id ?? '',
-                    photoVersion: profile?.photoVersion ?? 0,
-                    name: user?.displayName ?? '',
-                    size: 72,
-                    localPath: null,
+                  child: ProfileAvatarFrame(
+                    badges: profile?.badges ?? ProfileBadges.none,
+                    child: UserAvatar(
+                      uid: user?.id ?? '',
+                      photoVersion: profile?.photoVersion ?? 0,
+                      name: user?.displayName ?? '',
+                      size: 72,
+                      localPath: null,
+                    ),
                   ),
                 ),
                 const SizedBox(width: Space.lg),
@@ -291,7 +294,7 @@ class ProfileScreen extends ConsumerWidget {
                     ar: 'تغيير اسم المستخدم',
                     en: 'Change username',
                   ),
-                  subtitle: '@${profile?.username ?? user.username}',
+                  subtitle: _usernameSubtitle(context, profile),
                   showChevron: true,
                   onTap: () => _changeUsername(context, ref),
                 ),
@@ -620,10 +623,49 @@ class ProfileScreen extends ConsumerWidget {
     bio.dispose();
   }
 
-  Future<void> _changeUsername(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(
-      text: ref.read(profileProvider)?.username ?? '',
+  /// Either the current handle or, while the 48-hour cooldown runs, how long
+  /// until the next change is allowed.
+  String _usernameSubtitle(BuildContext context, UserProfile? profile) {
+    if (profile == null) return '@';
+    final next = profile.nextUsernameChangeAt;
+    final label = '@${profile.username}';
+    if (next == null) {
+      return profile.freeUsernameChanges
+          ? Tr.of(
+              context,
+              ar: '$label · تغيير غير محدود',
+              en: '$label · unlimited changes',
+            )
+          : label;
+    }
+    final remaining = next.difference(DateTime.now());
+    final hours = (remaining.inMinutes / 60).ceil().clamp(1, 48);
+    return Tr.of(
+      context,
+      ar: '$label · التغيير متاح بعد $hours ساعة',
+      en: '$label · change available in ${hours}h',
     );
+  }
+
+  Future<void> _changeUsername(BuildContext context, WidgetRef ref) async {
+    final profile = ref.read(profileProvider);
+    if (profile != null && !profile.canChangeUsernameAt(DateTime.now())) {
+      final next = profile.nextUsernameChangeAt;
+      final remaining = next == null
+          ? const Duration(hours: 48)
+          : next.difference(DateTime.now());
+      final hours = (remaining.inMinutes / 60).ceil().clamp(1, 48);
+      context.showSnack(
+        Tr.of(
+          context,
+          ar: 'يمكن تغيير اسم المستخدم مرة كل 48 ساعة. المتاح بعد $hours ساعة.',
+          en: 'A username can be changed once every 48 hours. Available in ${hours}h.',
+        ),
+        isError: true,
+      );
+      return;
+    }
+    final controller = TextEditingController(text: profile?.username ?? '');
     var available = false;
     final accepted = await showDialog<bool>(
       context: context,
