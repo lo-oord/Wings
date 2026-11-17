@@ -8,6 +8,7 @@ import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/tr.dart';
+import '../../core/widgets/wings_layout.dart';
 import '../../data/models/social.dart';
 import '../profile/avatar_view.dart';
 import 'username_text.dart';
@@ -98,20 +99,9 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    comment.isDeleted
-                        ? Tr.of(
-                            context,
-                            ar: 'تم حذف هذا التعليق.',
-                            en: 'This comment was deleted.',
-                          )
-                        : comment.text,
+                    comment.text,
                     style: context.text.bodySmall?.copyWith(
-                      color: comment.isDeleted
-                          ? palette.textMuted
-                          : palette.textPrimary,
-                      fontStyle: comment.isDeleted
-                          ? FontStyle.italic
-                          : FontStyle.normal,
+                      color: palette.textPrimary,
                       height: 1.55,
                     ),
                   ),
@@ -203,18 +193,10 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                                             ),
                                           ),
                                           Text(
-                                            reply.isDeleted
-                                                ? Tr.of(
-                                                    context,
-                                                    ar: 'تم حذف هذا الرد.',
-                                                    en: 'This reply was deleted.',
-                                                  )
-                                                : reply.text,
+                                            reply.text,
                                             style: context.text.bodySmall
                                                 ?.copyWith(
-                                                  color: reply.isDeleted
-                                                      ? palette.textMuted
-                                                      : palette.textSecondary,
+                                                  color: palette.textSecondary,
                                                 ),
                                           ),
                                         ],
@@ -350,16 +332,41 @@ class _CommentTileState extends ConsumerState<CommentTile> {
         }
         break;
       case 'delete':
-        if (user == null) return;
-        await repository.deleteComment(
-          episodeId: widget.comment.episodeId,
-          commentId: widget.comment.id,
-          uid: user.id,
+        if (user == null || !mounted) return;
+        final confirmed = await WingsDialog.confirm(
+          context,
+          title: Tr.of(context, ar: 'حذف التعليق', en: 'Delete comment'),
+          message: Tr.of(
+            context,
+            ar: 'سيختفي التعليق نهائيًا مع كل الردود الموجودة تحته. لا يمكن التراجع.',
+            en: 'The comment and every reply under it will disappear for good. This cannot be undone.',
+          ),
+          confirmLabel: Tr.of(context, ar: 'حذف', en: 'Delete'),
+          destructive: true,
         );
-        if (mounted) {
-          context.showSnack(
-            Tr.of(context, ar: 'تم حذف التعليق', en: 'Deleted'),
+        if (!confirmed) return;
+        try {
+          await repository.deleteComment(
+            episodeId: widget.comment.episodeId,
+            commentId: widget.comment.id,
+            uid: user.id,
           );
+          if (mounted) {
+            context.showSnack(
+              Tr.of(context, ar: 'تم حذف التعليق', en: 'Deleted'),
+            );
+          }
+        } on Object {
+          if (mounted) {
+            context.showSnack(
+              Tr.of(
+                context,
+                ar: 'تعذر حذف التعليق. تحقق من الاتصال وحاول مجددًا.',
+                en: 'Could not delete the comment. Check your connection and try again.',
+              ),
+              isError: true,
+            );
+          }
         }
         break;
       case 'report':

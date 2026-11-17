@@ -48,6 +48,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   PlaybackSession? _session;
   bool _viewRegistered = false;
+  Timer? _viewTimer;
 
   /// Position to restore when the floating player is expanded again, so the
   /// viewer continues exactly where they were instead of restarting.
@@ -269,13 +270,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (!mounted) return;
       setState(() => _loading = false);
       if (!_viewRegistered) {
-        _viewRegistered = true;
-        // Counted once per device window, after a stream actually opened.
-        unawaited(
-          ref
-              .read(viewsRepositoryProvider)
-              .registerPlayback(episodeId: episode.id, animeId: anime.id),
-        );
+        // A view is only counted for a signed-in account and only after the
+        // stream has been running for a moment, so opening and closing an
+        // episode by mistake no longer inflates the counter. The repository
+        // also stores one viewer document per account, so repeats are free.
+        final uid = ref.read(authProvider)?.id ?? '';
+        if (uid.isNotEmpty) {
+          _viewTimer?.cancel();
+          _viewTimer = Timer(const Duration(seconds: 15), () {
+            if (!mounted || _viewRegistered) return;
+            _viewRegistered = true;
+            unawaited(
+              ref
+                  .read(viewsRepositoryProvider)
+                  .registerPlayback(
+                    episodeId: episode.id,
+                    animeId: anime.id,
+                    uid: uid,
+                  ),
+            );
+          });
+        }
       }
     } on Object catch (error) {
       if (!mounted) return;
@@ -505,6 +520,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _saveTimer?.cancel();
+    _viewTimer?.cancel();
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -54,8 +55,11 @@ class WelcomeScreen extends ConsumerStatefulWidget {
 
 class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   bool _googleLoading = false;
+  bool _guestLoading = false;
 
   Future<void> _continueAsGuest() async {
+    if (_guestLoading) return;
+    setState(() => _guestLoading = true);
     await ref.read(settingsProvider.notifier).enterGuestMode();
     if (mounted) context.go(RoutePaths.latest);
   }
@@ -85,60 +89,80 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     final l10n = AppLocalizations.of(context);
     final palette = context.palette;
 
+    final busy = _googleLoading || _guestLoading;
     return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(Space.xl),
-          child: Column(
-            children: <Widget>[
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: WingsIconButton(
-                  icon: Icons.close_rounded,
-                  onPressed: () => context.go(RoutePaths.latest),
-                ),
+      body: Stack(
+        children: <Widget>[
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(Space.xl),
+              child: Column(
+                children: <Widget>[
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: WingsIconButton(
+                      icon: Icons.close_rounded,
+                      // Closing the sign-in gate continues as a guest: simply
+                      // going home would bounce straight back to this screen.
+                      onPressed: busy ? null : _continueAsGuest,
+                    ),
+                  ),
+                  const Spacer(),
+                  WingsMark(size: 116),
+                  const SizedBox(height: Space.xl),
+                  Text(
+                    l10n.authWelcomeTitle,
+                    textAlign: TextAlign.center,
+                    style: context.text.headlineMedium,
+                  ),
+                  const SizedBox(height: Space.sm),
+                  Text(
+                    l10n.authWelcomeBody,
+                    textAlign: TextAlign.center,
+                    style: context.text.bodyMedium?.copyWith(
+                      color: palette.textSecondary,
+                      height: 1.7,
+                    ),
+                  ),
+                  const Spacer(),
+                  GoogleSignInButton(
+                    loading: _googleLoading,
+                    onPressed: busy ? null : _google,
+                  ),
+                  const SizedBox(height: Space.sm),
+                  WingsButton(
+                    label: l10n.authRegister,
+                    expand: true,
+                    icon: Icons.person_add_alt_1_rounded,
+                    onPressed: busy
+                        ? null
+                        : () => context.push(RoutePaths.register),
+                  ),
+                  const SizedBox(height: Space.sm),
+                  WingsButton(
+                    label: l10n.authLogin,
+                    variant: WingsButtonVariant.outline,
+                    expand: true,
+                    loading: _guestLoading,
+                    onPressed: busy
+                        ? null
+                        : () => context.push(RoutePaths.login),
+                  ),
+                  const SizedBox(height: Space.sm),
+                  TextButton(
+                    onPressed: busy ? null : _continueAsGuest,
+                    child: Text(l10n.authContinueGuest),
+                  ),
+                ],
               ),
-              const Spacer(),
-              WingsMark(size: 116),
-              const SizedBox(height: Space.xl),
-              Text(
-                l10n.authWelcomeTitle,
-                textAlign: TextAlign.center,
-                style: context.text.headlineMedium,
-              ),
-              const SizedBox(height: Space.sm),
-              Text(
-                l10n.authWelcomeBody,
-                textAlign: TextAlign.center,
-                style: context.text.bodyMedium?.copyWith(
-                  color: palette.textSecondary,
-                  height: 1.7,
-                ),
-              ),
-              const Spacer(),
-              GoogleSignInButton(onPressed: _googleLoading ? null : _google),
-              const SizedBox(height: Space.sm),
-              WingsButton(
-                label: l10n.authRegister,
-                expand: true,
-                icon: Icons.person_add_alt_1_rounded,
-                onPressed: () => context.push(RoutePaths.register),
-              ),
-              const SizedBox(height: Space.sm),
-              WingsButton(
-                label: l10n.authLogin,
-                variant: WingsButtonVariant.outline,
-                expand: true,
-                onPressed: () => context.push(RoutePaths.login),
-              ),
-              const SizedBox(height: Space.sm),
-              TextButton(
-                onPressed: _continueAsGuest,
-                child: Text(l10n.authContinueGuest),
-              ),
-            ],
+            ),
           ),
-        ),
+          if (_googleLoading)
+            const _AuthBusyOverlay(
+              message: 'جارٍ تسجيل الدخول…',
+              messageEn: 'Signing you in…',
+            ),
+        ],
       ),
     );
   }
@@ -282,15 +306,56 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ],
           ),
-          if (_error != null) ...<Widget>[
-            const SizedBox(height: Space.sm),
-            Text(
-              _error!,
-              style: context.text.bodySmall?.copyWith(
-                color: context.palette.danger,
-              ),
+          const SizedBox(height: Space.sm),
+          AnimatedSize(
+            duration: Motion.fast,
+            curve: Motion.standard,
+            alignment: AlignmentDirectional.topCenter,
+            child: AnimatedSwitcher(
+              duration: Motion.fast,
+              child: _error == null
+                  ? const SizedBox.shrink(key: ValueKey<String>('no-error'))
+                  : Padding(
+                      key: ValueKey<String>(_error!),
+                      padding: const EdgeInsets.only(top: Space.xs),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Space.md,
+                          vertical: Space.sm,
+                        ),
+                        decoration: BoxDecoration(
+                          color: context.palette.danger.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(Radii.sm),
+                          border: Border.all(
+                            color: context.palette.danger.withValues(
+                              alpha: 0.35,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Icon(
+                              Icons.error_outline_rounded,
+                              size: 16,
+                              color: context.palette.danger,
+                            ),
+                            const SizedBox(width: Space.xs + 2),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: context.text.bodySmall?.copyWith(
+                                  color: context.palette.danger,
+                                  height: 1.45,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
-          ],
+          ),
           const SizedBox(height: Space.md),
           WingsButton(
             label: l10n.authLogin,
@@ -299,7 +364,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             onPressed: _loading ? null : _submit,
           ),
           const SizedBox(height: Space.md),
-          GoogleSignInButton(onPressed: _loading ? null : _google),
+          GoogleSignInButton(
+            loading: _loading,
+            onPressed: _loading ? null : _google,
+          ),
           const SizedBox(height: Space.md),
           Center(
             child: TextButton(
@@ -439,112 +507,153 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     return Scaffold(
       appBar: WingsAppBar(showBack: true),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl),
-          children: <Widget>[
-            Text(l10n.authRegister, style: context.text.headlineSmall),
-            const SizedBox(height: Space.sm),
-            Text(
-              l10n.authStepOf('${_step + 1}', '$_stepCount'),
-              style: context.text.bodySmall?.copyWith(color: palette.textMuted),
-            ),
-            const SizedBox(height: Space.md),
-            Row(
+      body: Stack(
+        children: <Widget>[
+          Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                Space.xl,
+                0,
+                Space.xl,
+                Space.xl,
+              ),
               children: <Widget>[
-                for (var index = 0; index < _stepCount; index++)
-                  Expanded(
-                    child: AnimatedContainer(
-                      duration: Motion.normal,
-                      curve: Motion.standard,
-                      height: 4,
-                      margin: EdgeInsetsDirectional.only(
-                        end: index == _stepCount - 1 ? 0 : Space.xs,
+                Text(l10n.authRegister, style: context.text.headlineSmall),
+                const SizedBox(height: Space.sm),
+                Text(
+                  l10n.authStepOf('${_step + 1}', '$_stepCount'),
+                  style: context.text.bodySmall?.copyWith(
+                    color: palette.textMuted,
+                  ),
+                ),
+                const SizedBox(height: Space.md),
+                Row(
+                  children: <Widget>[
+                    for (var index = 0; index < _stepCount; index++)
+                      Expanded(
+                        child: AnimatedContainer(
+                          duration: Motion.normal,
+                          curve: Motion.standard,
+                          height: 4,
+                          margin: EdgeInsetsDirectional.only(
+                            end: index == _stepCount - 1 ? 0 : Space.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: index <= _step
+                                ? palette.primary
+                                : palette.surfaceHigh,
+                            borderRadius: BorderRadius.circular(Radii.pill),
+                          ),
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: index <= _step
-                            ? palette.primary
-                            : palette.surfaceHigh,
-                        borderRadius: BorderRadius.circular(Radii.pill),
+                  ],
+                ),
+                const SizedBox(height: Space.xl),
+                AnimatedSize(
+                  duration: Motion.normal,
+                  curve: Motion.standard,
+                  alignment: AlignmentDirectional.topCenter,
+                  child: AnimatedSwitcher(
+                    duration: Motion.normal,
+                    switchInCurve: Motion.enter,
+                    switchOutCurve: Motion.exit,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.03),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: Space.xl),
-            AnimatedSize(
-              duration: Motion.normal,
-              curve: Motion.standard,
-              alignment: AlignmentDirectional.topCenter,
-              child: switch (_step) {
-                0 => _IdentityStep(
-                  name: _name,
-                  username: _username,
-                  onNext: _next,
-                  onAvailability: (value) =>
-                      setState(() => _usernameAvailable = value),
-                ),
-                1 => _CredentialsStep(
-                  email: _email,
-                  password: _password,
-                  confirm: _confirm,
-                ),
-                _ => _ProfileStep(
-                  country: _country,
-                  onCountry: (value) => setState(() => _country = value),
-                  ageGroup: _ageGroup,
-                  onAgeGroup: (value) => setState(() => _ageGroup = value),
-                  avatarPath: _avatarPath,
-                  onPickAvatar: _pickAvatar,
-                  acceptedTerms: _acceptedTerms,
-                  termsError: _termsError,
-                  onTerms: (value) => setState(() {
-                    _acceptedTerms = value;
-                    _termsError = false;
-                  }),
-                ),
-              },
-            ),
-            const SizedBox(height: Space.lg),
-            Row(
-              children: <Widget>[
-                if (_step > 0) ...<Widget>[
-                  Expanded(
-                    child: WingsButton(
-                      label: l10n.commonBack,
-                      variant: WingsButtonVariant.outline,
-                      onPressed: _loading ? null : _back,
+                    child: KeyedSubtree(
+                      key: ValueKey<int>(_step),
+                      child: switch (_step) {
+                        0 => _IdentityStep(
+                          name: _name,
+                          username: _username,
+                          onNext: _next,
+                          onAvailability: (value) =>
+                              setState(() => _usernameAvailable = value),
+                        ),
+                        1 => _CredentialsStep(
+                          email: _email,
+                          password: _password,
+                          confirm: _confirm,
+                        ),
+                        _ => _ProfileStep(
+                          country: _country,
+                          onCountry: (value) =>
+                              setState(() => _country = value),
+                          ageGroup: _ageGroup,
+                          onAgeGroup: (value) =>
+                              setState(() => _ageGroup = value),
+                          avatarPath: _avatarPath,
+                          onPickAvatar: _pickAvatar,
+                          acceptedTerms: _acceptedTerms,
+                          termsError: _termsError,
+                          onTerms: (value) => setState(() {
+                            _acceptedTerms = value;
+                            _termsError = false;
+                          }),
+                        ),
+                      },
                     ),
                   ),
-                  const SizedBox(width: Space.sm),
-                ],
-                Expanded(
-                  flex: 2,
-                  child: WingsButton(
-                    label: _step == _stepCount - 1
-                        ? l10n.authRegister
-                        : l10n.commonNext,
-                    expand: true,
-                    loading: _loading,
+                ),
+                const SizedBox(height: Space.lg),
+                Row(
+                  children: <Widget>[
+                    if (_step > 0) ...<Widget>[
+                      Expanded(
+                        child: WingsButton(
+                          label: l10n.commonBack,
+                          variant: WingsButtonVariant.outline,
+                          onPressed: _loading ? null : _back,
+                        ),
+                      ),
+                      const SizedBox(width: Space.sm),
+                    ],
+                    Expanded(
+                      flex: 2,
+                      child: WingsButton(
+                        label: _step == _stepCount - 1
+                            ? l10n.authRegister
+                            : l10n.commonNext,
+                        expand: true,
+                        loading: _loading,
+                        onPressed: _loading
+                            ? null
+                            : (_step == _stepCount - 1 ? _submit : _next),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: Space.md),
+                GoogleSignInButton(
+                  loading: _loading,
+                  onPressed: _loading ? null : _google,
+                ),
+                const SizedBox(height: Space.sm),
+                Center(
+                  child: TextButton(
                     onPressed: _loading
                         ? null
-                        : (_step == _stepCount - 1 ? _submit : _next),
+                        : () => context.pushReplacement(RoutePaths.login),
+                    child: Text(l10n.authHaveAccount),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: Space.md),
-            GoogleSignInButton(onPressed: _loading ? null : _google),
-            const SizedBox(height: Space.sm),
-            Center(
-              child: TextButton(
-                onPressed: () => context.pushReplacement(RoutePaths.login),
-                child: Text(l10n.authHaveAccount),
-              ),
+          ),
+          if (_loading)
+            const _AuthBusyOverlay(
+              message: 'جارٍ إنشاء حسابك…',
+              messageEn: 'Creating your account…',
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -917,8 +1026,43 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
 
   bool _sending = false;
   bool _checking = false;
+  bool _autoChecked = false;
   DateTime? _lastSent;
   String? _message;
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // The account verifies in the background while the reader is on another
+    // device or app. A quiet poll moves them on as soon as the link is used,
+    // instead of leaving them on a screen that looks stuck.
+    _pollTimer = Timer.periodic(const Duration(seconds: 6), (_) => _poll());
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _poll() async {
+    if (!mounted || _checking || _sending || _autoChecked) return;
+    _autoChecked = true;
+    try {
+      final verified = await ref
+          .read(authProvider.notifier)
+          .refreshEmailVerification();
+      if (verified && mounted) {
+        context.go(RoutePaths.profile);
+        return;
+      }
+    } on Object {
+      // Offline: the next tick tries again.
+    } finally {
+      _autoChecked = false;
+    }
+  }
 
   Future<void> _resend() async {
     final last = _lastSent;
@@ -1083,14 +1227,18 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
 
 /// "Continue with Google" button used on the login and welcome screens.
 class GoogleSignInButton extends StatelessWidget {
-  const GoogleSignInButton({super.key, this.onPressed});
+  const GoogleSignInButton({super.key, this.onPressed, this.loading = false});
 
   final VoidCallback? onPressed;
+
+  /// A Google sign-in can take a few seconds (account picker, profile repair),
+  /// so the button shows its own spinner instead of silently ignoring taps.
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final enabled = onPressed != null;
+    final enabled = onPressed != null && !loading;
     return Opacity(
       opacity: enabled ? 1 : 0.55,
       child: Material(
@@ -1109,21 +1257,37 @@ class GoogleSignInButton extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Text(
-                  'G',
-                  style: context.text.titleMedium?.copyWith(
-                    color: const Color(0xFF4285F4),
-                    fontWeight: FontWeight.w700,
+                if (loading)
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.primary,
+                    ),
+                  )
+                else
+                  Text(
+                    'G',
+                    style: context.text.titleMedium?.copyWith(
+                      color: const Color(0xFF4285F4),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
                 const SizedBox(width: Space.sm),
                 Flexible(
                   child: Text(
-                    Tr.of(
-                      context,
-                      ar: 'المتابعة باستخدام Google',
-                      en: 'Continue with Google',
-                    ),
+                    loading
+                        ? Tr.of(
+                            context,
+                            ar: 'جارٍ المتابعة…',
+                            en: 'Continuing…',
+                          )
+                        : Tr.of(
+                            context,
+                            ar: 'المتابعة باستخدام Google',
+                            en: 'Continue with Google',
+                          ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: context.text.labelLarge?.copyWith(
@@ -1132,6 +1296,60 @@ class GoogleSignInButton extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dimmed, non-interactive layer shown while an authentication request is in
+/// flight, so a second tap can never start a parallel sign-in.
+class _AuthBusyOverlay extends StatelessWidget {
+  const _AuthBusyOverlay({required this.message, required this.messageEn});
+
+  final String message;
+  final String messageEn;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Positioned.fill(
+      child: AbsorbPointer(
+        child: ColoredBox(
+          color: palette.overlay.withValues(alpha: 0.45),
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.xl,
+                vertical: Space.lg,
+              ),
+              decoration: BoxDecoration(
+                color: palette.surface,
+                borderRadius: BorderRadius.circular(Radii.md),
+                border: Border.all(color: palette.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.primary,
+                    ),
+                  ),
+                  const SizedBox(width: Space.md),
+                  Text(
+                    Tr.of(context, ar: message, en: messageEn),
+                    style: context.text.bodySmall?.copyWith(
+                      color: palette.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

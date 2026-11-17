@@ -26,7 +26,7 @@ class UsernameText extends StatelessWidget {
   final VoidCallback? onTap;
   final int maxLines;
 
-  static const Color _gold = Color(0xFFE3B341);
+  static const Color _gold = BrandColors.gold;
 
   @override
   Widget build(BuildContext context) {
@@ -62,8 +62,8 @@ class UsernameText extends StatelessWidget {
         if (badges.developer) ...<Widget>[
           const SizedBox(width: 3),
           Container(
-            width: 15,
-            height: 15,
+            width: 16,
+            height: 16,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: _gold.withValues(alpha: 0.16),

@@ -23,8 +23,62 @@ import '../../features/settings/settings_screen.dart';
 import '../../features/social/episode_comments_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../providers.dart';
+import '../theme/app_tokens.dart';
 import '../theme/context_ext.dart';
 import 'route_paths.dart';
+
+/// Routes that belong to the sign-in journey. They stay reachable while no
+/// account is signed in, so the redirect below never traps the user.
+const Set<String> _authRoutes = <String>{
+  RoutePaths.welcome,
+  RoutePaths.login,
+  RoutePaths.register,
+  RoutePaths.forgot,
+  RoutePaths.verify,
+};
+
+/// One shared page transition: a short fade with a small upward slide, so
+/// opening a screen never feels like a hard cut and going back always mirrors
+/// it. Reduced-motion users get no animation at all.
+CustomTransitionPage<void> _wingsPage(
+  BuildContext context,
+  GoRouterState state,
+  Widget child,
+) {
+  final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+  final duration = reduceMotion ? Duration.zero : Motion.page;
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    transitionDuration: duration,
+    reverseTransitionDuration: duration,
+    child: child,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: Motion.enter),
+        child: SlideTransition(
+          position:
+              Tween<Offset>(
+                begin: const Offset(0, 0.025),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(parent: animation, curve: Motion.emphasized),
+              ),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
+/// Bridges Riverpod state to GoRouter so a sign-in, sign-out, or finishing the
+/// onboarding immediately re-evaluates the redirect instead of leaving the app
+/// on a screen that no longer applies.
+class _RouterRefresh extends ChangeNotifier {
+  _RouterRefresh(Ref ref) {
+    ref.listen(authProvider, (_, _) => notifyListeners());
+    ref.listen(settingsProvider, (_, _) => notifyListeners());
+  }
+}
 
 final routerProvider = Provider<GoRouter>((ref) {
   final settings = ref.read(settingsProvider);
@@ -34,13 +88,34 @@ final routerProvider = Provider<GoRouter>((ref) {
       : (!signedIn && !settings.guestMode
             ? RoutePaths.welcome
             : RoutePaths.latest);
+  final refresh = _RouterRefresh(ref);
+  ref.onDispose(refresh.dispose);
+
+  String? redirect(BuildContext context, GoRouterState state) {
+    final current = ref.read(settingsProvider);
+    final account = ref.read(authProvider);
+    final location = state.matchedLocation;
+    if (!current.onboardingDone) {
+      return location == RoutePaths.onboarding ? null : RoutePaths.onboarding;
+    }
+    if (account == null && !current.guestMode) {
+      return _authRoutes.contains(location) ? null : RoutePaths.welcome;
+    }
+    if (account != null && location == RoutePaths.welcome) {
+      return RoutePaths.latest;
+    }
+    return null;
+  }
 
   return GoRouter(
     initialLocation: initialLocation,
+    refreshListenable: refresh,
+    redirect: redirect,
     routes: <RouteBase>[
       GoRoute(
         path: RoutePaths.onboarding,
-        builder: (context, state) => const OnboardingScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const OnboardingScreen()),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
@@ -82,90 +157,126 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: RoutePaths.search,
-        builder: (context, state) => const SearchScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const SearchScreen()),
       ),
       GoRoute(
         path: '/anime/:id',
-        builder: (context, state) => AnimeDetailsScreen(
-          animeId: Uri.decodeComponent(state.pathParameters['id'] ?? ''),
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          AnimeDetailsScreen(
+            animeId: Uri.decodeComponent(state.pathParameters['id'] ?? ''),
+          ),
         ),
       ),
       GoRoute(
         path: '/catalog/:kind',
-        builder: (context, state) =>
-            CatalogScreen(kind: state.pathParameters['kind'] ?? 'newest'),
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          CatalogScreen(kind: state.pathParameters['kind'] ?? 'newest'),
+        ),
       ),
       GoRoute(
         path: '/genre/:name',
-        builder: (context, state) => GenreScreen(
-          genre: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          GenreScreen(
+            genre: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
+          ),
         ),
       ),
       GoRoute(
         path: '/watch/:animeId/:episodeId',
-        builder: (context, state) => PlayerScreen(
-          animeId: Uri.decodeComponent(state.pathParameters['animeId'] ?? ''),
-          episodeId: Uri.decodeComponent(
-            state.pathParameters['episodeId'] ?? '',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          PlayerScreen(
+            animeId: Uri.decodeComponent(state.pathParameters['animeId'] ?? ''),
+            episodeId: Uri.decodeComponent(
+              state.pathParameters['episodeId'] ?? '',
+            ),
+            initialAnime: state.extra is Anime ? state.extra! as Anime : null,
           ),
-          initialAnime: state.extra is Anime ? state.extra! as Anime : null,
         ),
       ),
       GoRoute(
         path: '/episode/:episodeId/comments',
-        builder: (context, state) => EpisodeCommentsScreen(
-          episodeId: Uri.decodeComponent(
-            state.pathParameters['episodeId'] ?? '',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          EpisodeCommentsScreen(
+            episodeId: Uri.decodeComponent(
+              state.pathParameters['episodeId'] ?? '',
+            ),
+            episodeTitle: state.extra is String ? state.extra! as String : '',
           ),
-          episodeTitle: state.extra is String ? state.extra! as String : '',
         ),
       ),
       GoRoute(
         path: RoutePaths.downloads,
-        builder: (context, state) => const DownloadsScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const DownloadsScreen()),
       ),
       GoRoute(
         path: RoutePaths.profile,
-        builder: (context, state) => const ProfileScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const ProfileScreen()),
       ),
       GoRoute(
         path: '/user/:uid',
-        builder: (context, state) => PublicProfileScreen(
-          uid: Uri.decodeComponent(state.pathParameters['uid'] ?? ''),
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          PublicProfileScreen(
+            uid: Uri.decodeComponent(state.pathParameters['uid'] ?? ''),
+          ),
         ),
       ),
       GoRoute(
         path: RoutePaths.notifications,
-        builder: (context, state) => const NotificationsScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const NotificationsScreen()),
       ),
       GoRoute(
         path: RoutePaths.welcome,
-        builder: (context, state) => const WelcomeScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const WelcomeScreen()),
       ),
       GoRoute(
         path: RoutePaths.login,
-        builder: (context, state) => const LoginScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const LoginScreen()),
       ),
       GoRoute(
         path: RoutePaths.register,
-        builder: (context, state) => const RegisterScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const RegisterScreen()),
       ),
       GoRoute(
         path: RoutePaths.forgot,
-        builder: (context, state) => const ForgotPasswordScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const ForgotPasswordScreen()),
       ),
       GoRoute(
         path: RoutePaths.verify,
-        builder: (context, state) => const VerifyEmailScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const VerifyEmailScreen()),
       ),
       GoRoute(
         path: RoutePaths.about,
-        builder: (context, state) => const AboutScreen(),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AboutScreen()),
       ),
       GoRoute(
         path: '/legal/:kind',
-        builder: (context, state) =>
-            LegalScreen(kind: state.pathParameters['kind'] ?? 'privacy'),
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          LegalScreen(kind: state.pathParameters['kind'] ?? 'privacy'),
+        ),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

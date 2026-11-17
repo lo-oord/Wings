@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
@@ -578,6 +580,10 @@ class AuthController extends Notifier<AuthUser?> {
       var profile = await ref.read(userRepositoryProvider).fetch(user.id);
       profile ??= await ref.read(accountServiceProvider)?.ensureProfile(user);
       if (profile != null) {
+        // Badges are granted by an administrator on the public mirror. The
+        // owner document may still hold the old values, so the mirror is the
+        // authoritative source for the signature that colours a handle.
+        profile = await _withPublicBadges(profile);
         ref.read(profileProvider.notifier).apply(profile);
         state = user.copyWith(
           displayName: profile.displayName,
@@ -585,6 +591,9 @@ class AuthController extends Notifier<AuthUser?> {
           country: profile.country,
           bio: profile.bio,
         );
+        // A rename or a new badge only shows on comments written from now on
+        // unless the existing snapshots are refreshed too.
+        unawaited(ref.read(socialRepositoryProvider).syncAuthor(profile));
         await _afterAccountReady();
         return;
       }
@@ -593,6 +602,20 @@ class AuthController extends Notifier<AuthUser?> {
     }
     state = user;
     await _afterAccountReady();
+  }
+
+  Future<UserProfile> _withPublicBadges(UserProfile profile) async {
+    try {
+      final public = await ref
+          .read(userRepositoryProvider)
+          .fetchPublic(profile.uid);
+      if (public != null && public.badges != profile.badges) {
+        return profile.copyWith(badges: public.badges);
+      }
+    } on Object {
+      // Public mirror unavailable: keep the owner document's badges.
+    }
+    return profile;
   }
 
   /// Applies data that the account sync pulled while signing in.
@@ -730,6 +753,7 @@ class AuthController extends Notifier<AuthUser?> {
     );
     ref.read(profileProvider.notifier).apply(next);
     state = state?.copyWith(username: next.username);
+    unawaited(ref.read(socialRepositoryProvider).syncAuthor(next));
   }
 
   Future<void> saveAvatar(String path) async {
@@ -738,6 +762,7 @@ class AuthController extends Notifier<AuthUser?> {
     if (profile == null || service == null) return;
     final next = await service.saveAvatar(profile: profile, path: path);
     ref.read(profileProvider.notifier).apply(next);
+    unawaited(ref.read(socialRepositoryProvider).syncAuthor(next));
   }
 
   Future<void> removeAvatar() async {
@@ -746,6 +771,7 @@ class AuthController extends Notifier<AuthUser?> {
     if (profile == null || service == null) return;
     final next = await service.removeAvatar(profile);
     ref.read(profileProvider.notifier).apply(next);
+    unawaited(ref.read(socialRepositoryProvider).syncAuthor(next));
   }
 
   Future<void> saveCover(String path) async {

@@ -44,6 +44,14 @@ abstract final class Motion {
   static const Curve exit = Curves.easeInCubic;
 }
 
+/// Brand colours that are identical in light and dark mode (official badges).
+abstract final class BrandColors {
+  /// The gold used for verified and developer handles and their badges.
+  static const Color gold = Color(0xFFE3B341);
+
+  static const Color googleBlue = Color(0xFF4285F4);
+}
+
 /// Layout breakpoints for responsive lists.
 abstract final class Breakpoints {
   static const double compact = 600;

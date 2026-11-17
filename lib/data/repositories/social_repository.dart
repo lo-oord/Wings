@@ -154,9 +154,11 @@ class SocialRepository {
       .orderBy('createdAt', descending: true)
       .limit(limit)
       .snapshots()
+      // Old soft-deleted placeholders are hidden instead of being rendered.
       .map(
         (snapshot) => snapshot.docs
             .map((doc) => EpisodeComment.fromDoc(episodeId, doc.id, doc.data()))
+            .where((comment) => !comment.isDeleted)
             .toList(growable: false),
       );
 
@@ -173,6 +175,7 @@ class SocialRepository {
     return CommentPage(
       items: snapshot.docs
           .map((doc) => EpisodeComment.fromDoc(episodeId, doc.id, doc.data()))
+          .where((comment) => !comment.isDeleted)
           .toList(growable: false),
       cursor: snapshot.docs.isEmpty ? null : snapshot.docs.last,
       hasMore: snapshot.docs.length == pageSize,
@@ -199,6 +202,7 @@ class SocialRepository {
                     parentId: commentId,
                   ),
                 )
+                .where((reply) => !reply.isDeleted)
                 .toList(growable: false),
           );
 
@@ -261,6 +265,7 @@ class SocialRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     await batch.commit();
+    await _invalidateCounts(episodeId);
     return ref.id;
   }
 
@@ -284,22 +289,104 @@ class SocialRepository {
     });
   }
 
-  /// Soft deletes the comment: the text is removed immediately and the document
-  /// stays as an empty placeholder so replies keep their place.
+  /// Removes a comment completely, together with every reply it holds, so the
+  /// thread looks exactly as if it had never been written instead of leaving a
+  /// "this comment was deleted" placeholder behind.
+  ///
+  /// Deleting a reply removes just that reply and decrements its parent.
   Future<void> deleteComment({
     required String episodeId,
     required String commentId,
     required String uid,
+    String? parentId,
   }) async {
-    final ref = _comments(episodeId).doc(commentId);
+    final comments = _comments(episodeId);
+    final ref = parentId == null
+        ? comments.doc(commentId)
+        : comments.doc(parentId).collection('replies').doc(commentId);
+
+    if (parentId == null) {
+      // Replies are removed in chunks, keeping every batch under the 500-write
+      // limit so a long thread can never fail halfway.
+      final replies = await ref.collection('replies').get();
+      final docs = replies.docs;
+      for (var index = 0; index < docs.length; index += 400) {
+        final chunk = _db.batch();
+        for (final doc in docs.skip(index).take(400)) {
+          chunk.delete(doc.reference);
+        }
+        await chunk.commit();
+      }
+    }
+
     final batch = _db.batch();
-    batch.update(ref, <String, dynamic>{
-      'text': '',
-      'deleted': true,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    batch.delete(ref);
+    if (parentId != null) {
+      batch.update(comments.doc(parentId), <String, dynamic>{
+        'replyCount': FieldValue.increment(-1),
+      });
+    }
     batch.delete(_activity(uid).doc('comment_$commentId'));
     await batch.commit();
+    await _invalidateCounts(episodeId);
+  }
+
+  /// Copies the current username, display name, badges and photo version into
+  /// every comment and reply the account already wrote.
+  ///
+  /// Comments store a display snapshot, so without this a rename or a new
+  /// verification badge would only show on future comments. The activity index
+  /// makes the lookup exact and index-free, and the fingerprint in the local
+  /// cache keeps repeated launches free.
+  Future<void> syncAuthor(UserProfile author) async {
+    final store = _store;
+    final signature =
+        '${author.username}|${author.displayName}|'
+        '${author.badges.verified}|${author.badges.developer}|'
+        '${author.photoVersion}';
+    final signatureKey = 'social_author_sig_${author.uid}';
+    if (store != null &&
+        store.getString(LocalStore.cacheBox, signatureKey) == signature) {
+      return;
+    }
+    try {
+      final activity = await _activity(author.uid).get();
+      final refs = <DocumentReference<Map<String, dynamic>>>[];
+      for (final doc in activity.docs) {
+        final data = doc.data();
+        final type = data['type'];
+        final path = data['path'];
+        if (type != 'comment' && type != 'reply') continue;
+        if (path is! String || !path.startsWith('episodes/')) continue;
+        refs.add(_db.doc(path));
+      }
+      for (var index = 0; index < refs.length; index += 400) {
+        final batch = _db.batch();
+        for (final ref in refs.skip(index).take(400)) {
+          batch.update(ref, <String, dynamic>{
+            'authorUsername': author.username,
+            'authorName': author.displayName,
+            'authorBadges': author.badges.toMap(),
+            'photoVersion': author.photoVersion,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+        await batch.commit();
+      }
+      if (store != null) {
+        await store.setString(LocalStore.cacheBox, signatureKey, signature);
+      }
+    } on Object {
+      // Offline or denied: the next launch retries with the same fingerprint.
+    }
+  }
+
+  Future<void> _invalidateCounts(String episodeId) async {
+    try {
+      await _store?.delete(LocalStore.cacheBox, _countsKey(episodeId));
+    } on Object {
+      // A missing cache entry is harmless.
+    }
   }
 
   Future<void> report({

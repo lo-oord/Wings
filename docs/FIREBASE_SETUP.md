@@ -39,10 +39,11 @@ Other setup that must exist before Google sign-in can work:
 | `profiles/{uid}` | **Public mirror**: username, display name, badges, photo version, plus country / age group / stats **only when the owner allowed them** | Any signed-in user | Owner |
 | `usernames/{normalized}` | `{uid, username, createdAt}` reservation | Exact lookup (`get`) only, even before sign-in so the sign-up form can check; listing is denied | Owner of the handle |
 | `episodes/{episodeId}/reactions/{uid}` | One reaction document per user (`like` / `dislike`) | Signed-in users | The matching uid |
-| `episodes/{episodeId}/comments/{commentId}` | Comment with a denormalized author snapshot | Signed-in users | Author, plus a +1 `replyCount` bump |
-| `episodes/{episodeId}/comments/{commentId}/replies/{replyId}` | Reply | Signed-in users | Author |
-| `episodes/{episodeId}/stats/views` | `{count, updatedAt}` episode view counter | Signed-in users | Create at 1 or +1, nothing else |
-| `anime/{animeId}/stats/views` | `{count, updatedAt}` title view counter | Signed-in users | Create at 1 or +1, nothing else |
+| `episodes/{episodeId}/comments/{commentId}` | Comment with a denormalized author snapshot | Signed-in users | Author (text/snapshot), `replyCount` ±1 |
+| `episodes/{episodeId}/comments/{commentId}/replies/{replyId}` | Reply | Signed-in users | Author, or the thread's author for deletes |
+| `episodes/{episodeId}/stats/watch/viewers/{uid}` | One document per account that really watched the episode | Signed-in users | The account itself, on create only |
+| `anime/{animeId}/stats/watch/viewers/{uid}` | One document per account that watched the title | Signed-in users | The account itself, on create only |
+| `episodes|anime/.../stats/views` | **Legacy** counter from older builds, frozen and no longer read | Nobody | Nobody |
 | `reports/{reportId}` | Moderation reports (reporter uid is never exposed to users) | Admins | Signed-in users (create only) |
 | `config/admins` | `{uids: [...]}` administrator allowlist | Admins | Nobody (console / Admin SDK only) |
 
@@ -219,11 +220,15 @@ are cached locally; avatars and covers are cached per `photoVersion` /
 
 Write protection added for views and comments:
 
-* `episodes/{id}/stats/views` and `anime/{id}/stats/views` accept only a create
-  at `1` or an update that adds exactly one; a client cannot write any other
-  number, and the documents cannot be deleted.
-* A device counts a view at most once every 8 hours (checked locally and by the
-  counter rule), and the displayed number is cached for 5 minutes.
+* A view is stored as `stats/watch/viewers/{uid}` — one document per account,
+  creatable only by that account and never updateable or deletable. The number
+  on screen is a `count()` over those documents, so no client can write an
+  arbitrary value or count the same person twice.
+* A view is only recorded after 15 seconds of playback, and only for a signed-in
+  account; opening and closing an episode no longer inflates it.
+* The old `stats/views` counters are frozen in the rules and ignored by the app,
+  because they were the source of the inflated numbers. They can be deleted by
+  hand from the console.
 * Comments and replies have a 4-second local cooldown, and the rules validate the
   author snapshot, the timestamps and the reply parent.
 * `/watch/...` keeps a single listener while the episode is open; pagination is
@@ -302,7 +307,7 @@ Feature map:
 | --- | --- |
 | Player | Action bar redesigned: one segmented like/dislike pill plus spaced pills for share, download, save and comments, with a divider before the comments block. Episode views sit under the episode number. The episode list has dividers between entries. |
 | Comments | The player shows the **three newest** comments and one “all comments” action. The full page (`/episode/{id}/comments`) streams the newest page, loads older pages as you scroll and keeps a composer pinned at the bottom. |
-| Views | `ViewsRepository` increments one counter document per episode and per title, at most once per device per 8 hours, after a stream actually opened. Numbers are cached for 5 minutes. Episode count shows under the episode, title total on the details screen (catalogue `views` + app counter). |
+| Views | `ViewsRepository` records one viewer document per account and per episode/title after 15 seconds of playback; the count is a `count()` over those documents. Numbers are cached for 5 minutes. Episode count shows under the episode, title total on the details screen — only real app views, never the catalogue's estimated figure. |
 | Settings | The account banner is now a proper card: real avatar, name, handle, email, one chevron, matching the settings groups. |
 | Profile | Cover banner (`users/{uid}/private/cover`) with change/remove actions, separate from the avatar. Public profiles show the same banner. |
 | Deletion | Re-authentication runs first, a password is mandatory for email accounts, Google accounts get an explicit confirmation step, and the cover document is removed too. A rules block now reports “publish the latest rules” instead of a generic error. |
@@ -315,3 +320,43 @@ Manual steps for this revision:
 - [ ] Rebuild the APK; the manifest now declares picture-in-picture support.
 - [ ] Optional: seed `anime/{id}/stats/views` is **not** needed — the counter is
       created on the first real view.
+
+## 13. What changed in this revision (polish, real views, hard deletes)
+
+**Publish the updated `firestore.rules` again.** This revision changes these
+paths and behaviours:
+
+* `episodes/{episodeId}/stats/watch/viewers/{uid}` and
+  `anime/{animeId}/stats/watch/viewers/{uid}` (create: own uid only; no update,
+  no delete; readable/listed so `count()` works).
+* `stats/views` on both episodes and anime is now **frozen** (`allow read, write:
+  if false`). It is no longer used by the app.
+* Comment updates also accept an author-snapshot refresh
+  (`authorUsername`, `authorName`, `authorBadges`, `photoVersion`, `updatedAt`),
+  which is how a rename or a new badge reaches comments that were already
+  written.
+* `replyCount` may now be decremented by exactly one (never below zero) when a
+  reply is deleted, and the author of a thread may delete the replies inside it.
+* The owner of `users/{uid}` may copy the badges an administrator already
+  published on `profiles/{uid}`. They still cannot grant themselves a badge:
+  the rule compares the value with the public mirror.
+
+Feature map:
+
+| Area | What changed |
+| --- | --- |
+| Splash | A branded splash (mark, wordmark, progress line) is drawn on the first frame while the store, Firebase, downloads and notifications load; the Android launch window uses the same dark background and app mark. |
+| Transitions | Every pushed route uses one shared fade + short slide transition, and reduced-motion users get none. The register wizard fades between steps. |
+| Auth states | The Google button shows its own spinner and label, a dimmed overlay blocks a second tap while signing in or creating the account, the login error is a proper inline card, and the verification screen polls quietly so it moves on by itself once the link is used. |
+| Comments | Deleting a comment now removes the document **and every reply under it**, with no “this comment was deleted” placeholder. Legacy placeholders are filtered out of every list. |
+| Views | Real unique-viewer counters; the fake catalogue figure was removed from the details screen. |
+| Identity | A rename, a new verification badge or a new profile picture is copied into the account's existing comments and replies, and the public profile already streams live. Badges are read from the public mirror so an admin grant appears immediately, including on the user's own handle. |
+| Navigation | Signing out or finishing onboarding re-evaluates the route; signed-out users cannot land on an account screen and the back button falls back to the home tab instead of doing nothing. |
+| Settings | Sign-out asks for confirmation, “Share the app” was added, and the notification-permission chevron follows the text direction. |
+
+Manual steps:
+
+- [ ] Publish `firestore.rules` (required for the new view documents, comment
+      deletion and the badge mirror).
+- [ ] Optional: delete the old `stats/views` documents from the console; the app
+      no longer reads them.

@@ -137,14 +137,24 @@ service cloud.firestore {
         && (!('pendingDeletion' in request.resource.data)
             || request.resource.data.pendingDeletion is bool);
 
-      // Owners may edit their own profile but never their badges. A rename is
-      // only accepted when the matching reservation belongs to them.
+      // Owners may edit their own profile but never grant themselves badges.
+      // They may only copy the badges an administrator already published on
+      // the public mirror, which is what lets a verified account update its
+      // bio without the write being rejected. A rename is only accepted when
+      // the matching reservation belongs to them.
       allow update: if isSelf(uid)
         && (
           isAdmin()
           || (
             validBadges(request.resource.data.badges)
-            && request.resource.data.badges == resource.data.badges
+            && (
+              request.resource.data.badges == resource.data.badges
+              || (
+                exists(/databases/$(database)/documents/profiles/$(uid))
+                && request.resource.data.badges
+                    == get(/databases/$(database)/documents/profiles/$(uid)).data.badges
+              )
+            )
           )
         )
         && validPrivacy(request.resource.data.privacy)
@@ -295,17 +305,22 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if false;
 
+      // Legacy self-incrementing counter: frozen. It is no longer read by the
+      // app because the number could be inflated without a real viewer.
       match /stats/views {
+        allow read, write: if false;
+      }
+
+      // Real views: one document per account that watched the episode. The
+      // displayed number is a count() over these documents, so nobody can
+      // raise it twice or write an arbitrary value.
+      match /stats/watch {
         allow read: if signedIn();
-        allow create: if signedIn()
-          && request.resource.data.keys().hasOnly(['count', 'updatedAt'])
-          && request.resource.data.count == 1
-          && request.resource.data.updatedAt is timestamp;
-        allow update: if signedIn()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
-          && request.resource.data.count == resource.data.count + 1
-          && request.resource.data.updatedAt is timestamp;
-        allow delete: if false;
+        match /viewers/{viewerId} {
+          allow get, list: if signedIn();
+          allow create: if signedIn() && viewerId == request.auth.uid;
+          allow update, delete: if false;
+        }
       }
 
       match /reactions/{uid} {
@@ -336,7 +351,7 @@ service cloud.firestore {
 
         allow update: if signedIn()
           && (
-            // The author may edit text or soft-delete their own comment.
+            // The author may edit text or their own display snapshot.
             (
               resource.data.authorUid == request.auth.uid
               && request.resource.data.authorUid == resource.data.authorUid
@@ -346,10 +361,32 @@ service cloud.firestore {
               && request.resource.data.replyCount == resource.data.replyCount
             )
             ||
-            // Anyone signed in may add exactly one to the reply counter.
+            // Keeping an author's comments in step with a rename, a new badge
+            // or a new profile picture.
+            (
+              resource.data.authorUid == request.auth.uid
+              && request.resource.data.authorUid == resource.data.authorUid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'authorUsername', 'authorName', 'authorBadges', 'photoVersion', 'updatedAt'
+              ])
+              && validUsername(request.resource.data.authorUsername)
+              && validDisplayName(request.resource.data.authorName)
+              && validBadges(request.resource.data.authorBadges)
+              && request.resource.data.photoVersion is int
+              && request.resource.data.updatedAt is timestamp
+            )
+            ||
+            // Replies raise or lower the counter by exactly one, never below
+            // zero, so deleting a reply keeps the thread consistent.
             (
               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replyCount'])
-              && request.resource.data.replyCount == resource.data.replyCount + 1
+              && (
+                request.resource.data.replyCount == resource.data.replyCount + 1
+                || (
+                  resource.data.replyCount > 0
+                  && request.resource.data.replyCount == resource.data.replyCount - 1
+                )
+              )
             )
           );
 
@@ -374,8 +411,13 @@ service cloud.firestore {
           allow update: if signedIn()
             && resource.data.authorUid == request.auth.uid
             && request.resource.data.authorUid == resource.data.authorUid;
+          // A reply disappears with its thread: either its own author or the
+          // author of the parent comment may delete it.
           allow delete: if signedIn()
-            && resource.data.authorUid == request.auth.uid;
+            && (
+              resource.data.authorUid == request.auth.uid
+              || get(/databases/$(database)/documents/episodes/$(episodeId)/comments/$(commentId)).data.authorUid == request.auth.uid
+            );
         }
       }
     }
@@ -384,16 +426,16 @@ service cloud.firestore {
     // One counter per title, shown on the details screen. Same constraint as
     // episode views: create at 1 or increment by exactly one.
     match /anime/{animeId}/stats/views {
+      allow read, write: if false;
+    }
+
+    match /anime/{animeId}/stats/watch {
       allow read: if signedIn();
-      allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['count', 'updatedAt'])
-        && request.resource.data.count == 1
-        && request.resource.data.updatedAt is timestamp;
-      allow update: if signedIn()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
-        && request.resource.data.count == resource.data.count + 1
-        && request.resource.data.updatedAt is timestamp;
-      allow delete: if false;
+      match /viewers/{viewerId} {
+        allow get, list: if signedIn();
+        allow create: if signedIn() && viewerId == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
 
     // ----------------------------------------------------------- reports

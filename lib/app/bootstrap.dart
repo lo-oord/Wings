@@ -14,10 +14,17 @@ import '../data/firebase/firebase_bootstrap.dart';
 import '../data/repositories/settings_repository.dart';
 import 'app.dart';
 import 'providers.dart';
+import 'splash.dart';
 
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+
+  // Draw the branded splash on the very first frame: opening the store,
+  // Firebase and the download queue takes long enough that a blank system
+  // window looked like a frozen app.
+  final startedAt = DateTime.now();
+  runApp(const WingsSplashApp());
 
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setPreferredOrientations(<DeviceOrientation>[
@@ -43,6 +50,13 @@ Future<void> bootstrap() async {
   await downloads.initialize();
   downloads.notificationsEnabled = settings.notifyDownloads;
   await configureNewEpisodeWorker(settings);
+
+  // Keep the splash on screen just long enough to read instead of flashing.
+  const minimumSplash = Duration(milliseconds: 850);
+  final elapsed = DateTime.now().difference(startedAt);
+  if (elapsed < minimumSplash) {
+    await Future<void>.delayed(minimumSplash - elapsed);
+  }
 
   runApp(
     ProviderScope(

@@ -10,6 +10,7 @@ import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/storage/local_store.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../profile/avatar_view.dart';
@@ -232,16 +233,45 @@ class SettingsScreen extends ConsumerWidget {
                   showChevron: true,
                   onTap: () => context.push(RoutePaths.legal('terms')),
                 ),
+                WingsSettingsTile(
+                  icon: Icons.share_outlined,
+                  title: Tr.of(
+                    context,
+                    ar: 'مشاركة التطبيق',
+                    en: 'Share the app',
+                  ),
+                  showChevron: true,
+                  onTap: () => ref
+                      .read(shareServiceProvider)
+                      .shareText(
+                        Tr.of(
+                          context,
+                          ar: 'جرّب Wings لمشاهدة الأنمي — تطبيق خفيف وأنيق.',
+                          en: 'Try Wings for watching anime — a light, polished app.',
+                        ),
+                        subject: 'Wings',
+                      ),
+                ),
                 if (user != null)
                   WingsSettingsTile(
                     icon: Icons.logout_rounded,
                     title: l10n.settingsSignOut,
                     destructive: true,
                     onTap: () async {
+                      final confirmed = await WingsDialog.confirm(
+                        context,
+                        title: l10n.settingsSignOut,
+                        message: Tr.of(
+                          context,
+                          ar: 'سيتم تسجيل الخروج من هذا الجهاز. مكتبتك وإعداداتك المزامنة تبقى محفوظة.',
+                          en: 'You will be signed out of this device. Your synced library and settings stay safe.',
+                        ),
+                        confirmLabel: l10n.settingsSignOut,
+                        destructive: true,
+                      );
+                      if (!confirmed) return;
                       await ref.read(authProvider.notifier).signOut();
-                      if (context.mounted) {
-                        context.showSnack(l10n.settingsSignOut);
-                      }
+                      if (context.mounted) context.go(RoutePaths.welcome);
                     },
                   ),
               ],
@@ -588,7 +618,12 @@ class _PermissionTileState extends ConsumerState<_PermissionTile> {
               size: 18,
               color: context.palette.success,
             )
-          : const Icon(Icons.chevron_right_rounded, size: 18),
+          : Icon(
+              context.isRtl
+                  ? Icons.chevron_left_rounded
+                  : Icons.chevron_right_rounded,
+              size: 18,
+            ),
       onTap: _granted == true
           ? null
           : () async {

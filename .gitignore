@@ -57,3 +57,6 @@ app.*.map.json
 
 # Local tooling downloads (JDK used once to create the upload keystore)
 .tooling/
+
+# Kotlin build cache
+android/.kotlin/

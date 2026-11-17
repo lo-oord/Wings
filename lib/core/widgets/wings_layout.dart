@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../app/localization/app_localizations.dart';
@@ -197,6 +199,22 @@ class WingsAppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize =>
       Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
 
+  /// A screen opened from a notification or a shared link has nothing beneath
+  /// it, so a plain `pop` used to leave the reader stuck on that page. Falls
+  /// back to the home tab instead of doing nothing.
+  void _handleBack(BuildContext context) {
+    final router = GoRouter.maybeOf(context);
+    if (router != null) {
+      if (router.canPop()) {
+        router.pop();
+      } else {
+        router.go(RoutePaths.latest);
+      }
+      return;
+    }
+    Navigator.of(context).maybePop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppBar(
@@ -214,7 +232,7 @@ class WingsAppBar extends StatelessWidget implements PreferredSizeWidget {
                       : Icons.arrow_back_rounded,
                   size: 22,
                 ),
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: () => _handleBack(context),
               ),
             )
           : null,

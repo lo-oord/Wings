@@ -27,14 +27,15 @@ class AnimeDetailsScreen extends ConsumerStatefulWidget {
   ConsumerState<AnimeDetailsScreen> createState() => _AnimeDetailsScreenState();
 }
 
-/// Total views for the whole title, shown on the details screen. The number
-/// combines the catalogue's own figure with the app counter, and is cached so
-/// opening the same title repeatedly costs no extra reads.
+/// Real views for the whole title, shown on the details screen.
+///
+/// Only the app's own unique-viewer counter is shown. The catalogue's `views`
+/// figure is an estimate from an external source (often a very large, invented
+/// number), so adding it here made the counter look fake.
 class _TitleViews extends ConsumerWidget {
-  const _TitleViews({required this.animeId, required this.base});
+  const _TitleViews({required this.animeId});
 
   final String animeId;
-  final int base;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -42,7 +43,7 @@ class _TitleViews extends ConsumerWidget {
     return FutureBuilder<int>(
       future: ref.watch(viewsRepositoryProvider).animeViews(animeId),
       builder: (context, snapshot) {
-        final total = base + (snapshot.data ?? 0);
+        final total = snapshot.data ?? 0;
         return Row(
           children: <Widget>[
             Icon(Icons.visibility_outlined, size: 14, color: palette.textMuted),
@@ -266,7 +267,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                         ],
                       ),
                       const SizedBox(height: Space.sm),
-                      _TitleViews(animeId: anime.id, base: anime.views ?? 0),
+                      _TitleViews(animeId: anime.id),
                       const SizedBox(height: Space.sm),
                       if (anime.genres.isNotEmpty)
                         Wrap(
