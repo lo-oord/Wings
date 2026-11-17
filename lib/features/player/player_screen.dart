@@ -46,6 +46,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   AnimeEpisode? _episode;
   List<StreamServer> _servers = const <StreamServer>[];
   String? _activeQuality;
+  String? _activeServerName;
+  List<StreamServer> _candidates = const <StreamServer>[];
+  int _candidateIndex = 0;
+  bool _fallbackInProgress = false;
 
   bool _loading = true;
   Object? _error;
@@ -108,7 +112,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
     _subscriptions.add(
       _player.stream.error.listen((value) {
-        if (mounted && value.isNotEmpty) setState(() => _playbackError = value);
+        if (!mounted || value.isEmpty) return;
+        setState(() => _playbackError = value);
+        // A stream that fails on one server is retried on the next one.
+        unawaited(_tryNextServer());
       }),
     );
   }
@@ -177,23 +184,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final servers = await repository.servers(anime, episode);
       _servers = servers;
       final settings = ref.read(settingsProvider);
-      final resolved = await repository.resolveFirstPlayable(
-        servers,
-        preferredQuality: settings.preferredQuality,
-      );
+      _candidates = _orderCandidates(servers, settings.preferredQuality);
+      _candidateIndex = 0;
+
+      var started = false;
+      for (var index = 0; index < _candidates.length; index++) {
+        if (await _openCandidate(index)) {
+          started = true;
+          break;
+        }
+      }
       if (!mounted) return;
-      if (resolved == null) {
+      if (!started) {
         setState(() {
           _loading = false;
           _error = const _NoPlayableServer();
         });
         return;
       }
-      _activeQuality = resolved.quality;
-      await _player.open(
-        Media(resolved.url, httpHeaders: resolved.headers),
-        play: true,
-      );
       if (settings.playbackSpeed != 1) {
         _speed = settings.playbackSpeed;
         await _player.setRate(_speed);
@@ -225,6 +233,75 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
+  List<StreamServer> _orderCandidates(
+    List<StreamServer> servers,
+    String preferredQuality,
+  ) {
+    final candidates = servers
+        .where((server) => !server.requiresBrowser)
+        .toList(growable: true);
+    candidates.sort((a, b) {
+      final aPreferred = a.quality == preferredQuality ? 0 : 1;
+      final bPreferred = b.quality == preferredQuality ? 0 : 1;
+      if (aPreferred != bPreferred) return aPreferred.compareTo(bPreferred);
+      return b.qualityRank.compareTo(a.qualityRank);
+    });
+    return candidates;
+  }
+
+  /// Opens one candidate stream, returning whether it could be resolved.
+  Future<bool> _openCandidate(int index) async {
+    if (index < 0 || index >= _candidates.length) return false;
+    _candidateIndex = index;
+    final server = _candidates[index];
+    final resolved = await ref.read(animeRepositoryProvider).resolve(server);
+    if (resolved == null || !mounted) return false;
+    setState(() {
+      _activeQuality = server.quality;
+      _activeServerName = server.name;
+      _playbackError = null;
+    });
+    await _player.open(
+      Media(resolved.url, httpHeaders: resolved.headers),
+      play: true,
+    );
+    return true;
+  }
+
+  /// Automatic server fallback used when the current stream fails.
+  Future<void> _tryNextServer() async {
+    if (_fallbackInProgress) return;
+    final next = _candidateIndex + 1;
+    if (next >= _candidates.length) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = _error ?? const _NoPlayableServer();
+        });
+      }
+      return;
+    }
+    _fallbackInProgress = true;
+    try {
+      for (var index = next; index < _candidates.length; index++) {
+        if (!mounted) return;
+        setState(() => _loading = true);
+        if (await _openCandidate(index)) {
+          if (mounted) setState(() => _loading = false);
+          return;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = const _NoPlayableServer();
+        });
+      }
+    } finally {
+      _fallbackInProgress = false;
+    }
+  }
+
   Future<void> _switchQuality(StreamServer server) async {
     final position = _position;
     final resolved = await ref.read(animeRepositoryProvider).resolve(server);
@@ -237,8 +314,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
       return;
     }
+    final candidateIndex = _candidates.indexOf(server);
+    if (candidateIndex >= 0) _candidateIndex = candidateIndex;
     setState(() {
       _activeQuality = server.quality;
+      _activeServerName = server.name;
       _loading = true;
       _playbackError = null;
     });
@@ -395,6 +475,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       error:
           _error ??
           (_playbackError == null ? null : _PlaybackFailure(_playbackError!)),
+      compact: !_fullscreen,
       title: _anime?.title ?? '',
       episodeLabel: _episode == null
           ? ''
@@ -457,14 +538,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         child: Column(
           children: <Widget>[
             AspectRatio(aspectRatio: 16 / 9, child: surface),
-            Expanded(child: _buildEpisodePanel(context, settings)),
+            Expanded(child: _buildEpisodePanel(context)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildEpisodePanel(BuildContext context, AppSettings settings) {
+  Widget _buildEpisodePanel(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.palette;
     final anime = _anime;
@@ -484,91 +565,47 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             Space.lg,
             Space.sm,
           ),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                anime.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: context.text.titleMedium,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                episode == null ? '' : l10n.commonEpisodeNumber(episode.number),
-                style: context.text.bodySmall?.copyWith(
-                  color: palette.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-          child: Row(
-            children: <Widget>[
               Expanded(
-                child: WingsButton(
-                  label: l10n.playerServers,
-                  icon: Icons.hd_outlined,
-                  variant: WingsButtonVariant.tonal,
-                  onPressed: _showQualitySheet,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      anime.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.titleMedium,
+                    ),
+                    const SizedBox(height: Space.xs + 2),
+                    Wrap(
+                      spacing: Space.sm,
+                      runSpacing: Space.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
+                        if (episode != null)
+                          Text(
+                            l10n.commonEpisodeNumber(episode.number),
+                            style: context.text.bodySmall?.copyWith(
+                              color: palette.textMuted,
+                            ),
+                          ),
+                        _StreamChip(
+                          label: _streamLabel(l10n),
+                          onTap: _showQualitySheet,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: WingsButton(
-                  label: _previousEpisode == null
-                      ? l10n.playerPrevious
-                      : l10n.playerPrevious,
-                  icon: Icons.skip_previous_rounded,
-                  variant: WingsButtonVariant.outline,
-                  onPressed: _previousEpisode == null
-                      ? null
-                      : () => _loadEpisode(_previousEpisode!),
-                ),
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: WingsButton(
-                  label: l10n.playerNext,
-                  icon: Icons.skip_next_rounded,
-                  variant: WingsButtonVariant.outline,
-                  onPressed: _nextEpisode == null
-                      ? null
-                      : () => _loadEpisode(_nextEpisode!),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 0),
-          child: Row(
-            children: <Widget>[
-              Icon(
-                settings.autoplayNext
-                    ? Icons.check_circle_rounded
-                    : Icons.circle_outlined,
-                size: 16,
-                color: settings.autoplayNext
-                    ? palette.primary
-                    : palette.textMuted,
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: Text(
-                  settings.autoplayNext
-                      ? l10n.playerAutoNextOn
-                      : l10n.playerAutoNextOff,
-                  style: context.text.bodySmall,
-                ),
-              ),
-              Switch(
-                value: settings.autoplayNext,
-                onChanged: (value) => ref
-                    .read(settingsProvider.notifier)
-                    .update((current) => current.copyWith(autoplayNext: value)),
+              WingsIconButton(
+                icon: _fullscreen
+                    ? Icons.fullscreen_exit_rounded
+                    : Icons.fullscreen_rounded,
+                color: palette.textSecondary,
+                onPressed: _toggleFullscreen,
               ),
             ],
           ),
@@ -706,6 +743,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+  String _streamLabel(AppLocalizations l10n) {
+    final quality = _activeQuality;
+    final server = _activeServerName;
+    if (server == null && quality == null) return l10n.playerServers;
+    if (server == null || quality == null) return server ?? quality!;
+    return '$server • $quality';
+  }
+
   Future<void> _showQualitySheet() async {
     final l10n = AppLocalizations.of(context);
     await WingsSheet.show<void>(
@@ -782,6 +827,7 @@ class _PlaybackFailure implements Exception {
 class _PlayerSurface extends StatelessWidget {
   const _PlayerSurface({
     required this.videoController,
+    required this.compact,
     required this.playing,
     required this.buffering,
     required this.position,
@@ -813,6 +859,9 @@ class _PlayerSurface extends StatelessWidget {
   });
 
   final VideoController videoController;
+
+  /// Portrait layout: only playback controls stay on top of the video.
+  final bool compact;
   final bool playing;
   final bool buffering;
   final Duration position;
@@ -928,35 +977,37 @@ class _PlayerSurface extends StatelessWidget {
                             color: Colors.white,
                             onPressed: onBack,
                           ),
-                          const SizedBox(width: Space.sm),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: context.text.titleSmall?.copyWith(
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                if (episodeLabel.isNotEmpty)
+                          if (!compact) ...<Widget>[
+                            const SizedBox(width: Space.sm),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
                                   Text(
-                                    episodeLabel,
-                                    style: context.text.labelSmall?.copyWith(
-                                      color: Colors.white70,
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: context.text.titleSmall?.copyWith(
+                                      color: Colors.white,
                                     ),
                                   ),
-                              ],
+                                  if (episodeLabel.isNotEmpty)
+                                    Text(
+                                      episodeLabel,
+                                      style: context.text.labelSmall?.copyWith(
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
-                          ),
-                          if (activeQuality != null)
-                            WingsBadge(
-                              activeQuality!,
-                              style: WingsBadgeStyle.overlay,
-                              compact: true,
-                            ),
+                            if (activeQuality != null)
+                              WingsBadge(
+                                activeQuality!,
+                                style: WingsBadgeStyle.overlay,
+                                compact: true,
+                              ),
+                          ],
                         ],
                       ),
                     ),
@@ -984,109 +1035,111 @@ class _PlayerSurface extends StatelessWidget {
                       ],
                     ),
                     const Spacer(),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        Space.md,
-                        0,
-                        Space.md,
-                        Space.xs,
-                      ),
-                      child: Row(
-                        children: <Widget>[
-                          Text(
-                            formatDuration(position),
-                            style: context.text.labelSmall?.copyWith(
-                              color: Colors.white,
+                    if (!compact)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          Space.md,
+                          0,
+                          Space.md,
+                          Space.xs,
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            Text(
+                              formatDuration(position),
+                              style: context.text.labelSmall?.copyWith(
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          Expanded(
-                            child: SliderTheme(
-                              data: SliderThemeData(
-                                trackHeight: 2.5,
-                                thumbShape: const RoundSliderThumbShape(
-                                  enabledThumbRadius: 6,
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderThemeData(
+                                  trackHeight: 2.5,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 6,
+                                  ),
+                                  overlayShape: SliderComponentShape.noOverlay,
+                                  activeTrackColor: context.palette.primary,
+                                  inactiveTrackColor: Colors.white24,
+                                  thumbColor: context.palette.primary,
                                 ),
-                                overlayShape: SliderComponentShape.noOverlay,
-                                activeTrackColor: context.palette.primary,
-                                inactiveTrackColor: Colors.white24,
-                                thumbColor: context.palette.primary,
-                              ),
-                              child: Slider(
-                                value: (progress.clamp(0.0, 1.0)) * maxMs,
-                                max: maxMs <= 0 ? 1 : maxMs,
-                                onChangeStart: onSeekStart,
-                                onChanged: onSeekChanged,
-                                onChangeEnd: onSeekEnd,
+                                child: Slider(
+                                  value: (progress.clamp(0.0, 1.0)) * maxMs,
+                                  max: maxMs <= 0 ? 1 : maxMs,
+                                  onChangeStart: onSeekStart,
+                                  onChanged: onSeekChanged,
+                                  onChangeEnd: onSeekEnd,
+                                ),
                               ),
                             ),
-                          ),
-                          Text(
-                            formatDuration(duration),
-                            style: context.text.labelSmall?.copyWith(
+                            Text(
+                              formatDuration(duration),
+                              style: context.text.labelSmall?.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (!compact)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          Space.sm,
+                          0,
+                          Space.sm,
+                          Space.sm,
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            WingsIconButton(
+                              icon: Icons.skip_previous_rounded,
                               color: Colors.white,
+                              onPressed: onPrevious,
                             ),
-                          ),
-                        ],
+                            WingsIconButton(
+                              icon: Icons.speed_rounded,
+                              color: Colors.white,
+                              tooltip: l10n.playerSpeed,
+                              onPressed: onSpeed,
+                            ),
+                            WingsIconButton(
+                              icon: Icons.hd_outlined,
+                              color: Colors.white,
+                              tooltip: l10n.playerQuality,
+                              onPressed: onQuality,
+                            ),
+                            WingsIconButton(
+                              icon: Icons.download_rounded,
+                              color: Colors.white,
+                              tooltip: l10n.commonDownload,
+                              onPressed: onDownload,
+                            ),
+                            WingsIconButton(
+                              icon: autoplay
+                                  ? Icons.playlist_play_rounded
+                                  : Icons.playlist_remove_rounded,
+                              color: autoplay
+                                  ? context.palette.primary
+                                  : Colors.white,
+                              tooltip: l10n.playerAutoNext,
+                              onPressed: onAutoplay,
+                            ),
+                            const Spacer(),
+                            WingsIconButton(
+                              icon: Icons.skip_next_rounded,
+                              color: Colors.white,
+                              onPressed: onNext,
+                            ),
+                            WingsIconButton(
+                              icon: fullscreen
+                                  ? Icons.fullscreen_exit_rounded
+                                  : Icons.fullscreen_rounded,
+                              color: Colors.white,
+                              onPressed: onToggleFullscreen,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        Space.sm,
-                        0,
-                        Space.sm,
-                        Space.sm,
-                      ),
-                      child: Row(
-                        children: <Widget>[
-                          WingsIconButton(
-                            icon: Icons.skip_previous_rounded,
-                            color: Colors.white,
-                            onPressed: onPrevious,
-                          ),
-                          WingsIconButton(
-                            icon: Icons.speed_rounded,
-                            color: Colors.white,
-                            tooltip: l10n.playerSpeed,
-                            onPressed: onSpeed,
-                          ),
-                          WingsIconButton(
-                            icon: Icons.hd_outlined,
-                            color: Colors.white,
-                            tooltip: l10n.playerQuality,
-                            onPressed: onQuality,
-                          ),
-                          WingsIconButton(
-                            icon: Icons.download_rounded,
-                            color: Colors.white,
-                            tooltip: l10n.commonDownload,
-                            onPressed: onDownload,
-                          ),
-                          WingsIconButton(
-                            icon: autoplay
-                                ? Icons.playlist_play_rounded
-                                : Icons.playlist_remove_rounded,
-                            color: autoplay
-                                ? context.palette.primary
-                                : Colors.white,
-                            tooltip: l10n.playerAutoNext,
-                            onPressed: onAutoplay,
-                          ),
-                          const Spacer(),
-                          WingsIconButton(
-                            icon: Icons.skip_next_rounded,
-                            color: Colors.white,
-                            onPressed: onNext,
-                          ),
-                          WingsIconButton(
-                            icon: fullscreen
-                                ? Icons.fullscreen_exit_rounded
-                                : Icons.fullscreen_rounded,
-                            color: Colors.white,
-                            onPressed: onToggleFullscreen,
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -1102,6 +1155,48 @@ class _PlayerSurface extends StatelessWidget {
     if (error is _NoEpisodes) return l10n.detailsNoEpisodes;
     if (error is _NoPlayableServer) return l10n.playerNoServers;
     return l10n.playerPlaybackErrorBody;
+  }
+}
+
+class _StreamChip extends StatelessWidget {
+  const _StreamChip({required this.label, this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.pill),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.sm + 2,
+          vertical: 5,
+        ),
+        decoration: BoxDecoration(
+          color: palette.surfaceAlt,
+          borderRadius: BorderRadius.circular(Radii.pill),
+          border: Border.all(color: palette.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.hd_outlined, size: 14, color: palette.textSecondary),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: context.text.labelMedium?.copyWith(
+                color: palette.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(Icons.expand_more_rounded, size: 14, color: palette.textMuted),
+          ],
+        ),
+      ),
+    );
   }
 }
 

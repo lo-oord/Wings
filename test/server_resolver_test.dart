@@ -113,6 +113,62 @@ void main() {
     expect(resolved.headers['Referer'], contains('mediafire.com'));
   });
 
+  test('mediaFire ticket pages are followed once to the media URL', () async {
+    final requested = <String>[];
+    final resolver = ServerResolver(
+      _dioWith(
+        _FakeAdapter((options) async {
+          requested.add(options.uri.toString());
+          if (requested.length == 1) {
+            return _html(
+              '<a class="input popsok" href="//www.mediafire.com/file/abc/'
+              'file.mp4/file?dkey=ticket" onclick="go(=>)" '
+              'id="downloadButton" rel="nofollow">Download</a>',
+            );
+          }
+          return _html(
+            '<a href="https://download2391.mediafire.com/xyz/file.mp4">'
+            'Download now</a>',
+          );
+        }),
+      ),
+    );
+    const server = StreamServer(
+      name: 'MF',
+      url: 'https://www.mediafire.com/file/abc/file.mp4/file',
+      quality: '480p',
+      flavor: ServerFlavor.mediaFire,
+    );
+
+    final resolved = await resolver.resolve(server);
+
+    expect(requested, hasLength(2));
+    expect(
+      requested.last,
+      'https://www.mediafire.com/file/abc/file.mp4/file?dkey=ticket',
+    );
+    expect(resolved?.url, 'https://download2391.mediafire.com/xyz/file.mp4');
+  });
+
+  test('stream servers can carry their own request headers', () async {
+    final resolver = ServerResolver(
+      _dioWith(_FakeAdapter((options) async => _html(''))),
+    );
+    const server = StreamServer(
+      name: 'كرتوني',
+      url: 'https://cdn.example.com/stream.m3u8',
+      quality: '720p',
+      flavor: ServerFlavor.direct,
+      headers: <String, String>{'Referer': 'https://cartoony.net/'},
+    );
+
+    final resolved = await resolver.resolve(server);
+
+    expect(resolved?.url, 'https://cdn.example.com/stream.m3u8');
+    expect(resolved?.headers['Referer'], 'https://cartoony.net/');
+    expect(resolved?.headers['User-Agent'], isNotEmpty);
+  });
+
   test(
     'mediaFire pages without a link resolve to null instead of a fake URL',
     () async {

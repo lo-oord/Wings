@@ -45,7 +45,26 @@ void main() {
         final servers = await source.servers(anime, episodes.first);
         expect(servers, isNotEmpty, reason: '${source.id} servers');
         expect(servers.first.url, startsWith('http'));
-        print('${source.id}: stream ${servers.first.url}');
+        expect(
+          servers.first.headers['Referer'],
+          isNotNull,
+          reason: '${source.id} stream host needs a referer',
+        );
+        print(
+          '${source.id}: qualities ${servers.map((s) => s.quality).join(',')}',
+        );
+        final playlist = await dio.get<String>(
+          servers.first.url,
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: <String, String>{
+              'User-Agent': kBrowserUserAgent,
+              ...servers.first.headers,
+            },
+          ),
+        );
+        expect(playlist.statusCode, 200, reason: '${source.id} playlist');
+        print('${source.id}: playlist ${playlist.statusCode}');
 
         final genres = await source.genres();
         expect(genres, isNotEmpty, reason: '${source.id} genres');

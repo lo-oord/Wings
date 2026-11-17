@@ -35,7 +35,10 @@ class ServerResolver {
     return ResolvedStream(
       url: url,
       server: server,
-      headers: const <String, String>{'User-Agent': kBrowserUserAgent},
+      headers: <String, String>{
+        'User-Agent': kBrowserUserAgent,
+        ...server.headers,
+      },
     );
   }
 
@@ -79,31 +82,64 @@ class ServerResolver {
   }
 
   Future<ResolvedStream?> _mediaFire(StreamServer server) async {
-    final response = await _dio.get<String>(
-      server.url,
-      options: Options(
-        responseType: ResponseType.plain,
-        headers: const <String, String>{'User-Agent': kBrowserUserAgent},
-      ),
-    );
-    final html = response.data ?? '';
+    final html = await _mediaFirePage(server.url);
     if (html.isEmpty) return null;
 
-    final primary = RegExp(r'id="downloadButton"[^>]*href="([^"]+)"')
-        .firstMatch(html);
-    final fallback = RegExp(r'href="(https://download[^"]+)"').firstMatch(html);
-    final href = primary?.group(1) ?? fallback?.group(1);
-    if (href == null || href.isEmpty) return null;
-
-    final url = href.replaceAll('&amp;', '&').replaceAll(r'\/', '/');
-    if (!url.startsWith('http')) return null;
+    var url = _mediaFireDownloadUrl(html);
+    if (url == null) {
+      // The file page now advertises a short-lived ticket inside the button;
+      // requesting it lands on the page that carries the real media URL.
+      final ticket = _mediaFireTicket(html);
+      if (ticket != null && ticket != server.url) {
+        url = _mediaFireDownloadUrl(await _mediaFirePage(ticket));
+      }
+    }
+    if (url == null || !url.startsWith('http')) return null;
     return ResolvedStream(
       url: url,
       server: server,
-      headers: const <String, String>{
+      headers: <String, String>{
         'User-Agent': kBrowserUserAgent,
         'Referer': 'https://www.mediafire.com/',
+        ...server.headers,
       },
     );
+  }
+
+  Future<String> _mediaFirePage(String url) async {
+    final response = await _dio.get<String>(
+      url,
+      options: Options(
+        responseType: ResponseType.plain,
+        headers: const <String, String>{
+          'User-Agent': kBrowserUserAgent,
+          'Referer': 'https://www.mediafire.com/',
+        },
+      ),
+    );
+    return response.data ?? '';
+  }
+
+  String? _mediaFireDownloadUrl(String html) {
+    if (html.isEmpty) return null;
+    final direct = RegExp(r'href="(https://download[^"]+)"').firstMatch(html);
+    final button = RegExp(r'id="downloadButton"[^>]*?href="([^"]+)"')
+        .firstMatch(html);
+    final href = direct?.group(1) ?? button?.group(1);
+    if (href == null || href.isEmpty) return null;
+    return href.replaceAll('&amp;', '&').replaceAll(r'\/', '/');
+  }
+
+  /// Reads the href of the download button, which may be protocol-relative.
+  String? _mediaFireTicket(String html) {
+    final marker = html.indexOf('id="downloadButton"');
+    if (marker < 0) return null;
+    final window = html.substring(marker > 1600 ? marker - 1600 : 0, marker);
+    final matches = RegExp(r'href="([^"]+)"').allMatches(window).toList();
+    if (matches.isEmpty) return null;
+    final href = matches.last.group(1)!.replaceAll('&amp;', '&');
+    if (href.startsWith('//')) return 'https:$href';
+    if (href.startsWith('/')) return 'https://www.mediafire.com$href';
+    return href.startsWith('http') ? href : null;
   }
 }

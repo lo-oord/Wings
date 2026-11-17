@@ -6,6 +6,7 @@ import '../core/widgets/wings_feedback.dart';
 import 'localization/app_localizations.dart';
 import 'providers.dart';
 import 'router/app_router.dart';
+import 'scroll_behavior.dart';
 import 'theme/app_palette.dart';
 import 'theme/app_theme.dart';
 
@@ -67,6 +68,7 @@ class _WingsAppState extends ConsumerState<WingsApp>
       theme: buildWingsTheme(WingsPalette.light),
       darkTheme: buildWingsTheme(WingsPalette.dark),
       themeMode: settings.themeMode,
+      scrollBehavior: const WingsScrollBehavior(),
       locale: settings.locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,

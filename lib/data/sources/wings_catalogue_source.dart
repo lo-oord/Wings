@@ -165,11 +165,7 @@ class WingsCatalogueSource implements AnimeSource {
     Anime anime, {
     CancelToken? cancelToken,
   }) async {
-    final paths = <String>{
-      if (anime.contentPath != null && anime.contentPath!.isNotEmpty)
-        anime.contentPath!,
-      'anime_list/${anime.id}',
-    };
+    final paths = _contentPaths(anime);
 
     for (final path in paths) {
       final summary = await _firestore.getFields(
@@ -286,28 +282,34 @@ class WingsCatalogueSource implements AnimeSource {
     AnimeEpisode episode, {
     CancelToken? cancelToken,
   }) async {
-    final path = anime.contentPath ?? 'anime_list/${anime.id}';
+    final paths = _contentPaths(anime);
     var raw = <Map<String, dynamic>>[];
 
-    final summary = await _firestore.getFields(
-      '$path/episodes/${episode.id}/servers2/all_servers',
-      cancelToken: cancelToken,
-    );
-    final values = summary?['servers'];
-    if (values is List) {
-      raw = values
-          .whereType<Map>()
-          .map((item) => item.cast<String, dynamic>())
-          .where((item) => item['visible'] != false)
-          .toList();
+    for (final path in paths) {
+      final summary = await _firestore.getFields(
+        '$path/episodes/${episode.id}/servers2/all_servers',
+        cancelToken: cancelToken,
+      );
+      final values = summary?['servers'];
+      if (values is List) {
+        raw = values
+            .whereType<Map>()
+            .map((item) => item.cast<String, dynamic>())
+            .where((item) => item['visible'] != false)
+            .toList();
+      }
+      if (raw.isNotEmpty) break;
     }
 
     if (raw.isEmpty) {
-      final documents = await _firestore.getDocuments(
-        '$path/episodes/${episode.id}/servers',
-        cancelToken: cancelToken,
-      );
-      raw = documents.where((item) => item['visible'] != false).toList();
+      for (final path in paths) {
+        final documents = await _firestore.getDocuments(
+          '$path/episodes/${episode.id}/servers',
+          cancelToken: cancelToken,
+        );
+        raw = documents.where((item) => item['visible'] != false).toList();
+        if (raw.isNotEmpty) break;
+      }
     }
 
     final servers = <StreamServer>[];
@@ -409,6 +411,24 @@ class WingsCatalogueSource implements AnimeSource {
     return ServerFlavor.browser;
   }
 
+  /// Candidate document paths for a title.
+  ///
+  /// Index entries occasionally carry a leading slash (`/anime_list/…`), which
+  /// makes nested requests fail; the canonical path is tried as a fallback.
+  List<String> _contentPaths(Anime anime) {
+    final sanitized = _cleanPath(anime.contentPath);
+    return <String>{
+      ?sanitized,
+      'anime_list/${anime.id}',
+    }.toList(growable: false);
+  }
+
+  static String? _cleanPath(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim().replaceAll(RegExp(r'^/+|/+$'), '');
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
   Anime _mapAnime(Map<String, dynamic> hit) {
     final details = hit.obj('details');
     final poster = hit.obj('poster');
@@ -456,7 +476,7 @@ class WingsCatalogueSource implements AnimeSource {
       studios: studios,
       releaseDate: details.str('start_date'),
       durationMinutes: hit.integer('duration'),
-      contentPath: hit.str('doc_ref') ?? hit.str('path'),
+      contentPath: _cleanPath(hit.str('doc_ref') ?? hit.str('path')),
       isDubbed: hit.boolean('dubbed') ?? false,
       relatedIds: hit.list('related_anime_ids').asStringList(),
     );
@@ -492,7 +512,7 @@ class WingsCatalogueSource implements AnimeSource {
       backdropUrl: pick('poster_url_aniList') ?? poster,
       genres: hit.list('tags').asStringList(),
       type: pick('type'),
-      contentPath: docRef ?? 'anime_list/$animeId',
+      contentPath: _cleanPath(docRef) ?? 'anime_list/$animeId',
     );
     final episode = AnimeEpisode(
       id: episodeId,

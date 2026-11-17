@@ -176,6 +176,7 @@ class StreamServer {
     required this.flavor,
     this.requiresBrowser = false,
     this.isDirectFile = false,
+    this.headers = const <String, String>{},
   });
 
   final String name;
@@ -186,6 +187,9 @@ class StreamServer {
   final ServerFlavor flavor;
   final bool requiresBrowser;
   final bool isDirectFile;
+
+  /// Extra request headers the stream host requires (referer, cookies …).
+  final Map<String, String> headers;
 
   int get qualityRank {
     final digits = RegExp(r'\d+').firstMatch(quality)?.group(0);

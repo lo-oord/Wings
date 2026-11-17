@@ -56,6 +56,10 @@ class CartoonySource implements AnimeSource {
   Future<List<Map<String, dynamic>>>? _pending;
   final Map<String, String> _qualities = <String, String>{};
 
+  /// Host that answered the last request; its referer is required by the
+  /// stream host before it serves playlists or segments.
+  String _lastBase = baseUrl;
+
   bool owns(String id) => id.startsWith('$idPrefix:');
 
   String encodeId(int showId) => '$idPrefix:$showId';
@@ -248,14 +252,79 @@ class CartoonySource implements AnimeSource {
       return const <StreamServer>[];
     }
 
+    final headers = <String, String>{'Referer': '$_lastBase/'};
+    if (link.contains('.m3u8')) {
+      final variants = await _playlistVariants(link);
+      if (variants.length > 1) {
+        return <StreamServer>[
+          for (final variant in variants)
+            StreamServer(
+              name: label,
+              url: variant.url,
+              quality: variant.quality,
+              flavor: ServerFlavor.direct,
+              headers: headers,
+            ),
+        ];
+      }
+    }
+
     return <StreamServer>[
       StreamServer(
         name: label,
         url: link,
         quality: _qualityForId(showId),
         flavor: ServerFlavor.direct,
+        headers: headers,
       ),
     ];
+  }
+
+  /// Reads the quality ladder published by the stream host.
+  Future<List<({String quality, String url})>> _playlistVariants(
+    String playlistUrl,
+  ) async {
+    try {
+      final response = await _dio.get<String>(
+        playlistUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: <String, String>{'Referer': '$_lastBase/', 'Accept': '*/*'},
+        ),
+      );
+      final text = response.data;
+      if (response.statusCode != 200 ||
+          text == null ||
+          !text.contains('#EXT-X-STREAM-INF')) {
+        return const <({String quality, String url})>[];
+      }
+      final base = Uri.tryParse(playlistUrl);
+      if (base == null) return const <({String quality, String url})>[];
+
+      final variants = <({String quality, String url})>[];
+      String? pending;
+      for (final rawLine in text.split('\n')) {
+        final line = rawLine.trim();
+        if (line.isEmpty) continue;
+        if (line.startsWith('#EXT-X-STREAM-INF')) {
+          pending = _qualityLabel(line);
+        } else if (!line.startsWith('#') && pending != null) {
+          variants.add((quality: pending, url: base.resolve(line).toString()));
+          pending = null;
+        }
+      }
+      return variants;
+    } on Object {
+      return const <({String quality, String url})>[];
+    }
+  }
+
+  String _qualityLabel(String tag) {
+    final name = RegExp(r'NAME="([^"]+)"').firstMatch(tag)?.group(1);
+    if (name != null && name.trim().isNotEmpty) return name.trim();
+    final height = RegExp(r'RESOLUTION=\d+x(\d+)').firstMatch(tag)?.group(1);
+    if (height != null) return '${height}p';
+    return 'HD';
   }
 
   @override
@@ -345,32 +414,42 @@ class CartoonySource implements AnimeSource {
   }) async {
     Object? failure;
     for (final base in _bases) {
-      try {
-        final response = await _dio.request<String>(
-          '$base$path',
-          data: body,
-          cancelToken: cancelToken,
-          options: Options(
-            method: body == null ? 'GET' : 'POST',
-            responseType: ResponseType.plain,
-            contentType: body == null ? null : Headers.jsonContentType,
-            headers: <String, String>{
-              'Referer': '$base/',
-              'Accept': 'application/json, text/plain, */*',
-            },
-          ),
-        );
-        final text = response.data;
-        if (response.statusCode != 200 || text == null || text.isEmpty) {
-          failure = const FormatException('catalogue rejected the request');
-          continue;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          final response = await _dio.request<String>(
+            '$base$path',
+            data: body,
+            cancelToken: cancelToken,
+            options: Options(
+              method: body == null ? 'GET' : 'POST',
+              responseType: ResponseType.plain,
+              contentType: body == null ? null : Headers.jsonContentType,
+              headers: <String, String>{
+                'Referer': '$base/',
+                'Accept': 'application/json, text/plain, */*',
+              },
+            ),
+          );
+          final text = response.data;
+          if (response.statusCode == 429 && attempt == 0) {
+            // The site throttles bursts of link requests; give it a moment.
+            await Future<void>.delayed(const Duration(milliseconds: 900));
+            continue;
+          }
+          if (response.statusCode != 200 || text == null || text.isEmpty) {
+            failure = const FormatException('catalogue rejected the request');
+            break;
+          }
+          _lastBase = base;
+          return CartoonyCrypto.decode(text);
+        } on DioException catch (error) {
+          if (CancelToken.isCancel(error)) rethrow;
+          failure = error;
+          break;
+        } on FormatException catch (error) {
+          failure = error;
+          break;
         }
-        return CartoonyCrypto.decode(text);
-      } on DioException catch (error) {
-        if (CancelToken.isCancel(error)) rethrow;
-        failure = error;
-      } on FormatException catch (error) {
-        failure = error;
       }
     }
     throw failure ?? const FormatException('catalogue is unavailable');
