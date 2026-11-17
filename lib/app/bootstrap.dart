@@ -10,6 +10,7 @@ import '../core/services/new_episode_worker.dart';
 import '../core/services/notification_service.dart';
 import '../core/services/storage_service.dart';
 import '../core/storage/local_store.dart';
+import '../data/firebase/firebase_bootstrap.dart';
 import '../data/repositories/settings_repository.dart';
 import 'app.dart';
 import 'providers.dart';
@@ -25,6 +26,7 @@ Future<void> bootstrap() async {
   ]);
 
   final store = await LocalStore.open();
+  final firebaseReady = await initializeFirebase();
   final notifications = NotificationService();
   await notifications.initialize();
 
@@ -46,6 +48,7 @@ Future<void> bootstrap() async {
     ProviderScope(
       overrides: [
         localStoreProvider.overrideWithValue(store),
+        firebaseReadyProvider.overrideWithValue(firebaseReady),
         notificationServiceProvider.overrideWithValue(notifications),
         downloadServiceProvider.overrideWith((ref) {
           ref.onDispose(downloads.dispose);

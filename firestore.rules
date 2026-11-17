@@ -1,0 +1,293 @@
+rules_version = '2';
+
+// Wings — deny-by-default rules.
+//
+// Ownership always comes from request.auth.uid, never from a client field.
+// Private profile data lives in owner-only documents; only the privacy-filtered
+// `profiles/{uid}` mirror is readable by other users.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // Administrative allowlist. Only the console/service account can write it.
+    function adminUids() {
+      return get(/databases/$(database)/documents/config/admins).data.uids;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/config/admins)
+        && request.auth.uid in adminUids();
+    }
+
+    function validUsername(value) {
+      return value is string
+        && value.size() >= 3
+        && value.size() <= 20
+        && value.matches('^[A-Za-z0-9_]+$');
+    }
+
+    function validBadges(value) {
+      return value is map
+        && value.keys().hasOnly(['verified', 'developer'])
+        && value.verified is bool
+        && value.developer is bool;
+    }
+
+    function validPrivacy(value) {
+      return value is map
+        && value.keys().hasOnly(['country', 'age', 'favorites', 'stats'])
+        && value.country is bool
+        && value.age is bool
+        && value.favorites is bool
+        && value.stats is bool;
+    }
+
+    function validStats(value) {
+      return value is map
+        && value.keys().hasOnly(['animeWatched', 'episodesWatched', 'favorites', 'completed'])
+        && value.animeWatched is int && value.animeWatched >= 0
+        && value.episodesWatched is int && value.episodesWatched >= 0
+        && value.favorites is int && value.favorites >= 0
+        && value.completed is int && value.completed >= 0;
+    }
+
+    // ------------------------------------------------------------- users
+    match /users/{uid} {
+      allow read: if isSelf(uid);
+
+      allow create: if isSelf(uid)
+        && request.resource.data.username is string
+        && validUsername(request.resource.data.username)
+        && request.resource.data.normalizedUsername == request.resource.data.username.lower()
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 300
+        && request.resource.data.country is string
+        && request.resource.data.country.size() <= 2
+        && request.resource.data.ageGroup is string
+        && request.resource.data.ageGroup.size() <= 12
+        && validPrivacy(request.resource.data.privacy)
+        && validStats(request.resource.data.stats)
+        && validBadges(request.resource.data.badges)
+        && request.resource.data.badges.verified == false
+        && request.resource.data.badges.developer == false
+        && request.resource.data.pendingDeletion == false;
+
+      // Owners may edit their own profile but never their badges. A rename is
+      // only accepted when the matching reservation belongs to them.
+      allow update: if isSelf(uid)
+        && (
+          isAdmin()
+          || (
+            validBadges(request.resource.data.badges)
+            && request.resource.data.badges == resource.data.badges
+          )
+        )
+        && validPrivacy(request.resource.data.privacy)
+        && validStats(request.resource.data.stats)
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 300
+        && request.resource.data.country is string
+        && request.resource.data.country.size() <= 2
+        && request.resource.data.ageGroup is string
+        && request.resource.data.ageGroup.size() <= 12
+        && request.resource.data.pendingDeletion is bool
+        && (
+          request.resource.data.username == resource.data.username
+          || (
+            validUsername(request.resource.data.username)
+            && request.resource.data.normalizedUsername == request.resource.data.username.lower()
+            && exists(/databases/$(database)/documents/usernames/$(request.resource.data.normalizedUsername))
+            && get(/databases/$(database)/documents/usernames/$(request.resource.data.normalizedUsername)).data.uid == uid
+          )
+        );
+
+      allow delete: if isSelf(uid) || isAdmin();
+
+      // Owned subcollections.
+      match /library/{animeId} {
+        allow read, write: if isSelf(uid)
+          && request.resource.data.updatedAt is timestamp
+          && request.resource.data.isFavorite is bool
+          && request.resource.data.status in ['watching', 'completed', 'planToWatch', 'onHold', 'dropped'];
+      }
+
+      match /history/{episodeKey} {
+        allow read, write: if isSelf(uid)
+          && request.resource.data.updatedAt is timestamp
+          && request.resource.data.positionMs is int
+          && request.resource.data.positionMs >= 0
+          && request.resource.data.durationMs is int
+          && request.resource.data.durationMs >= 0
+          && request.resource.data.completed is bool;
+      }
+
+      match /settings/account {
+        allow read, write: if isSelf(uid)
+          && request.resource.data.localeCode is string
+          && request.resource.data.localeCode.size() <= 5
+          && request.resource.data.autoplayNext is bool
+          && request.resource.data.rememberPosition is bool
+          && request.resource.data.playbackSpeed is number
+          && request.resource.data.playbackSpeed >= 0.25
+          && request.resource.data.playbackSpeed <= 3.0
+          && request.resource.data.preferredQuality is string
+          && request.resource.data.preferredQuality.size() <= 8;
+      }
+
+      match /meta/{docId} {
+        allow read, write: if isSelf(uid) && validStats(request.resource.data);
+      }
+
+      match /activity/{activityId} {
+        allow read, write: if isSelf(uid);
+      }
+
+      // Avatar bytes: readable by signed-in users so profile pictures render on
+      // public profiles, writable only by the owner and capped below 1 MiB.
+      match /private/avatar {
+        allow read: if signedIn();
+        allow write: if isSelf(uid)
+          && request.resource.data.byteSize is int
+          && request.resource.data.byteSize <= 204800;
+        allow delete: if isSelf(uid);
+      }
+
+      match /private/{docId} {
+        allow read, write: if isSelf(uid);
+      }
+    }
+
+    // ---------------------------------------------------------- profiles
+    // Public mirror: contains only the fields the owner chose to share.
+    match /profiles/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isSelf(uid)
+        && validBadges(request.resource.data.badges)
+        && (
+          isAdmin()
+          || request.resource.data.badges == resource.data.badges
+          || !exists(/databases/$(database)/documents/profiles/$(uid))
+        )
+        && request.resource.data.username is string
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 40;
+      allow delete: if isSelf(uid) || isAdmin();
+    }
+
+    // --------------------------------------------------------- usernames
+    // Exact document lookups only: listing is forbidden so the registry cannot
+    // be enumerated.
+    match /usernames/{normalized} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.username == normalized
+        && request.resource.data.createdAt is timestamp;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // --------------------------------------------------------- catalogue
+    // Episode documents are managed outside the app; clients only read.
+    match /episodes/{episodeId} {
+      allow read: if signedIn();
+      allow write: if false;
+
+      match /reactions/{uid} {
+        allow read: if signedIn();
+        allow create, update: if isSelf(uid)
+          && request.resource.data.uid == uid
+          && request.resource.data.episodeId == episodeId
+          && request.resource.data.type in ['like', 'dislike'];
+        allow delete: if isSelf(uid);
+      }
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+
+        allow create: if signedIn()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.episodeId == episodeId
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.deleted == false
+          && request.resource.data.replyCount == 0;
+
+        allow update: if signedIn()
+          && (
+            // The author may edit text or soft-delete their own comment.
+            (
+              resource.data.authorUid == request.auth.uid
+              && request.resource.data.authorUid == resource.data.authorUid
+              && request.resource.data.text is string
+              && request.resource.data.text.size() <= 1000
+              && request.resource.data.deleted is bool
+              && request.resource.data.replyCount == resource.data.replyCount
+            )
+            ||
+            // Anyone signed in may add exactly one to the reply counter.
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replyCount'])
+              && request.resource.data.replyCount == resource.data.replyCount + 1
+            )
+          );
+
+        allow delete: if signedIn()
+          && resource.data.authorUid == request.auth.uid;
+
+        match /replies/{replyId} {
+          allow read: if signedIn();
+          allow create: if signedIn()
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.parentId == commentId
+            && request.resource.data.text is string
+            && request.resource.data.text.size() >= 1
+            && request.resource.data.text.size() <= 1000
+            && request.resource.data.deleted == false;
+          allow update: if signedIn()
+            && resource.data.authorUid == request.auth.uid
+            && request.resource.data.authorUid == resource.data.authorUid;
+          allow delete: if signedIn()
+            && resource.data.authorUid == request.auth.uid;
+        }
+      }
+    }
+
+    // ----------------------------------------------------------- reports
+    match /reports/{reportId} {
+      allow create: if signedIn()
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() <= 200;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ------------------------------------------------------------ config
+    match /config/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Anything not matched above stays closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -126,6 +126,22 @@ class LibraryRepository {
 
   Future<void> clearHistory() => _store.clear(LocalStore.historyBox);
 
+  /// Writes a record that came from the cloud without touching its timestamps,
+  /// so last-writer-wins conflict resolution stays correct.
+  Future<void> upsertEntry(LibraryEntry entry) =>
+      _store.putJson(LocalStore.libraryBox, entry.anime.id, entry.toJson());
+
+  Future<void> upsertHistory(WatchHistoryEntry entry) =>
+      _store.putJson(LocalStore.historyBox, entry.key, entry.toJson());
+
+  /// Removes every account-scoped record. Used when the signed-in account
+  /// changes so one user's library is never shown to, or pushed for, another.
+  Future<void> clearAccountData() async {
+    await _store.clear(LocalStore.libraryBox);
+    await _store.clear(LocalStore.historyBox);
+    await _store.clear(LocalStore.searchBox);
+  }
+
   Future<void> removeHistoryEntry(String key) =>
       _store.delete(LocalStore.historyBox, key);
 

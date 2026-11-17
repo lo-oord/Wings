@@ -15,6 +15,7 @@ import '../../features/notifications/notifications_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/player/player_screen.dart';
 import '../../features/profile/profile_screen.dart';
+import '../../features/profile/public_profile_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/settings/about_screen.dart';
 import '../../features/settings/legal_screen.dart';
@@ -116,6 +117,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.profile,
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/user/:uid',
+        builder: (context, state) => PublicProfileScreen(
+          uid: Uri.decodeComponent(state.pathParameters['uid'] ?? ''),
+        ),
       ),
       GoRoute(
         path: RoutePaths.notifications,

@@ -12,7 +12,10 @@ import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/errors/app_failure.dart';
+import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
+import '../../data/auth/auth_error_text.dart';
+import 'username_field.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 
@@ -140,7 +143,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _submit() async {
-    final l10n = AppLocalizations.of(context);
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
     setState(() {
@@ -153,14 +155,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .signIn(email: _email.text.trim(), password: _password.text);
       await ref.read(settingsProvider.notifier).leaveGuestMode();
       if (!mounted) return;
-      context.go(RoutePaths.profile);
+      final verified = ref.read(authProvider)?.emailVerified ?? false;
+      context.go(verified ? RoutePaths.profile : RoutePaths.verify);
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = error is AppFailure
-            ? error.message(l10n)
-            : l10n.stateErrorGeneric;
+        _error = authErrorText(context, error);
+      });
+    }
+  }
+
+  Future<void> _google() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authProvider.notifier).signInWithGoogle();
+      await ref.read(settingsProvider.notifier).leaveGuestMode();
+      if (!mounted) return;
+      context.go(RoutePaths.profile);
+    } on AppFailure catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error.kind == FailureKind.cancelled
+            ? null
+            : authErrorText(context, error);
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = authErrorText(context, error);
       });
     }
   }
@@ -247,6 +275,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             onPressed: _loading ? null : _submit,
           ),
           const SizedBox(height: Space.md),
+          GoogleSignInButton(onPressed: _loading ? null : _google),
+          const SizedBox(height: Space.md),
           Center(
             child: TextButton(
               onPressed: () => context.pushReplacement(RoutePaths.register),
@@ -278,6 +308,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   int _step = 0;
   String _country = 'SA';
+  String _ageGroup = '18-24';
+  bool _usernameAvailable = false;
   String? _avatarPath;
   bool _acceptedTerms = false;
   bool _termsError = false;
@@ -305,6 +337,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   void _next() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (_step == 0 && !_usernameAvailable) {
+      context.showSnack(
+        Tr.of(
+          context,
+          ar: 'اختر اسم مستخدم متاحًا للمتابعة.',
+          en: 'Choose an available username to continue.',
+        ),
+        isError: true,
+      );
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() => _step = (_step + 1).clamp(0, _stepCount - 1));
   }
@@ -318,7 +361,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   Future<void> _submit() async {
-    final l10n = AppLocalizations.of(context);
     final valid = _formKey.currentState?.validate() ?? false;
     setState(() => _termsError = !_acceptedTerms);
     if (!valid || !_acceptedTerms) return;
@@ -331,6 +373,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             displayName: _name.text.trim(),
             username: _username.text.trim(),
             country: _country,
+            ageGroup: _ageGroup,
             email: _email.text.trim(),
             password: _password.text,
             avatarPath: _avatarPath,
@@ -338,10 +381,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await ref.read(settingsProvider.notifier).leaveGuestMode();
       if (!mounted) return;
       context.go(RoutePaths.verify);
-    } on Object {
+    } on Object catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      context.showSnack(l10n.stateErrorGeneric, isError: true);
+      context.showSnack(authErrorText(context, error), isError: true);
     }
   }
 
@@ -395,6 +438,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   name: _name,
                   username: _username,
                   onNext: _next,
+                  onAvailability: (value) =>
+                      setState(() => _usernameAvailable = value),
                 ),
                 1 => _CredentialsStep(
                   email: _email,
@@ -404,6 +449,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 _ => _ProfileStep(
                   country: _country,
                   onCountry: (value) => setState(() => _country = value),
+                  ageGroup: _ageGroup,
+                  onAgeGroup: (value) => setState(() => _ageGroup = value),
                   avatarPath: _avatarPath,
                   onPickAvatar: _pickAvatar,
                   acceptedTerms: _acceptedTerms,
@@ -462,11 +509,13 @@ class _IdentityStep extends StatelessWidget {
     required this.name,
     required this.username,
     required this.onNext,
+    required this.onAvailability,
   });
 
   final TextEditingController name;
   final TextEditingController username;
   final VoidCallback onNext;
+  final ValueChanged<bool> onAvailability;
 
   @override
   Widget build(BuildContext context) {
@@ -485,21 +534,9 @@ class _IdentityStep extends StatelessWidget {
               (value?.trim().length ?? 0) < 2 ? l10n.authValidationName : null,
         ),
         const SizedBox(height: Space.md),
-        TextFormField(
+        UsernameField(
           controller: username,
-          textInputAction: TextInputAction.next,
-          onFieldSubmitted: (_) => onNext(),
-          decoration: InputDecoration(
-            labelText: l10n.authUsername,
-            prefixIcon: const Icon(Icons.alternate_email_rounded, size: 18),
-          ),
-          validator: (value) {
-            final text = value?.trim() ?? '';
-            if (!RegExp(r'^[a-zA-Z0-9_]{3,20}$').hasMatch(text)) {
-              return l10n.authValidationUsername;
-            }
-            return null;
-          },
+          onAvailabilityChanged: onAvailability,
         ),
       ],
     );
@@ -634,6 +671,8 @@ class _ProfileStep extends StatelessWidget {
   const _ProfileStep({
     required this.country,
     required this.onCountry,
+    required this.ageGroup,
+    required this.onAgeGroup,
     required this.avatarPath,
     required this.onPickAvatar,
     required this.acceptedTerms,
@@ -643,6 +682,8 @@ class _ProfileStep extends StatelessWidget {
 
   final String country;
   final ValueChanged<String> onCountry;
+  final String ageGroup;
+  final ValueChanged<String> onAgeGroup;
   final String? avatarPath;
   final VoidCallback onPickAvatar;
   final bool acceptedTerms;
@@ -695,6 +736,28 @@ class _ProfileStep extends StatelessWidget {
           ],
           onChanged: (value) {
             if (value != null) onCountry(value);
+          },
+        ),
+        const SizedBox(height: Space.md),
+        DropdownButtonFormField<String>(
+          initialValue: ageGroup,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: Tr.of(context, ar: 'الفئة العمرية', en: 'Age group'),
+            prefixIcon: const Icon(Icons.cake_outlined, size: 18),
+          ),
+          items: const <DropdownMenuItem<String>>[
+            DropdownMenuItem<String>(
+              value: 'under-13',
+              child: Text('أقل من 13'),
+            ),
+            DropdownMenuItem<String>(value: '13-17', child: Text('13 - 17')),
+            DropdownMenuItem<String>(value: '18-24', child: Text('18 - 24')),
+            DropdownMenuItem<String>(value: '25-34', child: Text('25 - 34')),
+            DropdownMenuItem<String>(value: '35+', child: Text('35+')),
+          ],
+          onChanged: (value) {
+            if (value != null) onAgeGroup(value);
           },
         ),
         const SizedBox(height: Space.lg),
@@ -796,51 +859,234 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 }
 
-class VerifyEmailScreen extends StatelessWidget {
+class VerifyEmailScreen extends ConsumerStatefulWidget {
   const VerifyEmailScreen({super.key});
+
+  @override
+  ConsumerState<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
+}
+
+class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
+  static const Duration _cooldown = Duration(seconds: 45);
+
+  bool _sending = false;
+  bool _checking = false;
+  DateTime? _lastSent;
+  String? _message;
+
+  Future<void> _resend() async {
+    final last = _lastSent;
+    if (last != null && DateTime.now().difference(last) < _cooldown) {
+      final wait = _cooldown - DateTime.now().difference(last);
+      setState(() {
+        _message = Tr.of(
+          context,
+          ar: 'انتظر ${wait.inSeconds} ثانية قبل إعادة الإرسال.',
+          en: 'Wait ${wait.inSeconds}s before resending.',
+        );
+      });
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _message = null;
+    });
+    try {
+      await ref.read(authProvider.notifier).sendEmailVerification();
+      if (!mounted) return;
+      setState(() {
+        _lastSent = DateTime.now();
+        _message = Tr.of(
+          context,
+          ar: 'تم إرسال رابط التحقق إلى بريدك.',
+          en: 'A verification link was sent to your email.',
+        );
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _message = authErrorText(context, error));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _checking = true;
+      _message = null;
+    });
+    try {
+      final verified = await ref
+          .read(authProvider.notifier)
+          .refreshEmailVerification();
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _message = verified
+            ? Tr.of(
+                context,
+                ar: 'تم تأكيد بريدك بنجاح.',
+                en: 'Your email is verified.',
+              )
+            : Tr.of(
+                context,
+                ar: 'لم يتم تأكيد البريد بعد. افتح الرابط ثم اضغط تحديث.',
+                en: 'Not verified yet. Open the link, then refresh.',
+              );
+      });
+      if (verified) context.go(RoutePaths.profile);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _message = authErrorText(context, error);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.palette;
+    final user = ref.watch(authProvider);
     return Scaffold(
       appBar: WingsAppBar(showBack: true),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(Space.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: palette.primary.withValues(alpha: 0.12),
-                ),
-                child: Icon(
-                  Icons.mark_email_read_outlined,
-                  color: palette.primary,
-                  size: 30,
-                ),
+      body: ListView(
+        padding: const EdgeInsets.all(Space.xl),
+        children: <Widget>[
+          Center(
+            child: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: palette.primary.withValues(alpha: 0.12),
               ),
-              const SizedBox(height: Space.lg),
-              Text(l10n.authVerifyTitle, style: context.text.titleLarge),
-              const SizedBox(height: Space.sm),
-              Text(
-                l10n.authVerifyBody,
-                textAlign: TextAlign.center,
-                style: context.text.bodySmall?.copyWith(
-                  color: palette.textSecondary,
+              child: Icon(
+                Icons.mark_email_read_outlined,
+                color: palette.primary,
+                size: 30,
+              ),
+            ),
+          ),
+          const SizedBox(height: Space.lg),
+          Text(
+            l10n.authVerifyTitle,
+            textAlign: TextAlign.center,
+            style: context.text.titleLarge,
+          ),
+          const SizedBox(height: Space.sm),
+          Text(
+            l10n.authVerifyBody,
+            textAlign: TextAlign.center,
+            style: context.text.bodySmall?.copyWith(
+              color: palette.textSecondary,
+              height: 1.6,
+            ),
+          ),
+          if (user?.email.isNotEmpty ?? false) ...<Widget>[
+            const SizedBox(height: Space.sm),
+            Text(
+              user!.email,
+              textAlign: TextAlign.center,
+              style: context.text.labelMedium?.copyWith(color: palette.primary),
+            ),
+          ],
+          if (_message != null) ...<Widget>[
+            const SizedBox(height: Space.md),
+            Text(
+              _message!,
+              textAlign: TextAlign.center,
+              style: context.text.bodySmall?.copyWith(
+                color: palette.textSecondary,
+              ),
+            ),
+          ],
+          const SizedBox(height: Space.xl),
+          WingsButton(
+            label: Tr.of(
+              context,
+              ar: 'تحديث حالة التحقق',
+              en: 'Refresh status',
+            ),
+            expand: true,
+            loading: _checking,
+            icon: Icons.refresh_rounded,
+            onPressed: _checking ? null : _refresh,
+          ),
+          const SizedBox(height: Space.sm),
+          WingsButton(
+            label: Tr.of(context, ar: 'إعادة إرسال الرابط', en: 'Resend link'),
+            variant: WingsButtonVariant.outline,
+            expand: true,
+            loading: _sending,
+            onPressed: _sending ? null : _resend,
+          ),
+          const SizedBox(height: Space.sm),
+          Center(
+            child: TextButton(
+              onPressed: () => context.go(RoutePaths.profile),
+              child: Text(l10n.authContinueGuest),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Continue with Google" button used on the login and welcome screens.
+class GoogleSignInButton extends StatelessWidget {
+  const GoogleSignInButton({super.key, this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final enabled = onPressed != null;
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Material(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(Radii.sm),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Radii.sm),
+          onTap: onPressed,
+          child: Container(
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Radii.sm),
+              border: Border.all(color: palette.borderStrong),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  'G',
+                  style: context.text.titleMedium?.copyWith(
+                    color: const Color(0xFF4285F4),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              const SizedBox(height: Space.xl),
-              WingsButton(
-                label: l10n.authContinueGuest,
-                expand: true,
-                onPressed: () => context.go(RoutePaths.profile),
-              ),
-            ],
+                const SizedBox(width: Space.sm),
+                Flexible(
+                  child: Text(
+                    Tr.of(
+                      context,
+                      ar: 'المتابعة باستخدام Google',
+                      en: 'Continue with Google',
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.text.labelLarge?.copyWith(
+                      color: palette.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "469028233998",
+    "firebase_url": "https://wings-50acb-default-rtdb.firebaseio.com",
+    "project_id": "wings-50acb",
+    "storage_bucket": "wings-50acb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:469028233998:android:616521115e06d84dd76d5f",
+        "android_client_info": {
+          "package_name": "com.wings.wings"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "469028233998-ftkhe3d4tsinvf99sf2mhrg2d8vpceb7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wings.wings",
+            "certificate_hash": "9fa85dcb74eda753390084b3e300e86d789dd8b4"
+          }
+        },
+        {
+          "client_id": "469028233998-3jga5u4v81dh9ftmri6li3a8p8j3bfd7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQtV8Ab-2WYU_FzldNPumgGlQVJDF3Rik"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "469028233998-3jga5u4v81dh9ftmri6li3a8p8j3bfd7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

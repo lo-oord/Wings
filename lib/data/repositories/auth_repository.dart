@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-import '../../core/errors/app_failure.dart';
-
+/// Identity of the signed-in account.
+///
+/// Only values that come from the authentication provider or from the loaded
+/// profile are stored here; passwords are never modelled or persisted.
 @immutable
 class AuthUser {
   const AuthUser({
@@ -9,8 +11,9 @@ class AuthUser {
     required this.email,
     required this.displayName,
     required this.createdAt,
-    required this.username,
-    required this.country,
+    this.username = '',
+    this.country = '',
+    this.emailVerified = false,
     this.avatarPath,
     this.bio,
   });
@@ -20,6 +23,7 @@ class AuthUser {
   final String displayName;
   final String username;
   final String country;
+  final bool emailVerified;
   final DateTime createdAt;
   final String? avatarPath;
   final String? bio;
@@ -30,23 +34,25 @@ class AuthUser {
     String? country,
     String? avatarPath,
     String? bio,
+    bool? emailVerified,
   }) => AuthUser(
     id: id,
     email: email,
     displayName: displayName ?? this.displayName,
     username: username ?? this.username,
     country: country ?? this.country,
+    emailVerified: emailVerified ?? this.emailVerified,
     createdAt: createdAt,
     avatarPath: avatarPath ?? this.avatarPath,
     bio: bio ?? this.bio,
   );
 }
 
-/// Contract for account services.
+/// Contract for the account service.
 ///
-/// A production implementation (Firebase, Supabase, or a custom backend) plugs
-/// in here without any screen changes. No implementation is shipped that talks
-/// to a network, and no credentials are stored on device.
+/// [FirebaseAuthRepository] is the production implementation. Profile data,
+/// username reservations and synchronization live in their own repositories;
+/// this contract only covers identity.
 abstract interface class AuthRepository {
   AuthUser? get currentUser;
 
@@ -54,39 +60,44 @@ abstract interface class AuthRepository {
 
   bool get isProductionBackend;
 
+  bool get emailVerified;
+
+  bool get hasPasswordProvider;
+
+  bool get hasGoogleProvider;
+
   Future<AuthUser> signIn({required String email, required String password});
 
-  Future<AuthUser> register({
-    required String displayName,
-    required String username,
-    required String country,
+  Future<AuthUser> signInWithGoogle();
+
+  Future<AuthUser> createAccount({
     required String email,
     required String password,
-    String? avatarPath,
+    required String displayName,
   });
 
-  AuthUser updateProfile({
-    String? displayName,
-    String? username,
-    String? country,
-    String? avatarPath,
-    String? bio,
-  });
+  Future<void> setDisplayName(String name);
 
   Future<void> sendPasswordReset(String email);
 
-  Future<void> verifyEmail();
+  Future<void> sendEmailVerification();
+
+  Future<bool> refreshEmailVerification();
+
+  Future<void> reauthenticate({String? password});
+
+  Future<void> linkGoogle();
+
+  Future<void> deleteCurrentUser();
 
   Future<void> signOut();
-
-  Future<void> deleteAccount();
 }
 
 /// Development-only adapter that keeps a session in memory.
 ///
-/// It exists so the account screens, validation and profile states can be
-/// exercised without a backend. It is explicitly marked as non-production and
-/// nothing is persisted, so no fake account survives a restart.
+/// It exists so the account screens can be exercised without a backend, and it
+/// is never used when Firebase is initialized. It is explicitly marked as
+/// non-production and nothing is persisted.
 class LocalDevelopmentAuthRepository implements AuthRepository {
   LocalDevelopmentAuthRepository();
 
@@ -103,16 +114,22 @@ class LocalDevelopmentAuthRepository implements AuthRepository {
   bool get isProductionBackend => false;
 
   @override
+  bool get emailVerified => _user?.emailVerified ?? false;
+
+  @override
+  bool get hasPasswordProvider => _user != null;
+
+  @override
+  bool get hasGoogleProvider => false;
+
+  @override
   Future<AuthUser> signIn({
     required String email,
     required String password,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (password.length < 8) {
-      throw const AppFailure(
-        FailureKind.unknown,
-        technical: 'invalid credentials',
-      );
+      throw StateError('invalid credentials');
     }
     _user = AuthUser(
       id: 'local-${email.hashCode}',
@@ -120,51 +137,46 @@ class LocalDevelopmentAuthRepository implements AuthRepository {
       displayName: email.split('@').first,
       username: email.split('@').first,
       country: 'SA',
+      emailVerified: true,
       createdAt: DateTime.now(),
     );
     return _user!;
   }
 
   @override
-  Future<AuthUser> register({
-    required String displayName,
-    required String username,
-    required String country,
+  Future<AuthUser> signInWithGoogle() async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    _user = AuthUser(
+      id: 'local-google',
+      email: 'google@example.com',
+      displayName: 'Google User',
+      username: 'google_user',
+      country: 'SA',
+      emailVerified: true,
+      createdAt: DateTime.now(),
+    );
+    return _user!;
+  }
+
+  @override
+  Future<AuthUser> createAccount({
     required String email,
     required String password,
-    String? avatarPath,
+    required String displayName,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     _user = AuthUser(
       id: 'local-${email.hashCode}',
       email: email,
       displayName: displayName,
-      username: username,
-      country: country,
-      avatarPath: avatarPath,
       createdAt: DateTime.now(),
     );
     return _user!;
   }
 
   @override
-  AuthUser updateProfile({
-    String? displayName,
-    String? username,
-    String? country,
-    String? avatarPath,
-    String? bio,
-  }) {
-    final current = _user;
-    if (current == null) throw StateError('no signed in user');
-    _user = current.copyWith(
-      displayName: displayName,
-      username: username,
-      country: country,
-      avatarPath: avatarPath,
-      bio: bio,
-    );
-    return _user!;
+  Future<void> setDisplayName(String name) async {
+    _user = _user?.copyWith(displayName: name);
   }
 
   @override
@@ -173,17 +185,26 @@ class LocalDevelopmentAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> verifyEmail() async {
+  Future<void> sendEmailVerification() async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
   }
 
   @override
-  Future<void> signOut() async {
+  Future<bool> refreshEmailVerification() async => true;
+
+  @override
+  Future<void> reauthenticate({String? password}) async {}
+
+  @override
+  Future<void> linkGoogle() async {}
+
+  @override
+  Future<void> deleteCurrentUser() async {
     _user = null;
   }
 
   @override
-  Future<void> deleteAccount() async {
+  Future<void> signOut() async {
     _user = null;
   }
 }

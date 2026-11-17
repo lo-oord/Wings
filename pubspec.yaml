@@ -28,6 +28,11 @@ dependencies:
   media_kit_libs_video: ^1.0.7
   workmanager: ^0.10.0
   image_picker: ^1.2.0
+  firebase_core: ^5.2.0
+  firebase_auth: ^7.1.0
+  cloud_firestore: ^7.2.0
+  google_sign_in: ^7.2.0
+  flutter_image_compress: ^2.5.1
 
 dev_dependencies:
   flutter_test:

@@ -12,11 +12,13 @@ import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_cards.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/library.dart';
+import '../social/episode_social_section.dart';
 
 class PlayerScreen extends ConsumerStatefulWidget {
   const PlayerScreen({
@@ -498,6 +500,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       onToggleFullscreen: _toggleFullscreen,
       onRetry: _bootstrap,
       onBack: () => Navigator.of(context).maybePop(),
+      onComments: _openComments,
       onQuality: _showQualitySheet,
       onSpeed: _showSpeedSheet,
       onDownload: _episode == null
@@ -752,6 +755,31 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return '$server • $quality';
   }
 
+  void _openComments() {
+    final episode = _episode;
+    if (episode == null) return;
+    final label = AppLocalizations.of(context)
+        .commonEpisodeNumber(episode.number);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.75,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(Radii.lg),
+          ),
+          child: EpisodeSocialSection(
+            episodeId: episode.id,
+            episodeTitle: label,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showQualitySheet() async {
     final l10n = AppLocalizations.of(context);
     await WingsSheet.show<void>(
@@ -849,6 +877,7 @@ class _PlayerSurface extends StatelessWidget {
     required this.onToggleFullscreen,
     required this.onRetry,
     required this.onBack,
+    required this.onComments,
     required this.onQuality,
     required this.onSpeed,
     required this.onDownload,
@@ -883,6 +912,7 @@ class _PlayerSurface extends StatelessWidget {
   final VoidCallback onToggleFullscreen;
   final VoidCallback onRetry;
   final VoidCallback onBack;
+  final VoidCallback onComments;
   final VoidCallback onQuality;
   final VoidCallback onSpeed;
   final VoidCallback? onDownload;
@@ -970,6 +1000,16 @@ class _PlayerSurface extends StatelessWidget {
                             tooltip: l10n.commonClose,
                             color: Colors.white,
                             onPressed: onBack,
+                          ),
+                          WingsIconButton(
+                            icon: Icons.mode_comment_outlined,
+                            tooltip: Tr.of(
+                              context,
+                              ar: 'التعليقات',
+                              en: 'Comments',
+                            ),
+                            color: Colors.white,
+                            onPressed: onComments,
                           ),
                           if (!compact) ...<Widget>[
                             const SizedBox(width: Space.sm),

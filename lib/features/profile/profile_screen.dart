@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../app/localization/app_localizations.dart';
 import '../../app/providers.dart';
@@ -10,11 +9,16 @@ import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_cards.dart';
-import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../data/auth/auth_error_text.dart';
 import '../../data/models/library.dart';
+import '../../data/models/user_profile.dart';
+import '../auth/username_field.dart';
+import '../social/username_text.dart';
+import 'avatar_view.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -24,11 +28,33 @@ class ProfileScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final palette = context.palette;
     final user = ref.watch(authProvider);
+    final profile = ref.watch(profileProvider);
     final library = ref.watch(libraryProvider);
     final downloads = ref.watch(downloadTasksProvider);
     final completedDownloads = downloads
         .where((task) => task.status == DownloadStatus.completed)
         .length;
+
+    // Statistics are derived from the library the user actually has; they are
+    // republished only when the numbers change.
+    ref.listen<LibraryState>(libraryProvider, (previous, next) {
+      final current = ref.read(profileProvider);
+      if (current == null) return;
+      final stats = ProfileStats(
+        animeWatched: next.entries.length,
+        episodesWatched: next.history.length,
+        favorites: next.favorites.length,
+        completed: next.byStatus(LibraryStatus.completed).length,
+      );
+      final old = current.stats;
+      if (stats.animeWatched == old.animeWatched &&
+          stats.episodesWatched == old.episodesWatched &&
+          stats.favorites == old.favorites &&
+          stats.completed == old.completed) {
+        return;
+      }
+      ref.read(authProvider.notifier).publishStats(stats);
+    });
 
     final favorites = library.favorites.length;
     final completed = library.byStatus(LibraryStatus.completed).length;
@@ -44,28 +70,15 @@ class ProfileScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(Space.lg),
             child: Row(
               children: <Widget>[
-                Container(
-                  width: 68,
-                  height: 68,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: palette.surfaceAlt,
-                    border: Border.all(color: palette.border),
+                GestureDetector(
+                  onTap: user == null ? null : () => _pickAvatar(context, ref),
+                  child: UserAvatar(
+                    uid: user?.id ?? '',
+                    photoVersion: profile?.photoVersion ?? 0,
+                    name: user?.displayName ?? '',
+                    size: 72,
+                    localPath: null,
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  alignment: Alignment.center,
-                  child: user == null
-                      ? const WingsMark(size: 34)
-                      : (user.avatarPath != null &&
-                                File(user.avatarPath!).existsSync()
-                            ? Image.file(
-                                File(user.avatarPath!),
-                                fit: BoxFit.cover,
-                              )
-                            : Text(
-                                user.displayName.characters.first.toUpperCase(),
-                                style: context.text.headlineSmall,
-                              )),
                 ),
                 const SizedBox(width: Space.lg),
                 Expanded(
@@ -73,23 +86,61 @@ class ProfileScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        user?.displayName ?? l10n.profileGuest,
+                        profile?.displayName.isNotEmpty == true
+                            ? profile!.displayName
+                            : (user?.displayName ?? l10n.profileGuest),
                         style: context.text.titleLarge,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        user == null
-                            ? l10n.profileSignInPrompt
-                            : '@${user.username} · ${user.email}',
-                        style: context.text.bodySmall?.copyWith(
-                          color: palette.textMuted,
+                      if (user != null) ...<Widget>[
+                        const SizedBox(height: 2),
+                        UsernameText(
+                          username: profile?.username ?? user.username,
+                          badges: profile?.badges ?? ProfileBadges.none,
+                          style: context.text.labelMedium,
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: <Widget>[
+                            Text(
+                              user.email,
+                              style: context.text.bodySmall?.copyWith(
+                                color: palette.textMuted,
+                              ),
+                            ),
+                            if (!user.emailVerified) ...<Widget>[
+                              const SizedBox(width: Space.xs),
+                              GestureDetector(
+                                onTap: () => context.push(RoutePaths.verify),
+                                child: Text(
+                                  Tr.of(
+                                    context,
+                                    ar: 'غير مؤكد · تحقق',
+                                    en: 'Unverified · verify',
+                                  ),
+                                  style: context.text.labelSmall?.copyWith(
+                                    color: palette.warning,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ] else
+                        Text(
+                          l10n.profileSignInPrompt,
+                          style: context.text.bodySmall?.copyWith(
+                            color: palette.textMuted,
+                          ),
+                        ),
                     ],
                   ),
                 ),
+                if (user != null)
+                  WingsIconButton(
+                    icon: Icons.edit_outlined,
+                    tooltip: Tr.of(context, ar: 'تعديل', en: 'Edit'),
+                    onPressed: () => _editProfile(context, ref),
+                  ),
               ],
             ),
           ),
@@ -137,6 +188,39 @@ class ProfileScreen extends ConsumerWidget {
               title: l10n.settingsAccount,
               children: <Widget>[
                 WingsSettingsTile(
+                  icon: Icons.badge_outlined,
+                  title: Tr.of(context, ar: 'تعديل الملف', en: 'Edit profile'),
+                  subtitle: Tr.of(
+                    context,
+                    ar: 'الاسم الظاهر والنبذة',
+                    en: 'Display name and bio',
+                  ),
+                  showChevron: true,
+                  onTap: () => _editProfile(context, ref),
+                ),
+                WingsSettingsTile(
+                  icon: Icons.alternate_email_rounded,
+                  title: Tr.of(
+                    context,
+                    ar: 'تغيير اسم المستخدم',
+                    en: 'Change username',
+                  ),
+                  subtitle: '@${profile?.username ?? user.username}',
+                  showChevron: true,
+                  onTap: () => _changeUsername(context, ref),
+                ),
+                WingsSettingsTile(
+                  icon: Icons.lock_outline_rounded,
+                  title: Tr.of(context, ar: 'الخصوصية', en: 'Privacy'),
+                  subtitle: Tr.of(
+                    context,
+                    ar: 'تحكم ما يراه الآخرون',
+                    en: 'Control what others see',
+                  ),
+                  showChevron: true,
+                  onTap: () => _privacySheet(context, ref),
+                ),
+                WingsSettingsTile(
                   icon: Icons.download_done_rounded,
                   title: l10n.settingsDownloads,
                   subtitle: formatBytes(
@@ -144,7 +228,7 @@ class ProfileScreen extends ConsumerWidget {
                         .where(
                           (task) => task.status == DownloadStatus.completed,
                         )
-                        .fold<int>(0, (sum, task) => sum + task.totalBytes),
+                        .fold<int>(0, (total, task) => total + task.totalBytes),
                   ),
                   showChevron: true,
                   onTap: () => context.push(RoutePaths.downloads),
@@ -162,21 +246,7 @@ class ProfileScreen extends ConsumerWidget {
                   icon: Icons.delete_forever_outlined,
                   title: l10n.profileDeleteAccount,
                   destructive: true,
-                  onTap: () async {
-                    final confirmed = await WingsDialog.confirm(
-                      context,
-                      title: l10n.profileDeleteAccount,
-                      message: l10n.profileDeleteBody,
-                      confirmLabel: l10n.commonDelete,
-                      destructive: true,
-                    );
-                    if (!confirmed) return;
-                    await ref.read(authProvider.notifier).deleteAccount();
-                    if (context.mounted) {
-                      context.go(RoutePaths.settings);
-                      context.showSnack(l10n.profileDeleteDone);
-                    }
-                  },
+                  onTap: () => _deleteAccount(context, ref),
                 ),
               ],
             ),
@@ -223,6 +293,282 @@ class ProfileScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _pickAvatar(BuildContext context, WidgetRef ref) async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      imageQuality: 90,
+    );
+    if (file == null) return;
+    try {
+      await ref.read(authProvider.notifier).saveAvatar(file.path);
+      if (context.mounted) {
+        context.showSnack(
+          Tr.of(context, ar: 'تم تحديث الصورة', en: 'Picture updated'),
+        );
+      }
+    } on Object catch (error) {
+      if (context.mounted) {
+        context.showSnack(authErrorText(context, error), isError: true);
+      }
+    }
+  }
+
+  Future<void> _editProfile(BuildContext context, WidgetRef ref) async {
+    final profile = ref.read(profileProvider);
+    if (profile == null) return;
+    final name = TextEditingController(text: profile.displayName);
+    final bio = TextEditingController(text: profile.bio);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(Tr.of(context, ar: 'تعديل الملف', en: 'Edit profile')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+              controller: name,
+              maxLength: 40,
+              decoration: InputDecoration(
+                labelText: Tr.of(
+                  context,
+                  ar: 'الاسم الظاهر',
+                  en: 'Display name',
+                ),
+              ),
+            ),
+            TextField(
+              controller: bio,
+              maxLength: 300,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: Tr.of(context, ar: 'نبذة', en: 'Bio'),
+              ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(Tr.of(context, ar: 'إلغاء', en: 'Cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(Tr.of(context, ar: 'حفظ', en: 'Save')),
+          ),
+        ],
+      ),
+    );
+    if (saved == true) {
+      try {
+        await ref
+            .read(authProvider.notifier)
+            .updateProfile(displayName: name.text, bio: bio.text);
+      } on Object catch (error) {
+        if (context.mounted) {
+          context.showSnack(authErrorText(context, error), isError: true);
+        }
+      }
+    }
+    name.dispose();
+    bio.dispose();
+  }
+
+  Future<void> _changeUsername(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(
+      text: ref.read(profileProvider)?.username ?? '',
+    );
+    var available = false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          Tr.of(context, ar: 'تغيير اسم المستخدم', en: 'Change username'),
+        ),
+        content: StatefulBuilder(
+          builder: (context, setState) => UsernameField(
+            controller: controller,
+            onAvailabilityChanged: (value) => available = value,
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(Tr.of(context, ar: 'إلغاء', en: 'Cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(Tr.of(context, ar: 'حفظ', en: 'Save')),
+          ),
+        ],
+      ),
+    );
+    if (accepted == true) {
+      if (!available) {
+        if (context.mounted) {
+          context.showSnack(
+            Tr.of(
+              context,
+              ar: 'اختر اسمًا متاحًا أولًا.',
+              en: 'Choose an available username first.',
+            ),
+            isError: true,
+          );
+        }
+      } else {
+        try {
+          await ref.read(authProvider.notifier).changeUsername(controller.text);
+          if (context.mounted) {
+            context.showSnack(
+              Tr.of(context, ar: 'تم تحديث الاسم', en: 'Username updated'),
+            );
+          }
+        } on Object catch (error) {
+          if (context.mounted) {
+            context.showSnack(authErrorText(context, error), isError: true);
+          }
+        }
+      }
+    }
+    controller.dispose();
+  }
+
+  Future<void> _privacySheet(BuildContext context, WidgetRef ref) async {
+    final profile = ref.read(profileProvider);
+    if (profile == null) return;
+    var privacy = profile.privacy;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setState) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.all(Space.lg),
+                child: Text(
+                  Tr.of(context, ar: 'الخصوصية', en: 'Privacy'),
+                  style: context.text.titleMedium,
+                ),
+              ),
+              SwitchListTile(
+                value: privacy.country,
+                title: Text(
+                  Tr.of(context, ar: 'إظهار الدولة', en: 'Show country'),
+                ),
+                onChanged: (value) =>
+                    setState(() => privacy = privacy.copyWith(country: value)),
+              ),
+              SwitchListTile(
+                value: privacy.age,
+                title: Text(
+                  Tr.of(
+                    context,
+                    ar: 'إظهار الفئة العمرية',
+                    en: 'Show age group',
+                  ),
+                ),
+                onChanged: (value) =>
+                    setState(() => privacy = privacy.copyWith(age: value)),
+              ),
+              SwitchListTile(
+                value: privacy.stats,
+                title: Text(
+                  Tr.of(context, ar: 'إظهار الإحصائيات', en: 'Show statistics'),
+                ),
+                onChanged: (value) =>
+                    setState(() => privacy = privacy.copyWith(stats: value)),
+              ),
+              SwitchListTile(
+                value: privacy.favorites,
+                title: Text(
+                  Tr.of(context, ar: 'إظهار المفضلة', en: 'Show favourites'),
+                ),
+                onChanged: (value) => setState(
+                  () => privacy = privacy.copyWith(favorites: value),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(Space.lg),
+                child: WingsButton(
+                  label: Tr.of(context, ar: 'حفظ', en: 'Save'),
+                  expand: true,
+                  onPressed: () async {
+                    await ref
+                        .read(authProvider.notifier)
+                        .updatePrivacy(privacy);
+                    if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await WingsDialog.confirm(
+      context,
+      title: l10n.profileDeleteAccount,
+      message: l10n.profileDeleteBody,
+      confirmLabel: l10n.commonDelete,
+      destructive: true,
+    );
+    if (!confirmed) return;
+    if (!context.mounted) return;
+
+    String? password;
+    if (ref.read(authRepositoryProvider).hasPasswordProvider) {
+      final controller = TextEditingController();
+      final value = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            Tr.of(context, ar: 'تأكيد الهوية', en: 'Confirm identity'),
+          ),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            decoration: InputDecoration(
+              labelText: Tr.of(
+                context,
+                ar: 'كلمة المرور الحالية',
+                en: 'Current password',
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(Tr.of(context, ar: 'إلغاء', en: 'Cancel')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              child: Text(Tr.of(context, ar: 'متابعة', en: 'Continue')),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (value == null) return;
+      password = value;
+    }
+
+    try {
+      await ref.read(authProvider.notifier).deleteAccount(password: password);
+      if (!context.mounted) return;
+      context.go(RoutePaths.settings);
+      context.showSnack(l10n.profileDeleteDone);
+    } on Object catch (error) {
+      if (!context.mounted) return;
+      context.showSnack(authErrorText(context, error), isError: true);
+    }
   }
 }
 
