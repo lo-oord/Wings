@@ -35,7 +35,7 @@ class NotificationService {
     try {
       await _plugin.initialize(
         settings: const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings('@drawable/ic_stat_wings'),
         ),
         onDidReceiveNotificationResponse: (response) {
           final payload = response.payload;
@@ -98,7 +98,7 @@ class NotificationService {
             progress: progress,
             maxProgress: max <= 0 ? 100 : max,
             indeterminate: max <= 0,
-            icon: '@mipmap/ic_launcher',
+            icon: '@drawable/ic_stat_wings',
           ),
         ),
       );
@@ -188,7 +188,7 @@ class NotificationService {
             largeIcon: posterPath == null
                 ? null
                 : FilePathAndroidBitmap(posterPath),
-            icon: '@mipmap/ic_launcher',
+            icon: '@drawable/ic_stat_wings',
             autoCancel: true,
           ),
         ),
@@ -220,7 +220,7 @@ class NotificationService {
             channelDescription: channelDescription,
             importance: Importance.defaultImportance,
             priority: Priority.defaultPriority,
-            icon: '@mipmap/ic_launcher',
+            icon: '@drawable/ic_stat_wings',
           ),
         ),
       );
