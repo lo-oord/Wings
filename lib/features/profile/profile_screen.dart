@@ -16,6 +16,7 @@ import '../../core/widgets/wings_layout.dart';
 import '../../data/auth/auth_error_text.dart';
 import '../../data/models/library.dart';
 import '../../data/models/user_profile.dart';
+import '../auth/auth_screens.dart' show kCountries;
 import '../auth/username_field.dart';
 import '../social/username_text.dart';
 import 'avatar_view.dart';
@@ -46,14 +47,29 @@ class ProfileScreen extends ConsumerWidget {
         favorites: next.favorites.length,
         completed: next.byStatus(LibraryStatus.completed).length,
       );
+      final favorites = <ProfileFavorite>[
+        for (final entry in next.favorites.take(12))
+          ProfileFavorite(
+            animeId: entry.anime.id,
+            title: entry.anime.title,
+            imageUrl: entry.anime.imageUrl ?? '',
+          ),
+      ];
       final old = current.stats;
-      if (stats.animeWatched == old.animeWatched &&
+      final sameStats =
+          stats.animeWatched == old.animeWatched &&
           stats.episodesWatched == old.episodesWatched &&
           stats.favorites == old.favorites &&
-          stats.completed == old.completed) {
-        return;
-      }
-      ref.read(authProvider.notifier).publishStats(stats);
+          stats.completed == old.completed;
+      final sameFavorites =
+          current.favorites.length == favorites.length &&
+          Iterable<int>.generate(favorites.length).every(
+            (index) => current.favorites[index].animeId == favorites[index].animeId,
+          );
+      if (sameStats && sameFavorites) return;
+      ref
+          .read(authProvider.notifier)
+          .publishStats(stats, favorites: favorites);
     });
 
     final favorites = library.favorites.length;
@@ -98,6 +114,28 @@ class ProfileScreen extends ConsumerWidget {
                           badges: profile?.badges ?? ProfileBadges.none,
                           style: context.text.labelMedium,
                         ),
+                        if (profile != null &&
+                            (profile.country.isNotEmpty ||
+                                profile.ageGroup.isNotEmpty)) ...<Widget>[
+                          const SizedBox(height: 2),
+                          Wrap(
+                            spacing: Space.sm,
+                            runSpacing: 2,
+                            children: <Widget>[
+                              Text(
+                                <String>[
+                                  if (profile.country.isNotEmpty)
+                                    _countryName(profile.country),
+                                  if (profile.ageGroup.isNotEmpty)
+                                    profile.ageGroup,
+                                ].join(' · '),
+                                style: context.text.labelSmall?.copyWith(
+                                  color: palette.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 2),
                         Row(
                           children: <Widget>[
@@ -321,33 +359,88 @@ class ProfileScreen extends ConsumerWidget {
     if (profile == null) return;
     final name = TextEditingController(text: profile.displayName);
     final bio = TextEditingController(text: profile.bio);
+    var country = profile.country.isEmpty ? 'SA' : profile.country;
+    var ageGroup = profile.ageGroup.isEmpty ? '18-24' : profile.ageGroup;
+    const ageGroups = <(String, String)>[
+      ('under-13', 'أقل من 13'),
+      ('13-17', '13 - 17'),
+      ('18-24', '18 - 24'),
+      ('25-34', '25 - 34'),
+      ('35+', '35+'),
+    ];
     final saved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(Tr.of(context, ar: 'تعديل الملف', en: 'Edit profile')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            TextField(
-              controller: name,
-              maxLength: 40,
-              decoration: InputDecoration(
-                labelText: Tr.of(
-                  context,
-                  ar: 'الاسم الظاهر',
-                  en: 'Display name',
+        content: SingleChildScrollView(
+          child: StatefulBuilder(
+            builder: (dialogContext, setDialogState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                TextField(
+                  controller: name,
+                  maxLength: 40,
+                  decoration: InputDecoration(
+                    labelText: Tr.of(
+                      context,
+                      ar: 'الاسم الظاهر',
+                      en: 'Display name',
+                    ),
+                  ),
                 ),
-              ),
+                TextField(
+                  controller: bio,
+                  maxLength: 300,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: Tr.of(context, ar: 'نبذة', en: 'Bio'),
+                  ),
+                ),
+                const SizedBox(height: Space.sm),
+                DropdownButtonFormField<String>(
+                  initialValue: country,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: Tr.of(context, ar: 'الدولة', en: 'Country'),
+                    prefixIcon: const Icon(Icons.public_rounded, size: 18),
+                  ),
+                  items: <DropdownMenuItem<String>>[
+                    for (final item in kCountries)
+                      DropdownMenuItem<String>(
+                        value: item.$1,
+                        child: Text(item.$2),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setDialogState(() => country = value);
+                  },
+                ),
+                const SizedBox(height: Space.sm),
+                DropdownButtonFormField<String>(
+                  initialValue: ageGroup,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: Tr.of(
+                      context,
+                      ar: 'الفئة العمرية',
+                      en: 'Age group',
+                    ),
+                    prefixIcon: const Icon(Icons.cake_outlined, size: 18),
+                  ),
+                  items: <DropdownMenuItem<String>>[
+                    for (final item in ageGroups)
+                      DropdownMenuItem<String>(
+                        value: item.$1,
+                        child: Text(item.$2),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setDialogState(() => ageGroup = value);
+                  },
+                ),
+              ],
             ),
-            TextField(
-              controller: bio,
-              maxLength: 300,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: Tr.of(context, ar: 'نبذة', en: 'Bio'),
-              ),
-            ),
-          ],
+          ),
         ),
         actions: <Widget>[
           TextButton(
@@ -365,7 +458,12 @@ class ProfileScreen extends ConsumerWidget {
       try {
         await ref
             .read(authProvider.notifier)
-            .updateProfile(displayName: name.text, bio: bio.text);
+            .updateProfile(
+              displayName: name.text,
+              bio: bio.text,
+              country: country,
+              ageGroup: ageGroup,
+            );
       } on Object catch (error) {
         if (context.mounted) {
           context.showSnack(authErrorText(context, error), isError: true);
@@ -455,6 +553,39 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ),
               SwitchListTile(
+                value: privacy.showProfile,
+                title: Text(
+                  Tr.of(
+                    context,
+                    ar: 'إظهار حسابي للآخرين',
+                    en: 'Show my profile to others',
+                  ),
+                ),
+                subtitle: Text(
+                  Tr.of(
+                    context,
+                    ar:
+                        'عند الإيقاف يظهر اسمك في التعليقات فقط، بلا بيانات أو إحصائيات.',
+                    en:
+                        'When off, only your name appears in comments — no profile details.',
+                  ),
+                  style: context.text.labelSmall?.copyWith(
+                    color: context.palette.textMuted,
+                  ),
+                ),
+                onChanged: (value) => setState(
+                  () => privacy = privacy.copyWith(showProfile: value),
+                ),
+              ),
+              SwitchListTile(
+                value: privacy.bio,
+                title: Text(
+                  Tr.of(context, ar: 'إظهار النبذة', en: 'Show bio'),
+                ),
+                onChanged: (value) =>
+                    setState(() => privacy = privacy.copyWith(bio: value)),
+              ),
+              SwitchListTile(
                 value: privacy.country,
                 title: Text(
                   Tr.of(context, ar: 'إظهار الدولة', en: 'Show country'),
@@ -487,6 +618,17 @@ class ProfileScreen extends ConsumerWidget {
                 title: Text(
                   Tr.of(context, ar: 'إظهار المفضلة', en: 'Show favourites'),
                 ),
+                subtitle: Text(
+                  Tr.of(
+                    context,
+                    ar: 'تُنشر أسماء الأعمال المفضلة فقط، بلا تقدم أو سجل مشاهدة.',
+                    en:
+                        'Only favourite titles are published — never progress or history.',
+                  ),
+                  style: context.text.labelSmall?.copyWith(
+                    color: context.palette.textMuted,
+                  ),
+                ),
                 onChanged: (value) => setState(
                   () => privacy = privacy.copyWith(favorites: value),
                 ),
@@ -497,10 +639,45 @@ class ProfileScreen extends ConsumerWidget {
                   label: Tr.of(context, ar: 'حفظ', en: 'Save'),
                   expand: true,
                   onPressed: () async {
-                    await ref
-                        .read(authProvider.notifier)
-                        .updatePrivacy(privacy);
-                    if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                    try {
+                      await ref
+                          .read(authProvider.notifier)
+                          .updatePrivacy(privacy);
+                      // Re-publish right away so turning a switch on (or off)
+                      // changes what other users read without waiting for the
+                      // next library change.
+                      final library = ref.read(libraryProvider);
+                      await ref
+                          .read(authProvider.notifier)
+                          .publishStats(
+                            ProfileStats(
+                              animeWatched: library.entries.length,
+                              episodesWatched: library.history.length,
+                              favorites: library.favorites.length,
+                              completed: library
+                                  .byStatus(LibraryStatus.completed)
+                                  .length,
+                            ),
+                            favorites: <ProfileFavorite>[
+                              for (final entry in library.favorites.take(12))
+                                ProfileFavorite(
+                                  animeId: entry.anime.id,
+                                  title: entry.anime.title,
+                                  imageUrl: entry.anime.imageUrl ?? '',
+                                ),
+                            ],
+                          );
+                      if (sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop();
+                      }
+                    } on Object catch (error) {
+                      if (sheetContext.mounted) {
+                        context.showSnack(
+                          authErrorText(context, error),
+                          isError: true,
+                        );
+                      }
+                    }
                   },
                 ),
               ),
@@ -570,6 +747,13 @@ class ProfileScreen extends ConsumerWidget {
       context.showSnack(authErrorText(context, error), isError: true);
     }
   }
+}
+
+String _countryName(String code) {
+  for (final item in kCountries) {
+    if (item.$1 == code) return item.$2;
+  }
+  return code;
 }
 
 class _StatCard extends StatelessWidget {

@@ -39,6 +39,15 @@ String authErrorText(BuildContext context, Object error) {
     return _generic(context);
   }
 
+  // Firestore failures (profile, username reservation, avatar bytes) arrive as
+  // plain FirebaseException; a rejected write is almost always a rules or
+  // setup problem, which the generic message would hide.
+  if (error is FirebaseException) {
+    final text = _byCode(context, error.code);
+    if (text != null) return text;
+    return _generic(context);
+  }
+
   if (error is AppFailure) {
     final code = error.technical;
     if (code != null) {
@@ -152,6 +161,71 @@ String? _byCode(BuildContext context, String code) => switch (code) {
     context,
     ar: 'تم إلغاء تسجيل الدخول بجوجل.',
     en: 'Google sign-in was cancelled.',
+  ),
+  'google-unsupported-platform' => Tr.of(
+    context,
+    ar: 'تسجيل الدخول بجوجل غير مدعوم على هذا الجهاز.',
+    en: 'Google sign-in is not supported on this device.',
+  ),
+  'permission-denied' => Tr.of(
+    context,
+    ar:
+        'رفض الخادم العملية. تأكد من نشر قواعد Firestore الجديدة وأن الحساب مسجّل الدخول.',
+    en:
+        'The server rejected the operation. Publish the latest Firestore rules and make sure you are signed in.',
+  ),
+  'unavailable' || 'deadline-exceeded' => Tr.of(
+    context,
+    ar: 'تعذر الوصول إلى قاعدة البيانات. تحقق من الإنترنت وحاول مرة أخرى.',
+    en: 'Could not reach the database. Check your connection and try again.',
+  ),
+  'not-found' => Tr.of(
+    context,
+    ar: 'قاعدة البيانات غير موجودة. أنشئ Cloud Firestore من لوحة Firebase.',
+    en: 'The database does not exist. Create Cloud Firestore in the Firebase console.',
+  ),
+  'invalid-api-key' ||
+  'api-key-not-valid' ||
+  'app-not-authorized' ||
+  'unauthorized-domain' => Tr.of(
+    context,
+    ar: 'إعدادات Firebase لهذا التطبيق غير صحيحة. راجع google-services.json.',
+    en: 'This app\'s Firebase configuration is invalid. Check google-services.json.',
+  ),
+  'internal-error' => Tr.of(
+    context,
+    ar: 'خطأ داخلي من Firebase. حاول مرة أخرى بعد قليل.',
+    en: 'Firebase returned an internal error. Try again shortly.',
+  ),
+  'username-taken' => Tr.of(
+    context,
+    ar: 'اسم المستخدم هذا محجوز الآن. اختر اسمًا آخر.',
+    en: 'That username is taken. Pick another one.',
+  ),
+  'username-invalid' => Tr.of(
+    context,
+    ar: 'اسم المستخدم غير صالح. استخدم 3–20 حرفًا إنجليزيًا أو رقمًا أو _.',
+    en: 'Invalid username. Use 3–20 English letters, numbers or underscores.',
+  ),
+  'username-unavailable' => Tr.of(
+    context,
+    ar: 'تعذر إيجاد اسم مستخدم متاح. حاول مرة أخرى.',
+    en: 'Could not find an available username. Please try again.',
+  ),
+  'avatar-too-large' => Tr.of(
+    context,
+    ar: 'الصورة كبيرة جدًا. اختر صورة أخرى.',
+    en: 'That picture is too large. Choose another one.',
+  ),
+  'no-profile' => Tr.of(
+    context,
+    ar: 'لم يتم تحميل ملفك الشخصي بعد. حاول بعد لحظة.',
+    en: 'Your profile is not loaded yet. Try again in a moment.',
+  ),
+  'no-user' => Tr.of(
+    context,
+    ar: 'انتهت الجلسة. سجّل الدخول من جديد.',
+    en: 'The session ended. Please sign in again.',
   ),
   _ => null,
 };

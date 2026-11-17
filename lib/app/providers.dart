@@ -549,9 +549,13 @@ class AuthController extends Notifier<AuthUser?> {
 
   /// Loads the profile document so screens always read the authoritative
   /// username, display name and country.
+  ///
+  /// A signed-in account without a profile document (an interrupted Google or
+  /// email sign-up) is repaired here instead of being left in a half state.
   Future<void> _refresh(AuthUser user) async {
     try {
-      final profile = await ref.read(userRepositoryProvider).fetch(user.id);
+      var profile = await ref.read(userRepositoryProvider).fetch(user.id);
+      profile ??= await ref.read(accountServiceProvider)?.ensureProfile(user);
       if (profile != null) {
         ref.read(profileProvider.notifier).apply(profile);
         state = user.copyWith(
@@ -660,11 +664,23 @@ class AuthController extends Notifier<AuthUser?> {
     return next;
   }
 
-  Future<void> publishStats(ProfileStats stats) async {
+  Future<void> publishStats(
+    ProfileStats stats, {
+    List<ProfileFavorite>? favorites,
+  }) async {
     final profile = ref.read(profileProvider);
     final service = ref.read(accountServiceProvider);
     if (profile == null || service == null) return;
-    await service.publishStats(profile, stats);
+    try {
+      final next = await service.publishStats(
+        profile,
+        stats,
+        favorites: favorites,
+      );
+      ref.read(profileProvider.notifier).apply(next);
+    } on Object {
+      // Offline: the next library change retries the publication.
+    }
   }
 
   Future<UserProfile> updatePrivacy(ProfilePrivacy privacy) async {

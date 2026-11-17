@@ -25,10 +25,24 @@ class EpisodeSocialSection extends ConsumerStatefulWidget {
     super.key,
     required this.episodeId,
     required this.episodeTitle,
+    this.embedded = false,
+    this.savedToLibrary = false,
+    this.onDownload,
+    this.onToggleSave,
   });
 
   final String episodeId;
   final String episodeTitle;
+
+  /// Embedded mode is the YouTube-style layout under the player: the action
+  /// buttons, the composer and the comments flow with the page instead of
+  /// living inside a fixed-height sheet.
+  final bool embedded;
+
+  /// Library state for the save button; ignored when [onToggleSave] is null.
+  final bool savedToLibrary;
+  final VoidCallback? onDownload;
+  final VoidCallback? onToggleSave;
 
   @override
   ConsumerState<EpisodeSocialSection> createState() =>
@@ -37,6 +51,7 @@ class EpisodeSocialSection extends ConsumerStatefulWidget {
 
 class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
   final TextEditingController _composer = TextEditingController();
+  final FocusNode _composerFocus = FocusNode();
   ReactionType? _reaction;
   EpisodeCounts _counts = EpisodeCounts.zero;
   bool _countsLoading = true;
@@ -56,6 +71,7 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
   @override
   void dispose() {
     _composer.dispose();
+    _composerFocus.dispose();
     super.dispose();
   }
 
@@ -212,10 +228,113 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
     );
   }
 
+  Widget _actionBar() {
+    return _ActionBar(
+      scrollable: widget.embedded,
+      children: <Widget>[
+        _ReactionButton(
+          icon: _reaction == ReactionType.like
+              ? Icons.thumb_up_alt_rounded
+              : Icons.thumb_up_alt_outlined,
+          count: _counts.likes,
+          active: _reaction == ReactionType.like,
+          expanded: !widget.embedded,
+          onTap: () => _toggleReaction(ReactionType.like),
+        ),
+        _ReactionButton(
+          icon: _reaction == ReactionType.dislike
+              ? Icons.thumb_down_alt_rounded
+              : Icons.thumb_down_alt_outlined,
+          count: _counts.dislikes,
+          active: _reaction == ReactionType.dislike,
+          expanded: !widget.embedded,
+          onTap: () => _toggleReaction(ReactionType.dislike),
+        ),
+        _ReactionButton(
+          icon: Icons.ios_share_rounded,
+          label: Tr.of(context, ar: 'مشاركة', en: 'Share'),
+          expanded: !widget.embedded,
+          onTap: _share,
+        ),
+        if (widget.onDownload != null)
+          _ReactionButton(
+            icon: Icons.download_rounded,
+            label: Tr.of(context, ar: 'تنزيل', en: 'Download'),
+            expanded: !widget.embedded,
+            onTap: widget.onDownload,
+          ),
+        if (widget.onToggleSave != null)
+          _ReactionButton(
+            icon: widget.savedToLibrary
+                ? Icons.bookmark_rounded
+                : Icons.bookmark_border_rounded,
+            label: Tr.of(
+              context,
+              ar: widget.savedToLibrary ? 'محفوظ' : 'حفظ',
+              en: widget.savedToLibrary ? 'Saved' : 'Save',
+            ),
+            active: widget.savedToLibrary,
+            expanded: !widget.embedded,
+            onTap: widget.onToggleSave,
+          ),
+        _ReactionButton(
+          icon: Icons.mode_comment_outlined,
+          count: _countsLoading ? null : _counts.comments,
+          label: Tr.of(context, ar: 'تعليقات', en: 'Comments'),
+          expanded: !widget.embedded,
+          onTap: widget.embedded ? _focusComposer : () {},
+        ),
+      ],
+    );
+  }
+
+  /// Inline comments already sit under the buttons, so the counter button
+  /// simply brings the composer into view.
+  void _focusComposer() {
+    final focused = _composerFocus.hasFocus;
+    if (focused) {
+      _composerFocus.unfocus();
+    } else {
+      _composerFocus.requestFocus();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final user = ref.watch(authProvider);
+
+    if (widget.embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _actionBar(),
+          Divider(height: 1, color: palette.border),
+          if (user == null)
+            _SignInPrompt(onSignIn: () => context.push('/login'))
+          else ...<Widget>[
+            _Composer(
+              controller: _composer,
+              focusNode: _composerFocus,
+              sending: _sending,
+              onSend: _send,
+            ),
+            _CommentList(
+              episodeId: widget.episodeId,
+              older: _older,
+              composer: _composer,
+              sending: _sending,
+              hasMore: _hasMore,
+              loadingMore: _loadingMore,
+              onSend: _send,
+              onLoadMore: _loadMore,
+              onReply: (commentId, text) => _send(text, parentId: commentId),
+              scrollable: false,
+            ),
+          ],
+        ],
+      );
+    }
 
     return Material(
       color: palette.background,
@@ -224,45 +343,7 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Space.md,
-                Space.sm,
-                Space.md,
-                0,
-              ),
-              child: Row(
-                children: <Widget>[
-                  _ReactionButton(
-                    icon: _reaction == ReactionType.like
-                        ? Icons.thumb_up_alt_rounded
-                        : Icons.thumb_up_alt_outlined,
-                    count: _counts.likes,
-                    active: _reaction == ReactionType.like,
-                    onTap: () => _toggleReaction(ReactionType.like),
-                  ),
-                  _ReactionButton(
-                    icon: _reaction == ReactionType.dislike
-                        ? Icons.thumb_down_alt_rounded
-                        : Icons.thumb_down_alt_outlined,
-                    count: _counts.dislikes,
-                    active: _reaction == ReactionType.dislike,
-                    onTap: () => _toggleReaction(ReactionType.dislike),
-                  ),
-                  _ReactionButton(
-                    icon: Icons.ios_share_rounded,
-                    label: Tr.of(context, ar: 'مشاركة', en: 'Share'),
-                    onTap: _share,
-                  ),
-                  _ReactionButton(
-                    icon: Icons.mode_comment_outlined,
-                    count: _countsLoading ? null : _counts.comments,
-                    label: Tr.of(context, ar: 'تعليقات', en: 'Comments'),
-                    onTap: () {},
-                  ),
-                ],
-              ),
-            ),
+            _actionBar(),
             Divider(height: 1, color: palette.border),
             Expanded(
               child: user == null
@@ -287,12 +368,44 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
   }
 }
 
+/// Action bar under a video. In embedded mode the buttons scroll horizontally
+/// like the YouTube app, so download, save and share sit next to the reactions.
+class _ActionBar extends StatelessWidget {
+  const _ActionBar({required this.children, required this.scrollable});
+
+  final List<Widget> children;
+  final bool scrollable;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!scrollable) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 0),
+        child: Row(children: children),
+      );
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, Space.xs),
+      child: Row(
+        children: <Widget>[
+          for (var index = 0; index < children.length; index++) ...<Widget>[
+            children[index],
+            if (index != children.length - 1) const SizedBox(width: Space.xs),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _ReactionButton extends StatelessWidget {
   const _ReactionButton({
     required this.icon,
     this.count,
     this.label,
     this.active = false,
+    this.expanded = true,
     this.onTap,
   });
 
@@ -300,32 +413,55 @@ class _ReactionButton extends StatelessWidget {
   final int? count;
   final String? label;
   final bool active;
+
+  /// Expanded rows fill the sheet width; pills size themselves.
+  final bool expanded;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final color = active ? palette.primary : palette.textSecondary;
-    return Expanded(
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.sm,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Icon(icon, size: 18, color: color),
+          if (label != null || count != null) ...<Widget>[
+            const SizedBox(width: 4),
+            Text(
+              label ?? '$count',
+              style: context.text.labelSmall?.copyWith(color: color),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (expanded) {
+      return Expanded(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(Radii.sm),
+          child: content,
+        ),
+      );
+    }
+
+    // Pill used by the horizontal bar under the player.
+    return Material(
+      color: active
+          ? palette.primary.withValues(alpha: 0.12)
+          : palette.surfaceAlt,
+      borderRadius: BorderRadius.circular(Radii.pill),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.sm),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: Space.sm),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Icon(icon, size: 18, color: color),
-              if (label != null || count != null) ...<Widget>[
-                const SizedBox(width: 4),
-                Text(
-                  label ?? '$count',
-                  style: context.text.labelSmall?.copyWith(color: color),
-                ),
-              ],
-            ],
-          ),
-        ),
+        borderRadius: BorderRadius.circular(Radii.pill),
+        child: content,
       ),
     );
   }
@@ -382,6 +518,7 @@ class _CommentList extends ConsumerWidget {
     required this.onSend,
     required this.onLoadMore,
     required this.onReply,
+    this.scrollable = true,
   });
 
   final String episodeId;
@@ -394,88 +531,99 @@ class _CommentList extends ConsumerWidget {
   final VoidCallback onLoadMore;
   final void Function(String commentId, String text) onReply;
 
+  /// When false the comments are laid out as a plain column so they can live
+  /// inside the page scroll under the player instead of a nested list.
+  final bool scrollable;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
-    return Column(
-      children: <Widget>[
-        Expanded(
-          child: StreamBuilder<List<EpisodeComment>>(
-            stream: ref.read(socialRepositoryProvider).watchLatest(episodeId),
-            builder: (context, snapshot) {
-              final live = snapshot.data ?? const <EpisodeComment>[];
-              final seen = <String>{};
-              final merged = <EpisodeComment>[
-                for (final comment in <EpisodeComment>[...live, ...older])
-                  if (seen.add(comment.id)) comment,
-              ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return StreamBuilder<List<EpisodeComment>>(
+      stream: ref.read(socialRepositoryProvider).watchLatest(episodeId),
+      builder: (context, snapshot) {
+        final live = snapshot.data ?? const <EpisodeComment>[];
+        final seen = <String>{};
+        final merged = <EpisodeComment>[
+          for (final comment in <EpisodeComment>[...live, ...older])
+            if (seen.add(comment.id)) comment,
+        ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  merged.isEmpty) {
-                return const Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                );
-              }
-              if (merged.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(Space.lg),
-                    child: Text(
-                      Tr.of(
-                        context,
-                        ar: 'لا توجد تعليقات بعد. كن أول من يعلّق!',
-                        en: 'No comments yet. Be the first to comment!',
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            merged.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(Space.lg),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+        if (merged.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(Space.lg),
+            child: Center(
+              child: Text(
+                Tr.of(
+                  context,
+                  ar: 'لا توجد تعليقات بعد. كن أول من يعلّق!',
+                  en: 'No comments yet. Be the first to comment!',
+                ),
+                textAlign: TextAlign.center,
+                style: context.text.bodySmall?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final tiles = <Widget>[
+          for (final comment in merged)
+            _CommentTile(
+              comment: comment,
+              onReply: (text) => onReply(comment.id, text),
+            ),
+          if (hasMore)
+            Center(
+              child: TextButton(
+                onPressed: loadingMore ? null : onLoadMore,
+                child: loadingMore
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        Tr.of(
+                          context,
+                          ar: 'عرض تعليقات أقدم',
+                          en: 'Load older comments',
+                        ),
                       ),
-                      textAlign: TextAlign.center,
-                      style: context.text.bodySmall?.copyWith(
-                        color: palette.textMuted,
-                      ),
-                    ),
-                  ),
-                );
-              }
-              return ListView.builder(
+              ),
+            ),
+        ];
+
+        if (!scrollable) {
+          return Column(children: tiles);
+        }
+
+        return Column(
+          children: <Widget>[
+            Expanded(
+              child: ListView(
                 padding: const EdgeInsets.symmetric(vertical: Space.sm),
-                itemCount: merged.length + (hasMore ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == merged.length) {
-                    return Center(
-                      child: TextButton(
-                        onPressed: loadingMore ? null : onLoadMore,
-                        child: loadingMore
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                Tr.of(
-                                  context,
-                                  ar: 'عرض تعليقات أقدم',
-                                  en: 'Load older comments',
-                                ),
-                              ),
-                      ),
-                    );
-                  }
-                  return _CommentTile(
-                    comment: merged[index],
-                    onReply: (text) => onReply(merged[index].id, text),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-        Divider(height: 1, color: palette.border),
-        _Composer(controller: composer, sending: sending, onSend: onSend),
-      ],
+                children: tiles,
+              ),
+            ),
+            Divider(height: 1, color: palette.border),
+            _Composer(controller: composer, sending: sending, onSend: onSend),
+          ],
+        );
+      },
     );
   }
 }
@@ -485,11 +633,13 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.sending,
     required this.onSend,
+    this.focusNode,
   });
 
   final TextEditingController controller;
   final bool sending;
   final Future<void> Function(String text, {String? parentId}) onSend;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -506,6 +656,7 @@ class _Composer extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
+              focusNode: focusNode,
               minLines: 1,
               maxLines: 4,
               maxLength: 1000,

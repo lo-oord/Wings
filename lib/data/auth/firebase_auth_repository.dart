@@ -19,6 +19,19 @@ class FirebaseAuthRepository implements AuthRepository {
   final fb.FirebaseAuth _auth;
   final GoogleSignIn _google;
 
+  /// OAuth **web** client id from `android/app/google-services.json`
+  /// (`client_type: 3`). `google_sign_in` 7.x only returns a Firebase-usable
+  /// `idToken` on Android when the sign-in client is initialised with a
+  /// server client id; without it `authentication.idToken` is null and every
+  /// Google sign-in fails. Override it with
+  /// `--dart-define=GOOGLE_SERVER_CLIENT_ID=...` if the Firebase project
+  /// changes.
+  static const String serverClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue:
+        '469028233998-3jga5u4v81dh9ftmri6li3a8p8j3bfd7.apps.googleusercontent.com',
+  );
+
   static bool _googleInitialized = false;
 
   /// Raw Firebase user, used by the account service for profile work.
@@ -204,7 +217,7 @@ class FirebaseAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() async {
     try {
-      if (hasGoogleProvider || _googleInitialized) {
+      if (_googleInitialized) {
         await _google.signOut();
       }
     } on Object {
@@ -225,8 +238,14 @@ class FirebaseAuthRepository implements AuthRepository {
   Future<fb.AuthCredential> _googleCredential() async {
     try {
       if (!_googleInitialized) {
-        await _google.initialize();
+        await _google.initialize(serverClientId: serverClientId);
         _googleInitialized = true;
+      }
+      if (!_google.supportsAuthenticate()) {
+        throw const AppFailure(
+          FailureKind.permission,
+          technical: 'google-unsupported-platform',
+        );
       }
       final account = await _google.authenticate();
       final idToken = account.authentication.idToken;

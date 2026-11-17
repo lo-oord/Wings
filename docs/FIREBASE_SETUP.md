@@ -3,6 +3,27 @@
 Everything here runs on the **Firebase free (Spark) plan**. No Cloud Functions,
 no Firebase Storage, no Cloud Run, no billing upgrade.
 
+## 0. If sign-up or Google sign-in is failing
+
+The most common cause is that the rules in this repository are not published
+yet. The old rule for `users/{uid}/meta/{docId}` only allowed the four counters,
+while the client also writes `updatedAt`, so **every** profile creation was
+rejected: email registration failed outright and Google sign-in left an
+account in Firebase Authentication with no profile. Publish `firestore.rules`
+(section 8) before testing again.
+
+Other setup that must exist before Google sign-in can work:
+
+* Authentication → Sign-in method → **Google** enabled.
+* The **SHA-1 and SHA-256** of the signing key added to the Android app
+  `com.wings.wings` in Firebase (section 7).
+* The web OAuth client id (`client_type: 3` inside
+  `android/app/google-services.json`) is passed to `google_sign_in` as
+  `serverClientId`. Without it the plugin returns no `idToken` and Firebase
+  rejects the credential. It is read from
+  `lib/data/auth/firebase_auth_repository.dart` (override with
+  `--dart-define=GOOGLE_SERVER_CLIENT_ID=...`).
+
 ## 1. What is stored where
 
 | Path | Contents | Who can read | Who can write |
@@ -35,9 +56,26 @@ the fields whose privacy flag is on. Turning a flag off removes the value from
 the mirror on the next save — a reader can never receive data and have the UI
 hide it.
 
-Defaults are private: country, age group, favourites and statistics are all
-off until the owner enables them. Only age **groups** (`13-17`, `18-24`, …) are
-stored, never a birth date.
+Defaults are private: bio, country, age group, favourites and statistics are
+all off until the owner enables them. Only age **groups** (`13-17`, `18-24`, …)
+are stored, never a birth date.
+
+The owner controls the mirror from **الملف الشخصي → الخصوصية**:
+
+| Switch | What it publishes |
+| --- | --- |
+| إظهار حسابي للآخرين (`showProfile`) | Master switch. When off the mirror keeps only the handle, display name and badges (`private: true`); the public profile screen shows a “does not share their profile” note. |
+| إظهار النبذة (`bio`) | The bio text (≤ 300 characters). |
+| إظهار الدولة (`country`) | The two-letter country code. |
+| إظهار الفئة العمرية (`age`) | The age **group** only. |
+| إظهار الإحصائيات (`stats`) | Anime watched, episodes watched, favourites and completed counts. |
+| إظهار المفضلة (`favorites`) | Up to 12 favourite titles (id, title, artwork only — never progress or history). |
+
+Saving the sheet republishes the statistics and favourites immediately, so
+turning a switch off removes the value from the mirror at once. Because a
+Firestore `set(merge: true)` never deletes a key, the mirror is written with a
+plain `set`: a disabled field really disappears instead of being hidden in the
+UI.
 
 ## 3. Username integrity
 
@@ -131,6 +169,14 @@ operation can be retried; partially deleted private data is never restored.
    server-side token verification.
 5. Google accounts created through the app receive an automatically reserved
    username; users can change it from the profile screen.
+6. `google_sign_in` 7.x needs the **web** OAuth client id as
+   `serverClientId`; the app uses the value from the project's
+   `google-services.json`. If the Firebase project changes, either replace that
+   file and the constant in `firebase_auth_repository.dart`, or build with
+   `--dart-define=GOOGLE_SERVER_CLIENT_ID=<web client id>`.
+7. Google sign-in is atomic: if the profile cannot be created after the
+   Firebase account is, the app signs out again instead of leaving an account
+   with no username, and the next attempt reuses the same Firebase user.
 
 ## 8. Publishing the rules and indexes
 
@@ -184,3 +230,38 @@ Limitations that cannot be fixed without a paid backend:
 - [ ] Create the `episodes` documents (they are read-only for clients).
 - [ ] Optional: enable App Check with Play Integrity before enabling
       enforcement (debug builds then need a debug token).
+
+## 11. What changed in this revision
+
+Rules:
+
+* `users/{uid}/meta/{docId}` accepts the `updatedAt` the client writes — the
+  previous `hasOnly` check rejected every profile creation, which broke email
+  registration, avatar upload and username changes (all of them write the
+  profile).
+* `library`, `history`, `settings` and `meta` now allow the owner to **delete**
+  documents; the old single read/write rule rejected deletes because a delete
+  has no `request.resource.data`.
+* `profiles/{uid}` create and update are separate rules, so a new mirror never
+  compares against a document that does not exist yet. The owner still cannot
+  change their own badges.
+* `config/*` is unreadable by clients (`get()` inside rules still works), so the
+  administrator allowlist is not exposed.
+* `private/avatar` keeps its own ≤ 200 KB write rule and is excluded from the
+  owner catch-all.
+* New privacy fields (`showProfile`, `bio`) are validated in the rules.
+
+Client:
+
+* Username rename order is now claim → write profile → release the old handle.
+  The old single transaction created the reservation and the profile in the
+  same commit, and the rules could not see the reservation yet, so every rename
+  was rejected.
+* Google sign-in passes `serverClientId` and signs out again when profile
+  creation fails, instead of leaving a half-created account.
+* Signing in repairs a profile/mirror left behind by an interrupted sign-up.
+* Firestore `permission-denied` and `unavailable` errors now have their own
+  Arabic messages instead of the generic “something went wrong”.
+* The episode screen is laid out like YouTube: reactions, share, download and
+  save sit in a horizontal bar directly under the video, with the comment
+  composer and comments in the same page instead of behind a button.

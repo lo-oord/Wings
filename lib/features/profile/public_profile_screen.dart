@@ -6,6 +6,7 @@ import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/tr.dart';
+import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/user_profile.dart';
 import '../social/username_text.dart';
@@ -122,7 +123,39 @@ class _Body extends StatelessWidget {
                 style: context.text.titleLarge,
                 textAlign: TextAlign.center,
               ),
-              if (profile.bio.isNotEmpty)
+              if (profile.profileHidden)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.xl,
+                    Space.sm,
+                    Space.xl,
+                    0,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Icon(
+                        Icons.lock_outline_rounded,
+                        size: 14,
+                        color: palette.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          Tr.of(
+                            context,
+                            ar: 'هذا المستخدم لا يشارك ملفه الشخصي.',
+                            en: 'This user does not share their profile.',
+                          ),
+                          style: context.text.labelSmall?.copyWith(
+                            color: palette.textMuted,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (!profile.profileHidden && profile.bio.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     Space.xl,
@@ -139,20 +172,30 @@ class _Body extends StatelessWidget {
                     ),
                   ),
                 ),
-              const SizedBox(height: Space.md),
-              Wrap(
-                spacing: Space.sm,
-                runSpacing: Space.xs,
-                alignment: WrapAlignment.center,
-                children: <Widget>[
-                  if (profile.country.isNotEmpty)
-                    _Pill(icon: Icons.public_rounded, label: profile.country),
-                  if (profile.ageGroup.isNotEmpty)
-                    _Pill(icon: Icons.cake_outlined, label: profile.ageGroup),
-                ],
-              ),
+              if (!profile.profileHidden) ...<Widget>[
+                const SizedBox(height: Space.md),
+                Wrap(
+                  spacing: Space.sm,
+                  runSpacing: Space.xs,
+                  alignment: WrapAlignment.center,
+                  children: <Widget>[
+                    if (profile.country.isNotEmpty)
+                      _Pill(icon: Icons.public_rounded, label: profile.country),
+                    if (profile.ageGroup.isNotEmpty)
+                      _Pill(icon: Icons.cake_outlined, label: profile.ageGroup),
+                  ],
+                ),
+              ],
               const SizedBox(height: Space.lg),
-              if (stats.animeWatched > 0 ||
+              if (profile.profileHidden)
+                const SizedBox.shrink()
+              else if (profile.favorites.isNotEmpty) ...<Widget>[
+                _FavoritesRow(favorites: profile.favorites),
+                const SizedBox(height: Space.lg),
+              ],
+              if (profile.profileHidden)
+                const SizedBox.shrink()
+              else if (stats.animeWatched > 0 ||
                   stats.episodesWatched > 0 ||
                   stats.favorites > 0)
                 Padding(
@@ -198,6 +241,74 @@ class _Body extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Favourite titles the owner chose to publish. Only the title and artwork are
+/// shared; progress, history and the rest of the library stay private.
+class _FavoritesRow extends StatelessWidget {
+  const _FavoritesRow({required this.favorites});
+
+  final List<ProfileFavorite> favorites;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsetsDirectional.only(
+            start: Space.lg,
+            bottom: Space.sm,
+          ),
+          child: Text(
+            Tr.of(context, ar: 'المفضلة', en: 'Favourites'),
+            style: context.text.labelMedium?.copyWith(
+              color: palette.textSecondary,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 158,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+            itemCount: favorites.length,
+            separatorBuilder: (context, index) =>
+                const SizedBox(width: Space.sm),
+            itemBuilder: (context, index) {
+              final item = favorites[index];
+              return SizedBox(
+                width: 100,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    WingsImage(
+                      url: item.imageUrl,
+                      width: 100,
+                      height: 138,
+                      borderRadius: BorderRadius.circular(Radii.sm),
+                    ),
+                    const SizedBox(height: 4),
+                    Flexible(
+                      child: Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.labelSmall?.copyWith(
+                          color: palette.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ],

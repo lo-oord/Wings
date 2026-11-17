@@ -40,9 +40,14 @@ class ProfileBadges {
 /// Which profile fields the owner exposes to other users. The values gate both
 /// the public mirror document and the UI, and the mirror is the only profile
 /// document other users can read.
+///
+/// [showProfile] is the master switch: when it is off the mirror carries no
+/// personal fields at all and other users only see that the account is private.
 @immutable
 class ProfilePrivacy {
   const ProfilePrivacy({
+    this.showProfile = true,
+    this.bio = false,
     this.country = false,
     this.age = false,
     this.favorites = false,
@@ -51,6 +56,9 @@ class ProfilePrivacy {
 
   static const ProfilePrivacy defaults = ProfilePrivacy();
 
+  /// Whether other users can open this profile at all.
+  final bool showProfile;
+  final bool bio;
   final bool country;
   final bool age;
   final bool favorites;
@@ -59,6 +67,10 @@ class ProfilePrivacy {
   factory ProfilePrivacy.fromMap(Object? raw) {
     if (raw is! Map) return defaults;
     return ProfilePrivacy(
+      // Older documents predate these switches. A profile stays visible so
+      // comments keep working, while the bio is opt-in like every other field.
+      showProfile: raw['showProfile'] != false,
+      bio: raw['bio'] == true,
       country: raw['country'] == true,
       age: raw['age'] == true,
       favorites: raw['favorites'] == true,
@@ -67,6 +79,8 @@ class ProfilePrivacy {
   }
 
   Map<String, dynamic> toMap() => <String, dynamic>{
+    'showProfile': showProfile,
+    'bio': bio,
     'country': country,
     'age': age,
     'favorites': favorites,
@@ -74,16 +88,52 @@ class ProfilePrivacy {
   };
 
   ProfilePrivacy copyWith({
+    bool? showProfile,
+    bool? bio,
     bool? country,
     bool? age,
     bool? favorites,
     bool? stats,
   }) => ProfilePrivacy(
+    showProfile: showProfile ?? this.showProfile,
+    bio: bio ?? this.bio,
     country: country ?? this.country,
     age: age ?? this.age,
     favorites: favorites ?? this.favorites,
     stats: stats ?? this.stats,
   );
+}
+
+/// A favourite shown on a public profile. It is a display-only snapshot: no
+/// progress, history or private library data is published with it.
+@immutable
+class ProfileFavorite {
+  const ProfileFavorite({
+    required this.animeId,
+    required this.title,
+    this.imageUrl = '',
+  });
+
+  final String animeId;
+  final String title;
+  final String imageUrl;
+
+  factory ProfileFavorite.fromMap(Object? raw) {
+    if (raw is! Map) {
+      return const ProfileFavorite(animeId: '', title: '');
+    }
+    return ProfileFavorite(
+      animeId: raw['animeId'] as String? ?? '',
+      title: raw['title'] as String? ?? '',
+      imageUrl: raw['imageUrl'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'animeId': animeId,
+    'title': title,
+    'imageUrl': imageUrl,
+  };
 }
 
 /// Viewer statistics. Maintained by the owner's client from local library data;
@@ -156,9 +206,11 @@ class UserProfile {
     this.bio = '',
     this.privacy = ProfilePrivacy.defaults,
     this.stats = ProfileStats.zero,
+    this.favorites = const <ProfileFavorite>[],
     this.badges = ProfileBadges.none,
     this.photoVersion = 0,
     this.pendingDeletion = false,
+    this.profileHidden = false,
   });
 
   final String uid;
@@ -169,9 +221,17 @@ class UserProfile {
   final String bio;
   final ProfilePrivacy privacy;
   final ProfileStats stats;
+
+  /// Favourite titles published with the public mirror, newest first. The list
+  /// is empty until the owner enables the favourites privacy switch.
+  final List<ProfileFavorite> favorites;
   final ProfileBadges badges;
   final int photoVersion;
   final bool pendingDeletion;
+
+  /// True when this came from the public mirror of an account whose owner hid
+  /// their profile. Only the handle and badges are published in that case.
+  final bool profileHidden;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -187,9 +247,11 @@ class UserProfile {
     String? bio,
     ProfilePrivacy? privacy,
     ProfileStats? stats,
+    List<ProfileFavorite>? favorites,
     ProfileBadges? badges,
     int? photoVersion,
     bool? pendingDeletion,
+    bool? profileHidden,
     DateTime? updatedAt,
   }) => UserProfile(
     uid: uid,
@@ -200,9 +262,11 @@ class UserProfile {
     bio: bio ?? this.bio,
     privacy: privacy ?? this.privacy,
     stats: stats ?? this.stats,
+    favorites: favorites ?? this.favorites,
     badges: badges ?? this.badges,
     photoVersion: photoVersion ?? this.photoVersion,
     pendingDeletion: pendingDeletion ?? this.pendingDeletion,
+    profileHidden: profileHidden ?? this.profileHidden,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -217,6 +281,7 @@ class UserProfile {
     'bio': bio,
     'privacy': privacy.toMap(),
     'stats': stats.toMap(),
+    'favorites': favorites.map((item) => item.toMap()).toList(),
     'badges': badges.toMap(),
     'photoVersion': photoVersion,
     'pendingDeletion': pendingDeletion,
@@ -226,17 +291,36 @@ class UserProfile {
 
   /// Public mirror document. Only fields the owner allowed are present, so a
   /// reader can never see private values even before the UI filters anything.
-  Map<String, dynamic> toMapPublic() => <String, dynamic>{
-    'username': username,
-    'normalizedUsername': normalizedUsername,
-    'displayName': displayName,
-    'badges': badges.toMap(),
-    'photoVersion': photoVersion,
-    'updatedAt': Timestamp.fromDate(updatedAt),
-    if (privacy.country) 'country': country,
-    if (privacy.age) 'ageGroup': ageGroup,
-    if (privacy.stats) 'stats': stats.toMap(),
-  };
+  ///
+  /// The handle and badges always stay visible because comments show them, but
+  /// a profile the owner hid carries nothing else. A batch `set(merge: true)`
+  /// never removes a key, so `save()` uses a plain `set` for the mirror.
+  Map<String, dynamic> toMapPublic() {
+    final base = <String, dynamic>{
+      'username': username,
+      'normalizedUsername': normalizedUsername,
+      'displayName': displayName,
+      'badges': badges.toMap(),
+      'photoVersion': photoVersion,
+      'updatedAt': Timestamp.fromDate(updatedAt),
+    };
+    if (!privacy.showProfile) {
+      return base..['private'] = true;
+    }
+    return base
+      ..['private'] = false
+      ..addAll(<String, dynamic>{
+        if (privacy.bio && bio.isNotEmpty) 'bio': bio,
+        if (privacy.country) 'country': country,
+        if (privacy.age) 'ageGroup': ageGroup,
+        if (privacy.stats) 'stats': stats.toMap(),
+        if (privacy.favorites)
+          'favorites': favorites
+              .take(12)
+              .map((item) => item.toMap())
+              .toList(),
+      });
+  }
 
   factory UserProfile.fromMap(String uid, Map<String, dynamic> raw) {
     DateTime readDate(String key) {
@@ -255,9 +339,16 @@ class UserProfile {
       bio: raw['bio'] as String? ?? '',
       privacy: ProfilePrivacy.fromMap(raw['privacy']),
       stats: ProfileStats.fromMap(raw['stats']),
+      favorites: raw['favorites'] is List
+          ? (raw['favorites'] as List)
+                .map(ProfileFavorite.fromMap)
+                .where((item) => item.animeId.isNotEmpty)
+                .toList(growable: false)
+          : const <ProfileFavorite>[],
       badges: ProfileBadges.fromMap(raw['badges']),
       photoVersion: (raw['photoVersion'] as num?)?.toInt() ?? 0,
       pendingDeletion: raw['pendingDeletion'] == true,
+      profileHidden: raw['private'] == true,
       createdAt: readDate('createdAt'),
       updatedAt: readDate('updatedAt'),
     );

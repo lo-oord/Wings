@@ -53,9 +53,31 @@ class WelcomeScreen extends ConsumerStatefulWidget {
 }
 
 class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
+  bool _googleLoading = false;
+
   Future<void> _continueAsGuest() async {
     await ref.read(settingsProvider.notifier).enterGuestMode();
     if (mounted) context.go(RoutePaths.latest);
+  }
+
+  Future<void> _google() async {
+    setState(() => _googleLoading = true);
+    try {
+      await ref.read(authProvider.notifier).signInWithGoogle();
+      await ref.read(settingsProvider.notifier).leaveGuestMode();
+      if (!mounted) return;
+      context.go(RoutePaths.profile);
+    } on AppFailure catch (error) {
+      if (!mounted) return;
+      setState(() => _googleLoading = false);
+      if (error.kind != FailureKind.cancelled) {
+        context.showSnack(authErrorText(context, error), isError: true);
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _googleLoading = false);
+      context.showSnack(authErrorText(context, error), isError: true);
+    }
   }
 
   @override
@@ -94,6 +116,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                 ),
               ),
               const Spacer(),
+              GoogleSignInButton(onPressed: _googleLoading ? null : _google),
+              const SizedBox(height: Space.sm),
               WingsButton(
                 label: l10n.authRegister,
                 expand: true,
@@ -360,6 +384,26 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() => _step -= 1);
   }
 
+  Future<void> _google() async {
+    setState(() => _loading = true);
+    try {
+      await ref.read(authProvider.notifier).signInWithGoogle();
+      await ref.read(settingsProvider.notifier).leaveGuestMode();
+      if (!mounted) return;
+      context.go(RoutePaths.profile);
+    } on AppFailure catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (error.kind != FailureKind.cancelled) {
+        context.showSnack(authErrorText(context, error), isError: true);
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      context.showSnack(authErrorText(context, error), isError: true);
+    }
+  }
+
   Future<void> _submit() async {
     final valid = _formKey.currentState?.validate() ?? false;
     setState(() => _termsError = !_acceptedTerms);
@@ -490,6 +534,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: Space.md),
+            GoogleSignInButton(onPressed: _loading ? null : _google),
             const SizedBox(height: Space.sm),
             Center(
               child: TextButton(

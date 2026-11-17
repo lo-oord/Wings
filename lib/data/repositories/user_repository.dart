@@ -65,15 +65,29 @@ class UserRepository {
 
   /// Saves the owner document and refreshes the public mirror. Both writes are
   /// owned by the same user, so one batch keeps them consistent.
+  ///
+  /// The mirror is written without `merge`: a merge never removes a key, so a
+  /// privacy switch that was turned off would otherwise leave the old value
+  /// readable by other users.
   Future<void> save(UserProfile profile) async {
     final batch = _db.batch();
     batch.set(_user(profile.uid), profile.toMap(), SetOptions(merge: true));
-    batch.set(
-      _public(profile.uid),
-      profile.toMapPublic(),
-      SetOptions(merge: true),
-    );
+    batch.set(_public(profile.uid), profile.toMapPublic());
     await batch.commit();
+  }
+
+  /// Re-creates a missing public mirror (for example when an older account or
+  /// an interrupted sign-up left `profiles/{uid}` behind).
+  ///
+  /// Best effort: a sign-in must never fail because this repair was rejected.
+  Future<void> ensurePublicMirror(UserProfile profile) async {
+    try {
+      final snapshot = await _public(profile.uid).get();
+      if (snapshot.exists) return;
+      await _public(profile.uid).set(profile.toMapPublic());
+    } on Object {
+      // Offline or denied; the next profile save recreates the mirror.
+    }
   }
 
   Future<void> setPrivacy(UserProfile profile) => save(profile);

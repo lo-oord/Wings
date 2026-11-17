@@ -46,6 +46,45 @@ void main() {
       expect(mirror.containsKey('ageGroup'), isFalse);
     });
 
+    test('a hidden profile publishes nothing but the handle and badges', () {
+      final mirror = _profile(
+        privacy: const ProfilePrivacy(
+          showProfile: false,
+          bio: true,
+          country: true,
+          age: true,
+          stats: true,
+          favorites: true,
+        ),
+      ).toMapPublic();
+      expect(mirror['private'], isTrue);
+      expect(mirror['username'], 'shadow_07');
+      expect(mirror.containsKey('bio'), isFalse);
+      expect(mirror.containsKey('country'), isFalse);
+      expect(mirror.containsKey('ageGroup'), isFalse);
+      expect(mirror.containsKey('stats'), isFalse);
+      expect(mirror.containsKey('favorites'), isFalse);
+    });
+
+    test('publishes bio and favourites only when the owner allows them', () {
+      final profile = _profile(
+        privacy: const ProfilePrivacy(bio: true, favorites: true),
+      ).copyWith(
+        favorites: const <ProfileFavorite>[
+          ProfileFavorite(animeId: 'a1', title: 'Naruto'),
+        ],
+      );
+      final mirror = profile.toMapPublic();
+      expect(mirror['bio'], 'anime fan');
+      expect(mirror['favorites'], <Map<String, dynamic>>[
+        <String, dynamic>{
+          'animeId': 'a1',
+          'title': 'Naruto',
+          'imageUrl': '',
+        },
+      ]);
+    });
+
     test('carries badges so usernames render correctly in public', () {
       final mirror = _profile(
         privacy: ProfilePrivacy.defaults,

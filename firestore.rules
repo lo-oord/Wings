@@ -34,6 +34,10 @@ service cloud.firestore {
         && value.matches('^[A-Za-z0-9_]+$');
     }
 
+    function validDisplayName(value) {
+      return value is string && value.size() >= 1 && value.size() <= 40;
+    }
+
     function validBadges(value) {
       return value is map
         && value.keys().hasOnly(['verified', 'developer'])
@@ -43,20 +47,63 @@ service cloud.firestore {
 
     function validPrivacy(value) {
       return value is map
-        && value.keys().hasOnly(['country', 'age', 'favorites', 'stats'])
+        && value.keys().hasOnly([
+          'showProfile', 'bio', 'country', 'age', 'favorites', 'stats'
+        ])
+        && value.showProfile is bool
+        && value.bio is bool
         && value.country is bool
         && value.age is bool
         && value.favorites is bool
         && value.stats is bool;
     }
 
+    // `updatedAt` is the only extra key allowed next to the counters, because
+    // profile creation writes it into `users/{uid}/meta/stats`.
     function validStats(value) {
       return value is map
-        && value.keys().hasOnly(['animeWatched', 'episodesWatched', 'favorites', 'completed'])
+        && value.keys().hasOnly([
+          'animeWatched', 'episodesWatched', 'favorites', 'completed', 'updatedAt'
+        ])
         && value.animeWatched is int && value.animeWatched >= 0
         && value.episodesWatched is int && value.episodesWatched >= 0
         && value.favorites is int && value.favorites >= 0
-        && value.completed is int && value.completed >= 0;
+        && value.completed is int && value.completed >= 0
+        && (!('updatedAt' in value) || value.updatedAt is timestamp);
+    }
+
+    // Public favourites: a short, display-only snapshot of the owner's list.
+    // Rules cannot iterate a list, so the shape is bounded by size only; the
+    // values are written by the owner and never trusted as counters.
+    function validFavorites(value) {
+      return value is list && value.size() <= 12;
+    }
+
+    // Shared validation for the public mirror document.
+    function validPublic(value) {
+      return value.username is string
+        && validUsername(value.username)
+        && validDisplayName(value.displayName)
+        && validBadges(value.badges)
+        && (!('bio' in value) || (value.bio is string && value.bio.size() <= 300))
+        && (!('country' in value) || (value.country is string && value.country.size() <= 2))
+        && (!('ageGroup' in value) || (value.ageGroup is string && value.ageGroup.size() <= 12))
+        && (!('stats' in value) || validStats(value.stats))
+        && (!('favorites' in value) || validFavorites(value.favorites))
+        && (!('private' in value) || value.private is bool);
+    }
+
+    function validLibraryEntry(value) {
+      return value.updatedAt is timestamp
+        && value.isFavorite is bool
+        && value.status in ['watching', 'completed', 'planToWatch', 'onHold', 'dropped'];
+    }
+
+    function validHistoryEntry(value) {
+      return value.updatedAt is timestamp
+        && value.positionMs is int && value.positionMs >= 0
+        && value.durationMs is int && value.durationMs >= 0
+        && value.completed is bool;
     }
 
     // ------------------------------------------------------------- users
@@ -67,9 +114,7 @@ service cloud.firestore {
         && request.resource.data.username is string
         && validUsername(request.resource.data.username)
         && request.resource.data.normalizedUsername == request.resource.data.username.lower()
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() >= 2
-        && request.resource.data.displayName.size() <= 40
+        && validDisplayName(request.resource.data.displayName)
         && request.resource.data.bio is string
         && request.resource.data.bio.size() <= 300
         && request.resource.data.country is string
@@ -81,7 +126,11 @@ service cloud.firestore {
         && validBadges(request.resource.data.badges)
         && request.resource.data.badges.verified == false
         && request.resource.data.badges.developer == false
-        && request.resource.data.pendingDeletion == false;
+        && (!('photoVersion' in request.resource.data)
+            || (request.resource.data.photoVersion is int
+                && request.resource.data.photoVersion >= 0))
+        && (!('pendingDeletion' in request.resource.data)
+            || request.resource.data.pendingDeletion is bool);
 
       // Owners may edit their own profile but never their badges. A rename is
       // only accepted when the matching reservation belongs to them.
@@ -95,9 +144,7 @@ service cloud.firestore {
         )
         && validPrivacy(request.resource.data.privacy)
         && validStats(request.resource.data.stats)
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() >= 2
-        && request.resource.data.displayName.size() <= 40
+        && validDisplayName(request.resource.data.displayName)
         && request.resource.data.bio is string
         && request.resource.data.bio.size() <= 300
         && request.resource.data.country is string
@@ -117,26 +164,24 @@ service cloud.firestore {
 
       allow delete: if isSelf(uid) || isAdmin();
 
-      // Owned subcollections.
+      // Owned subcollections. Deletes are always allowed for the owner: a rule
+      // that inspects request.resource.data would otherwise reject them,
+      // because a delete carries no resource payload.
       match /library/{animeId} {
-        allow read, write: if isSelf(uid)
-          && request.resource.data.updatedAt is timestamp
-          && request.resource.data.isFavorite is bool
-          && request.resource.data.status in ['watching', 'completed', 'planToWatch', 'onHold', 'dropped'];
+        allow read: if isSelf(uid);
+        allow create, update: if isSelf(uid) && validLibraryEntry(request.resource.data);
+        allow delete: if isSelf(uid);
       }
 
       match /history/{episodeKey} {
-        allow read, write: if isSelf(uid)
-          && request.resource.data.updatedAt is timestamp
-          && request.resource.data.positionMs is int
-          && request.resource.data.positionMs >= 0
-          && request.resource.data.durationMs is int
-          && request.resource.data.durationMs >= 0
-          && request.resource.data.completed is bool;
+        allow read: if isSelf(uid);
+        allow create, update: if isSelf(uid) && validHistoryEntry(request.resource.data);
+        allow delete: if isSelf(uid);
       }
 
       match /settings/account {
-        allow read, write: if isSelf(uid)
+        allow read: if isSelf(uid);
+        allow create, update: if isSelf(uid)
           && request.resource.data.localeCode is string
           && request.resource.data.localeCode.size() <= 5
           && request.resource.data.autoplayNext is bool
@@ -146,10 +191,13 @@ service cloud.firestore {
           && request.resource.data.playbackSpeed <= 3.0
           && request.resource.data.preferredQuality is string
           && request.resource.data.preferredQuality.size() <= 8;
+        allow delete: if isSelf(uid);
       }
 
       match /meta/{docId} {
-        allow read, write: if isSelf(uid) && validStats(request.resource.data);
+        allow read: if isSelf(uid);
+        allow create, update: if isSelf(uid) && validStats(request.resource.data);
+        allow delete: if isSelf(uid);
       }
 
       match /activity/{activityId} {
@@ -167,24 +215,29 @@ service cloud.firestore {
       }
 
       match /private/{docId} {
-        allow read, write: if isSelf(uid);
+        allow read, write: if isSelf(uid) && docId != 'avatar';
       }
     }
 
     // ---------------------------------------------------------- profiles
     // Public mirror: contains only the fields the owner chose to share.
+    // Create and update are separate so a fresh document never has to compare
+    // against a `resource` that does not exist yet.
     match /profiles/{uid} {
       allow read: if signedIn();
-      allow create, update: if isSelf(uid)
-        && validBadges(request.resource.data.badges)
+
+      allow create: if isSelf(uid)
+        && validPublic(request.resource.data)
+        && request.resource.data.badges.verified == false
+        && request.resource.data.badges.developer == false;
+
+      allow update: if isSelf(uid)
+        && validPublic(request.resource.data)
         && (
           isAdmin()
           || request.resource.data.badges == resource.data.badges
-          || !exists(/databases/$(database)/documents/profiles/$(uid))
-        )
-        && request.resource.data.username is string
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() <= 40;
+        );
+
       allow delete: if isSelf(uid) || isAdmin();
     }
 
@@ -285,9 +338,10 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------ config
+    // Read by rules through get()/exists(), which bypass this match. Clients
+    // can never read or write it, so the admin allowlist stays private.
     match /config/{docId} {
-      allow read: if isAdmin();
-      allow write: if false;
+      allow read, write: if false;
     }
 
     // Anything not matched above stays closed.

@@ -126,40 +126,30 @@ class UsernameRepository {
     });
   }
 
-  /// Atomically moves the handle: reserve the new one, update the owner profile
-  /// and only then drop the previous reservation.
-  Future<void> changeUsername({
+  /// Claims [normalized] for [uid] in one transaction: it fails when someone
+  /// else owns it and succeeds silently when the caller already does.
+  ///
+  /// The profile document is deliberately **not** updated in this transaction.
+  /// Rules evaluate the `users/{uid}` write against the committed state, so a
+  /// reservation created in the same commit is not visible to them yet and the
+  /// rename would be rejected. The caller reserves first, then writes the
+  /// profile, then releases the previous handle.
+  Future<void> claim({
     required String uid,
-    required String? previousNormalized,
-    required String nextNormalized,
+    required String normalized,
   }) async {
-    final next = UsernameRules.normalize(nextNormalized);
-    final previous = previousNormalized == null
-        ? null
-        : UsernameRules.normalize(previousNormalized);
     await _db.runTransaction((transaction) async {
-      final nextRef = _doc(next);
-      final nextSnapshot = await transaction.get(nextRef);
-      if (nextSnapshot.exists && nextSnapshot.data()?['uid'] != uid) {
-        throw UsernameTakenException(next);
+      final ref = _doc(normalized);
+      final snapshot = await transaction.get(ref);
+      if (snapshot.exists) {
+        if (snapshot.data()?['uid'] == uid) return;
+        throw UsernameTakenException(normalized);
       }
-      transaction.set(nextRef, <String, dynamic>{
+      transaction.set(ref, <String, dynamic>{
         'uid': uid,
-        'username': next,
+        'username': normalized,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      transaction.update(_db.collection('users').doc(uid), <String, dynamic>{
-        'username': nextNormalized.trim(),
-        'normalizedUsername': next,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      if (previous != null && previous != next) {
-        final previousRef = _doc(previous);
-        final previousSnapshot = await transaction.get(previousRef);
-        if (previousSnapshot.exists && previousSnapshot.data()?['uid'] == uid) {
-          transaction.delete(previousRef);
-        }
-      }
     });
   }
 }

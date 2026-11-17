@@ -556,7 +556,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (anime == null) {
       return const SizedBox.shrink();
     }
-    final watched = ref.watch(libraryProvider).watchedEpisodeIds(anime.id);
+    final library = ref.watch(libraryProvider);
+    final watched = library.watchedEpisodeIds(anime.id);
 
     return ListView(
       padding: const EdgeInsets.only(bottom: Space.xxl),
@@ -613,6 +614,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ],
           ),
         ),
+        // YouTube-style block: reactions, share, download, save and the
+        // comments sit directly under the video, then the episode list.
+        if (episode != null) ...<Widget>[
+          const SizedBox(height: Space.xs),
+          EpisodeSocialSection(
+            episodeId: episode.id,
+            episodeTitle: l10n.commonEpisodeNumber(episode.number),
+            embedded: true,
+            savedToLibrary: library.entryFor(anime.id) != null,
+            onDownload: () => _showDownloadSheet(anime, episode),
+            onToggleSave: () => _toggleLibrary(anime),
+          ),
+          const SizedBox(height: Space.sm),
+        ],
         WingsSectionHeader(
           title: l10n.detailsEpisodes,
           padding: const EdgeInsets.fromLTRB(
@@ -634,6 +649,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ),
           ),
       ],
+    );
+  }
+
+  /// Adds the anime to the library or removes it, so the save button under the
+  /// player works without leaving the episode.
+  Future<void> _toggleLibrary(Anime anime) async {
+    final notifier = ref.read(libraryProvider.notifier);
+    final existing = ref.read(libraryProvider).entryFor(anime.id);
+    if (existing == null) {
+      await notifier.setStatus(anime, LibraryStatus.planToWatch);
+    } else {
+      await notifier.removeFromLibrary(anime.id);
+    }
+    if (!mounted) return;
+    final saved = ref.read(libraryProvider).entryFor(anime.id) != null;
+    context.showSnack(
+      saved
+          ? Tr.of(context, ar: 'أضيف إلى المكتبة', en: 'Added to library')
+          : Tr.of(context, ar: 'أزيل من المكتبة', en: 'Removed from library'),
     );
   }
 

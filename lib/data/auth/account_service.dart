@@ -48,11 +48,25 @@ class AccountService {
     return _merge(user, profile);
   }
 
+  /// Google sign-in creates the Firebase user before the profile exists, so a
+  /// failure here would leave an account with no username: the app would look
+  /// broken while the user is already visible in the Firebase console. The
+  /// session is therefore closed again on failure, and the next attempt reuses
+  /// the same Firebase account.
   Future<AuthUser> signInWithGoogle() async {
     final user = await _auth.signInWithGoogle();
-    final profile = await _ensureProfile(user);
-    await _sync.attach(user.id);
-    return _merge(user, profile);
+    try {
+      final profile = await _ensureProfile(user);
+      await _sync.attach(user.id);
+      return _merge(user, profile);
+    } on Object {
+      try {
+        await _auth.signOut();
+      } on Object {
+        // The identity is recoverable on the next attempt either way.
+      }
+      rethrow;
+    }
   }
 
   /// Restores the session on start-up: the profile is refreshed and the account
@@ -62,10 +76,19 @@ class AccountService {
     if (user == null) return null;
     final profile = await _users.fetch(user.id);
     if (profile != null) {
+      await _users.ensurePublicMirror(profile);
       await _sync.attach(user.id);
       return _merge(user, profile);
     }
     return _ensureProfile(user).then((value) => _merge(user, value));
+  }
+
+  /// Creates the missing profile for an already signed-in account. Used when
+  /// the app opens on an account left behind by an interrupted sign-up.
+  Future<UserProfile> ensureProfile(AuthUser user) async {
+    final profile = await _ensureProfile(user);
+    await _sync.attach(user.id);
+    return profile;
   }
 
   // -------------------------------------------------------------- register
@@ -93,7 +116,17 @@ class AccountService {
     );
     var reserved = false;
     try {
-      await _usernames.reserve(uid: user.id, normalized: validation.normalized);
+      try {
+        await _usernames.reserve(
+          uid: user.id,
+          normalized: validation.normalized,
+        );
+      } on UsernameTakenException {
+        throw const AppFailure(
+          FailureKind.permission,
+          technical: 'username-taken',
+        );
+      }
       reserved = true;
       final now = DateTime.now();
       var profile = UserProfile(
@@ -106,10 +139,16 @@ class AccountService {
         updatedAt: now,
       );
       if (avatarPath != null) {
-        final bytes = await _avatars.compressFile(avatarPath);
-        if (bytes != null) {
-          await _avatars.save(uid: user.id, bytes: bytes);
-          profile = profile.copyWith(photoVersion: 1);
+        // A picture that cannot be compressed or stored must not cancel a
+        // valid registration; the user can pick one later from the profile.
+        try {
+          final bytes = await _avatars.compressFile(avatarPath);
+          if (bytes != null) {
+            await _avatars.save(uid: user.id, bytes: bytes);
+            profile = profile.copyWith(photoVersion: 1);
+          }
+        } on Object {
+          // Keep the account without a picture.
         }
       }
       await _users.create(profile);
@@ -146,7 +185,12 @@ class AccountService {
   /// older email account) and reserves an available handle for them.
   Future<UserProfile> _ensureProfile(AuthUser user) async {
     final existing = await _users.fetch(user.id);
-    if (existing != null) return existing;
+    if (existing != null) {
+      // Repair an interrupted sign-up that created the owner document but not
+      // the public mirror, and make sure no other user can claim the handle.
+      await _users.ensurePublicMirror(existing);
+      return existing;
+    }
 
     final seeds = <String>[
       UsernameRules.sanitize(user.email.split('@').first),
@@ -155,20 +199,24 @@ class AccountService {
     ];
     String? chosen;
     for (final seed in seeds) {
-      if (seed.length >= UsernameRules.minLength &&
-          seed.length <= UsernameRules.maxLength) {
-        if (await _usernames.isAvailable(seed)) {
-          chosen = seed;
-          break;
-        }
-      }
-      for (final candidate in UsernameRules.suggestions(seed, count: 4)) {
-        if (await _usernames.isAvailable(candidate)) {
+      if (chosen != null) break;
+      final candidates = <String>[
+        if (seed.length >= UsernameRules.minLength &&
+            seed.length <= UsernameRules.maxLength)
+          seed,
+        ...UsernameRules.suggestions(seed, count: 4),
+      ];
+      for (final candidate in candidates) {
+        if (!await _usernames.isAvailable(candidate)) continue;
+        try {
+          await _usernames.claim(uid: user.id, normalized: candidate);
           chosen = candidate;
           break;
+        } on UsernameTakenException {
+          // Another device claimed it between the check and the transaction.
+          continue;
         }
       }
-      if (chosen != null) break;
     }
     if (chosen == null) {
       throw const AppFailure(
@@ -176,7 +224,6 @@ class AccountService {
         technical: 'username-unavailable',
       );
     }
-    await _usernames.reserve(uid: user.id, normalized: chosen);
     final now = DateTime.now();
     final profile = UserProfile(
       uid: user.id,
@@ -187,7 +234,17 @@ class AccountService {
       createdAt: now,
       updatedAt: now,
     );
-    await _users.create(profile);
+    try {
+      await _users.create(profile);
+    } on Object {
+      try {
+        await _usernames.release(uid: user.id, normalized: chosen);
+      } on Object {
+        // The handle stays reserved to this uid, so it is never taken by
+        // someone else while the account is unusable.
+      }
+      rethrow;
+    }
     return profile;
   }
 
@@ -223,6 +280,10 @@ class AccountService {
     return next;
   }
 
+  /// Rename order matters for the security rules:
+  /// 1. claim the new handle in a transaction,
+  /// 2. write the profile (the rule accepts it because the reservation exists),
+  /// 3. release the previous handle, and only then let it be reused.
   Future<UserProfile> changeUsername({
     required UserProfile profile,
     required String username,
@@ -234,16 +295,37 @@ class AccountService {
         technical: 'username-invalid',
       );
     }
-    await _usernames.changeUsername(
-      uid: profile.uid,
-      previousNormalized: profile.normalizedUsername,
-      nextNormalized: validation.normalized,
-    );
     final next = profile.copyWith(
       username: username.trim(),
       updatedAt: DateTime.now(),
     );
-    await _users.syncPublicUsername(profile.uid, username.trim());
+    final previous = profile.normalizedUsername;
+    await _usernames.claim(uid: profile.uid, normalized: validation.normalized);
+    try {
+      await _users.save(next);
+    } on Object {
+      // The rename never happened, so the freshly claimed handle is released
+      // again instead of being held forever.
+      if (previous != validation.normalized) {
+        try {
+          await _usernames.release(
+            uid: profile.uid,
+            normalized: validation.normalized,
+          );
+        } on Object {
+          // Best effort: an orphaned reservation is never reassigned.
+        }
+      }
+      rethrow;
+    }
+    if (previous.isNotEmpty && previous != validation.normalized) {
+      try {
+        await _usernames.release(uid: profile.uid, normalized: previous);
+      } on Object {
+        // The old handle stays reserved; it is harmless and can be released by
+        // the next rename.
+      }
+    }
     return next;
   }
 
@@ -276,9 +358,22 @@ class AccountService {
   Future<Uint8List?> avatarBytes(UserProfile profile) =>
       _avatars.fetch(uid: profile.uid, version: profile.photoVersion);
 
-  /// Keeps the public statistics in step with the local library.
-  Future<void> publishStats(UserProfile profile, ProfileStats stats) =>
-      _users.updateStats(profile.uid, stats);
+  /// Keeps the public statistics and shared favourites in step with the local
+  /// library. Only display values are published; progress and history stay in
+  /// the owner-only documents.
+  Future<UserProfile> publishStats(
+    UserProfile profile,
+    ProfileStats stats, {
+    List<ProfileFavorite>? favorites,
+  }) async {
+    final next = profile.copyWith(
+      stats: stats,
+      favorites: favorites ?? profile.favorites,
+      updatedAt: DateTime.now(),
+    );
+    await _users.save(next);
+    return next;
+  }
 
   Future<void> signOut() async {
     await _sync.detach();
