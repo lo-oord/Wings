@@ -36,7 +36,9 @@ import '../data/auth/account_service.dart';
 import '../data/auth/firebase_auth_repository.dart';
 import '../data/models/user_profile.dart';
 import '../data/repositories/avatar_repository.dart';
+import '../data/repositories/cover_repository.dart';
 import '../data/repositories/social_repository.dart';
+import '../data/repositories/views_repository.dart';
 import '../data/repositories/user_repository.dart';
 import '../data/repositories/username_repository.dart';
 import '../data/sync/cloud_sync_service.dart';
@@ -460,6 +462,21 @@ final avatarRepositoryProvider = Provider<AvatarRepository>(
   ),
 );
 
+final coverRepositoryProvider = Provider<CoverRepository>(
+  (ref) => CoverRepository(
+    FirebaseFirestore.instance,
+    ref.watch(localStoreProvider),
+  ),
+);
+
+/// View counters with a local throttle so a screen re-open never costs a write.
+final viewsRepositoryProvider = Provider<ViewsRepository>(
+  (ref) => ViewsRepository(
+    FirebaseFirestore.instance,
+    ref.watch(localStoreProvider),
+  ),
+);
+
 final cloudSyncProvider = Provider<CloudSyncService>(
   (ref) => CloudSyncService(
     FirebaseFirestore.instance,
@@ -477,6 +494,7 @@ final accountServiceProvider = Provider<AccountService?>((ref) {
     ref.watch(usernameRepositoryProvider),
     ref.watch(userRepositoryProvider),
     ref.watch(avatarRepositoryProvider),
+    ref.watch(coverRepositoryProvider),
     ref.watch(cloudSyncProvider),
     FirebaseFirestore.instance,
   );
@@ -495,7 +513,10 @@ final accountDeletionProvider = Provider<AccountDeletionService?>((ref) {
 });
 
 final socialRepositoryProvider = Provider<SocialRepository>(
-  (ref) => SocialRepository(FirebaseFirestore.instance),
+  (ref) => SocialRepository(
+    FirebaseFirestore.instance,
+    ref.watch(localStoreProvider),
+  ),
 );
 
 /// The full profile document of the signed-in user.
@@ -724,6 +745,24 @@ class AuthController extends Notifier<AuthUser?> {
     final service = ref.read(accountServiceProvider);
     if (profile == null || service == null) return;
     final next = await service.removeAvatar(profile);
+    ref.read(profileProvider.notifier).apply(next);
+  }
+
+  Future<void> saveCover(String path) async {
+    final profile = ref.read(profileProvider);
+    final service = ref.read(accountServiceProvider);
+    if (profile == null || service == null) {
+      throw const AppFailure(FailureKind.unknown, technical: 'no-profile');
+    }
+    final next = await service.saveCover(profile: profile, path: path);
+    ref.read(profileProvider.notifier).apply(next);
+  }
+
+  Future<void> removeCover() async {
+    final profile = ref.read(profileProvider);
+    final service = ref.read(accountServiceProvider);
+    if (profile == null || service == null) return;
+    final next = await service.removeCover(profile);
     ref.read(profileProvider.notifier).apply(next);
   }
 

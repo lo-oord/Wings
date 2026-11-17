@@ -6,6 +6,7 @@ import '../../core/errors/app_failure.dart';
 import '../models/user_profile.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/avatar_repository.dart';
+import '../repositories/cover_repository.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/username_repository.dart';
 import '../sync/cloud_sync_service.dart';
@@ -25,6 +26,7 @@ class AccountService {
     this._usernames,
     this._users,
     this._avatars,
+    this._covers,
     this._sync,
     this._db,
   );
@@ -33,6 +35,7 @@ class AccountService {
   final UsernameRepository _usernames;
   final UserRepository _users;
   final AvatarRepository _avatars;
+  final CoverRepository _covers;
   final CloudSyncService _sync;
   final FirebaseFirestore _db;
 
@@ -355,8 +358,35 @@ class AccountService {
     return profile.copyWith(photoVersion: version, updatedAt: DateTime.now());
   }
 
+  /// Stores the wide banner shown behind the profile header. The cover is
+  /// separate from the avatar and, like it, lives in Firestore bytes rather
+  /// than Firebase Storage.
+  Future<UserProfile> saveCover({
+    required UserProfile profile,
+    required String path,
+  }) async {
+    final bytes = await _covers.compressFile(path);
+    if (bytes == null) {
+      throw const AppFailure(FailureKind.storage, technical: 'cover-too-large');
+    }
+    await _covers.save(uid: profile.uid, bytes: bytes);
+    final version = profile.coverVersion + 1;
+    await _users.setCoverVersion(profile.uid, version);
+    return profile.copyWith(coverVersion: version, updatedAt: DateTime.now());
+  }
+
+  Future<UserProfile> removeCover(UserProfile profile) async {
+    await _covers.remove(profile.uid);
+    final version = profile.coverVersion + 1;
+    await _users.setCoverVersion(profile.uid, version);
+    return profile.copyWith(coverVersion: version, updatedAt: DateTime.now());
+  }
+
   Future<Uint8List?> avatarBytes(UserProfile profile) =>
       _avatars.fetch(uid: profile.uid, version: profile.photoVersion);
+
+  Future<Uint8List?> coverBytes(UserProfile profile) =>
+      _covers.fetch(uid: profile.uid, version: profile.coverVersion);
 
   /// Keeps the public statistics and shared favourites in step with the local
   /// library. Only display values are published; progress and history stay in

@@ -20,6 +20,7 @@ import '../../features/search/search_screen.dart';
 import '../../features/settings/about_screen.dart';
 import '../../features/settings/legal_screen.dart';
 import '../../features/settings/settings_screen.dart';
+import '../../features/social/episode_comments_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../providers.dart';
 import '../theme/context_ext.dart';
@@ -108,6 +109,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             state.pathParameters['episodeId'] ?? '',
           ),
           initialAnime: state.extra is Anime ? state.extra! as Anime : null,
+        ),
+      ),
+      GoRoute(
+        path: '/episode/:episodeId/comments',
+        builder: (context, state) => EpisodeCommentsScreen(
+          episodeId: Uri.decodeComponent(
+            state.pathParameters['episodeId'] ?? '',
+          ),
+          episodeTitle: state.extra is String ? state.extra! as String : '',
         ),
       ),
       GoRoute(

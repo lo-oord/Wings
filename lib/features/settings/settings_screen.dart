@@ -12,6 +12,7 @@ import '../../core/storage/local_store.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../profile/avatar_view.dart';
 
 final appInfoProvider = FutureProvider<PackageInfo>(
   (ref) => PackageInfo.fromPlatform(),
@@ -26,6 +27,7 @@ class SettingsScreen extends ConsumerWidget {
     final palette = context.palette;
     final settings = ref.watch(settingsProvider);
     final user = ref.watch(authProvider);
+    final profile = ref.watch(profileProvider);
     final info = ref.watch(appInfoProvider).value;
     final storage = ref.watch(storageUsedProvider);
 
@@ -46,62 +48,20 @@ class SettingsScreen extends ConsumerWidget {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-              child: InkWell(
+              child: _AccountCard(
+                name: (profile?.displayName.isNotEmpty ?? false)
+                    ? profile!.displayName
+                    : (user?.displayName ?? l10n.settingsGuest),
+                email: user?.email ?? '',
+                uid: user?.id ?? '',
+                photoVersion: profile?.photoVersion ?? 0,
+                subtitle: user == null
+                    ? l10n.profileSignInPrompt
+                    : (profile?.username.isNotEmpty == true
+                          ? '@${profile!.username}'
+                          : l10n.settingsGuest),
                 onTap: () => context.push(
                   user == null ? RoutePaths.welcome : RoutePaths.profile,
-                ),
-                borderRadius: BorderRadius.circular(Radii.md),
-                child: Container(
-                  padding: const EdgeInsets.all(Space.md),
-                  decoration: BoxDecoration(
-                    gradient: palette.brandGradient,
-                    borderRadius: BorderRadius.circular(Radii.md),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      CircleAvatar(
-                        radius: 22,
-                        backgroundColor: Colors.white24,
-                        child: Text(
-                          user == null
-                              ? 'W'
-                              : user.displayName.characters.first.toUpperCase(),
-                          style: context.text.titleMedium?.copyWith(
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: Space.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              user?.displayName ?? l10n.settingsGuest,
-                              style: context.text.titleSmall?.copyWith(
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              user?.email ?? l10n.profileSignInPrompt,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: context.text.labelSmall?.copyWith(
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        context.isRtl
-                            ? Icons.chevron_left_rounded
-                            : Icons.chevron_right_rounded,
-                        color: Colors.white70,
-                        size: 20,
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ),
@@ -487,6 +447,104 @@ class SettingsScreen extends ConsumerWidget {
     if (!confirmed) return;
     await ref.read(libraryProvider.notifier).clearHistory();
     if (context.mounted) context.showSnack(l10n.settingsHistoryCleared);
+  }
+}
+
+/// Account summary at the top of settings.
+///
+/// Replaces the old gradient banner with a calm card that matches the settings
+/// groups: the real avatar (or initials), the name, the handle, the email and a
+/// single chevron. Nothing is truncated to the point of looking broken, and the
+/// row keeps a 56 px target so the photo is readable.
+class _AccountCard extends StatelessWidget {
+  const _AccountCard({
+    required this.name,
+    required this.email,
+    required this.uid,
+    required this.photoVersion,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final String name;
+  final String email;
+  final String uid;
+  final int photoVersion;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Material(
+      color: palette.surface,
+      borderRadius: BorderRadius.circular(Radii.md),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.md),
+        child: Container(
+          padding: const EdgeInsets.all(Space.md),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Radii.md),
+            border: Border.all(color: palette.border),
+          ),
+          child: Row(
+            children: <Widget>[
+              UserAvatar(
+                uid: uid,
+                photoVersion: photoVersion,
+                name: name,
+                size: 56,
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.titleSmall,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.labelSmall?.copyWith(
+                        color: palette.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (email.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 2),
+                      Text(
+                        email,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.labelSmall?.copyWith(
+                          color: palette.textMuted,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: Space.sm),
+              Icon(
+                context.isRtl
+                    ? Icons.chevron_left_rounded
+                    : Icons.chevron_right_rounded,
+                size: 18,
+                color: palette.textMuted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

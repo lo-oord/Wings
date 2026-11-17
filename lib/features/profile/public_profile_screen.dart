@@ -77,20 +77,13 @@ class _Body extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: Space.xxl),
       children: <Widget>[
-        // Cover
-        Container(
-          height: 132,
-          margin: const EdgeInsets.fromLTRB(Space.md, 0, Space.md, 0),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(Radii.md),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[
-                palette.primary.withValues(alpha: 0.85),
-                palette.primary.withValues(alpha: 0.35),
-              ],
-            ),
+        // Cover — the same banner the owner set in their profile.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.md),
+          child: UserCover(
+            uid: profile.uid,
+            coverVersion: profile.coverVersion,
+            height: 150,
           ),
         ),
         Transform.translate(

@@ -82,6 +82,40 @@ class ProfileScreen extends ConsumerWidget {
         padding: const EdgeInsets.only(bottom: Space.xxxl),
         children: <Widget>[
           Padding(
+            padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 0),
+            child: Stack(
+              children: <Widget>[
+                UserCover(
+                  uid: user?.id ?? '',
+                  coverVersion: profile?.coverVersion ?? 0,
+                  height: 144,
+                ),
+                PositionedDirectional(
+                  top: Space.sm,
+                  end: Space.sm,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: user == null
+                          ? null
+                          : () => _coverSheet(context, ref),
+                      child: const Padding(
+                        padding: EdgeInsets.all(Space.sm),
+                        child: Icon(
+                          Icons.photo_camera_outlined,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
             padding: const EdgeInsets.all(Space.lg),
             child: Row(
               children: <Widget>[
@@ -225,6 +259,21 @@ class ProfileScreen extends ConsumerWidget {
               title: l10n.settingsAccount,
               children: <Widget>[
                 WingsSettingsTile(
+                  icon: Icons.account_circle_outlined,
+                  title: Tr.of(
+                    context,
+                    ar: 'تغيير الصورة الشخصية',
+                    en: 'Change profile picture',
+                  ),
+                  subtitle: Tr.of(
+                    context,
+                    ar: 'صورة مربعة تظهر بجانب اسمك',
+                    en: 'A square picture next to your name',
+                  ),
+                  showChevron: true,
+                  onTap: () => _pickAvatar(context, ref),
+                ),
+                WingsSettingsTile(
                   icon: Icons.badge_outlined,
                   title: Tr.of(context, ar: 'تعديل الملف', en: 'Edit profile'),
                   subtitle: Tr.of(
@@ -245,6 +294,17 @@ class ProfileScreen extends ConsumerWidget {
                   subtitle: '@${profile?.username ?? user.username}',
                   showChevron: true,
                   onTap: () => _changeUsername(context, ref),
+                ),
+                WingsSettingsTile(
+                  icon: Icons.wallpaper_outlined,
+                  title: Tr.of(context, ar: 'صورة الغلاف', en: 'Cover picture'),
+                  subtitle: Tr.of(
+                    context,
+                    ar: 'بانر أعلى الملف — منفصل عن الصورة الشخصية',
+                    en: 'The banner above your profile — separate from the avatar',
+                  ),
+                  showChevron: true,
+                  onTap: () => _coverSheet(context, ref),
                 ),
                 WingsSettingsTile(
                   icon: Icons.lock_outline_rounded,
@@ -344,6 +404,93 @@ class ProfileScreen extends ConsumerWidget {
       if (context.mounted) {
         context.showSnack(
           Tr.of(context, ar: 'تم تحديث الصورة', en: 'Picture updated'),
+        );
+      }
+    } on Object catch (error) {
+      if (context.mounted) {
+        context.showSnack(authErrorText(context, error), isError: true);
+      }
+    }
+  }
+
+  /// Cover actions: pick a new banner or remove the current one. The image is
+  /// compressed into Firestore bytes, never uploaded to Storage.
+  Future<void> _coverSheet(BuildContext context, WidgetRef ref) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.all(Space.lg),
+              child: Text(
+                Tr.of(context, ar: 'صورة الغلاف', en: 'Cover picture'),
+                style: context.text.titleSmall,
+              ),
+            ),
+            WingsSettingsTile(
+              icon: Icons.photo_library_outlined,
+              title: Tr.of(
+                context,
+                ar: 'اختيار غلاف جديد',
+                en: 'Choose a new cover',
+              ),
+              onTap: () async {
+                Navigator.of(sheetContext).pop();
+                await _pickCover(context, ref);
+              },
+            ),
+            WingsSettingsTile(
+              icon: Icons.delete_outline_rounded,
+              title: Tr.of(context, ar: 'إزالة الغلاف', en: 'Remove cover'),
+              destructive: true,
+              onTap: () async {
+                Navigator.of(sheetContext).pop();
+                try {
+                  await ref.read(authProvider.notifier).removeCover();
+                  if (context.mounted) {
+                    context.showSnack(
+                      Tr.of(
+                        context,
+                        ar: 'تمت إزالة الغلاف',
+                        en: 'Cover removed',
+                      ),
+                    );
+                  }
+                } on Object catch (error) {
+                  if (context.mounted) {
+                    context.showSnack(
+                      authErrorText(context, error),
+                      isError: true,
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickCover(BuildContext context, WidgetRef ref) async {
+    final user = ref.read(authProvider);
+    if (user == null) {
+      context.push(RoutePaths.login);
+      return;
+    }
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      imageQuality: 92,
+    );
+    if (file == null) return;
+    try {
+      await ref.read(authProvider.notifier).saveCover(file.path);
+      if (context.mounted) {
+        context.showSnack(
+          Tr.of(context, ar: 'تم تحديث الغلاف', en: 'Cover updated'),
         );
       }
     } on Object catch (error) {
@@ -684,10 +831,13 @@ class ProfileScreen extends ConsumerWidget {
 
   Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
     final l10n = AppLocalizations.of(context);
+    final auth = ref.read(authRepositoryProvider);
     final confirmed = await WingsDialog.confirm(
       context,
       title: l10n.profileDeleteAccount,
-      message: l10n.profileDeleteBody,
+      message:
+          '${l10n.profileDeleteBody}\n\n'
+          '${Tr.of(context, ar: 'سيُحذف ملفك وتعليقاتك ومكتبتك وسجل مشاهدتك نهائيًا. الطلب يستغرق بعض الوقت إذا كان لديك محتوى كثير.', en: 'Your profile, comments, library and watch history are removed permanently. The request takes a while when you have a lot of content.')}',
       confirmLabel: l10n.commonDelete,
       destructive: true,
     );
@@ -695,7 +845,7 @@ class ProfileScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     String? password;
-    if (ref.read(authRepositoryProvider).hasPasswordProvider) {
+    if (auth.hasPasswordProvider) {
       final controller = TextEditingController();
       final value = await showDialog<String>(
         context: context,
@@ -728,7 +878,35 @@ class ProfileScreen extends ConsumerWidget {
       );
       controller.dispose();
       if (value == null) return;
+      if (value.trim().isEmpty) {
+        if (context.mounted) {
+          context.showSnack(
+            Tr.of(
+              context,
+              ar: 'أدخل كلمة المرور الحالية للتأكيد.',
+              en: 'Enter your current password to confirm.',
+            ),
+            isError: true,
+          );
+        }
+        return;
+      }
       password = value;
+    } else {
+      // Google-only account: Firebase needs a fresh Google credential, which
+      // the app requests right before deleting.
+      final proceed = await WingsDialog.confirm(
+        context,
+        title: Tr.of(context, ar: 'تأكيد هوية جوجل', en: 'Confirm with Google'),
+        message: Tr.of(
+          context,
+          ar: 'ستظهر نافذة جوجل لتأكيد الحساب قبل الحذف. اختر نفس الحساب المسجّل هنا.',
+          en: 'Google will ask you to confirm the account before deletion. Pick the same account you are signed in with.',
+        ),
+        confirmLabel: Tr.of(context, ar: 'متابعة', en: 'Continue'),
+        destructive: true,
+      );
+      if (!proceed || !context.mounted) return;
     }
 
     try {

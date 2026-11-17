@@ -90,6 +90,8 @@ service cloud.firestore {
         && (!('ageGroup' in value) || (value.ageGroup is string && value.ageGroup.size() <= 12))
         && (!('stats' in value) || validStats(value.stats))
         && (!('favorites' in value) || validFavorites(value.favorites))
+        && (!('coverVersion' in value)
+            || (value.coverVersion is int && value.coverVersion >= 0))
         && (!('private' in value) || value.private is bool);
     }
 
@@ -129,6 +131,9 @@ service cloud.firestore {
         && (!('photoVersion' in request.resource.data)
             || (request.resource.data.photoVersion is int
                 && request.resource.data.photoVersion >= 0))
+        && (!('coverVersion' in request.resource.data)
+            || (request.resource.data.coverVersion is int
+                && request.resource.data.coverVersion >= 0))
         && (!('pendingDeletion' in request.resource.data)
             || request.resource.data.pendingDeletion is bool);
 
@@ -152,6 +157,9 @@ service cloud.firestore {
         && request.resource.data.ageGroup is string
         && request.resource.data.ageGroup.size() <= 12
         && request.resource.data.pendingDeletion is bool
+        && (!('coverVersion' in request.resource.data)
+            || (request.resource.data.coverVersion is int
+                && request.resource.data.coverVersion >= 0))
         && (
           request.resource.data.username == resource.data.username
           || (
@@ -206,16 +214,32 @@ service cloud.firestore {
 
       // Avatar bytes: readable by signed-in users so profile pictures render on
       // public profiles, writable only by the owner and capped below 1 MiB.
+      // Create/update are separate from delete, because a delete request has no
+      // `request.resource` payload and would otherwise always be rejected.
       match /private/avatar {
         allow read: if signedIn();
-        allow write: if isSelf(uid)
+        allow create, update: if isSelf(uid)
           && request.resource.data.byteSize is int
-          && request.resource.data.byteSize <= 204800;
+          && request.resource.data.byteSize <= 204800
+          && request.resource.data.bytes is bytes;
+        allow delete: if isSelf(uid);
+      }
+
+      // Cover banner bytes: same contract as the avatar, with a wider budget
+      // because a 16:10 banner needs more pixels.
+      match /private/cover {
+        allow read: if signedIn();
+        allow create, update: if isSelf(uid)
+          && request.resource.data.byteSize is int
+          && request.resource.data.byteSize <= 500000
+          && request.resource.data.bytes is bytes;
         allow delete: if isSelf(uid);
       }
 
       match /private/{docId} {
-        allow read, write: if isSelf(uid) && docId != 'avatar';
+        allow read, write: if isSelf(uid)
+          && docId != 'avatar'
+          && docId != 'cover';
       }
     }
 
@@ -262,9 +286,27 @@ service cloud.firestore {
 
     // --------------------------------------------------------- catalogue
     // Episode documents are managed outside the app; clients only read.
+    //
+    // View counters live in `episodes/{id}/stats/views` (and
+    // `anime/{id}/stats/views`) so a popular episode never needs a write to its
+    // catalogue document. Clients may only create the counter at 1 or add
+    // exactly one, which keeps a tampered client from writing any number.
     match /episodes/{episodeId} {
       allow read: if signedIn();
       allow write: if false;
+
+      match /stats/views {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['count', 'updatedAt'])
+          && request.resource.data.count == 1
+          && request.resource.data.updatedAt is timestamp;
+        allow update: if signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
+          && request.resource.data.count == resource.data.count + 1
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if false;
+      }
 
       match /reactions/{uid} {
         allow read: if signedIn();
@@ -285,7 +327,12 @@ service cloud.firestore {
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 1000
           && request.resource.data.deleted == false
-          && request.resource.data.replyCount == 0;
+          && request.resource.data.replyCount == 0
+          && validDisplayName(request.resource.data.authorName)
+          && validUsername(request.resource.data.authorUsername)
+          && validBadges(request.resource.data.authorBadges)
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
 
         allow update: if signedIn()
           && (
@@ -314,10 +361,16 @@ service cloud.firestore {
           allow create: if signedIn()
             && request.resource.data.authorUid == request.auth.uid
             && request.resource.data.parentId == commentId
+            && request.resource.data.episodeId == episodeId
             && request.resource.data.text is string
             && request.resource.data.text.size() >= 1
             && request.resource.data.text.size() <= 1000
-            && request.resource.data.deleted == false;
+            && request.resource.data.deleted == false
+            && validDisplayName(request.resource.data.authorName)
+            && validUsername(request.resource.data.authorUsername)
+            && validBadges(request.resource.data.authorBadges)
+            && request.resource.data.createdAt is timestamp
+            && request.resource.data.updatedAt is timestamp;
           allow update: if signedIn()
             && resource.data.authorUid == request.auth.uid
             && request.resource.data.authorUid == resource.data.authorUid;
@@ -325,6 +378,22 @@ service cloud.firestore {
             && resource.data.authorUid == request.auth.uid;
         }
       }
+    }
+
+    // ------------------------------------------------ title view counters
+    // One counter per title, shown on the details screen. Same constraint as
+    // episode views: create at 1 or increment by exactly one.
+    match /anime/{animeId}/stats/views {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['count', 'updatedAt'])
+        && request.resource.data.count == 1
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count', 'updatedAt'])
+        && request.resource.data.count == resource.data.count + 1
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
     }
 
     // ----------------------------------------------------------- reports

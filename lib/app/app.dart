@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/widgets/wings_feedback.dart';
+import '../features/player/mini_player.dart';
 import 'localization/app_localizations.dart';
 import 'providers.dart';
 import 'router/app_router.dart';
@@ -82,7 +83,9 @@ class _WingsAppState extends ConsumerState<WingsApp>
         );
         return MediaQuery(
           data: media.copyWith(textScaler: scale),
-          child: child ?? const WingsLoading(),
+          // The floating player sits above every route so leaving an episode
+          // never stops the video.
+          child: MiniPlayerHost(child: child ?? const WingsLoading()),
         );
       },
     );

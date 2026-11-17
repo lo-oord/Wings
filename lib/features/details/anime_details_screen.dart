@@ -7,6 +7,8 @@ import '../../app/providers.dart';
 import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/utils/formatters.dart';
+import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_cards.dart';
 import '../../core/widgets/wings_feedback.dart';
@@ -23,6 +25,41 @@ class AnimeDetailsScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<AnimeDetailsScreen> createState() => _AnimeDetailsScreenState();
+}
+
+/// Total views for the whole title, shown on the details screen. The number
+/// combines the catalogue's own figure with the app counter, and is cached so
+/// opening the same title repeatedly costs no extra reads.
+class _TitleViews extends ConsumerWidget {
+  const _TitleViews({required this.animeId, required this.base});
+
+  final String animeId;
+  final int base;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    return FutureBuilder<int>(
+      future: ref.watch(viewsRepositoryProvider).animeViews(animeId),
+      builder: (context, snapshot) {
+        final total = base + (snapshot.data ?? 0);
+        return Row(
+          children: <Widget>[
+            Icon(Icons.visibility_outlined, size: 14, color: palette.textMuted),
+            const SizedBox(width: 4),
+            Text(
+              total <= 0
+                  ? Tr.of(context, ar: 'لا مشاهدات بعد', en: 'No views yet')
+                  : '${formatCount(total)} ${Tr.of(context, ar: 'مشاهدة', en: 'views')}',
+              style: context.text.labelSmall?.copyWith(
+                color: palette.textMuted,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
@@ -228,6 +265,8 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                             ),
                         ],
                       ),
+                      const SizedBox(height: Space.sm),
+                      _TitleViews(animeId: anime.id, base: anime.views ?? 0),
                       const SizedBox(height: Space.sm),
                       if (anime.genres.isNotEmpty)
                         Wrap(

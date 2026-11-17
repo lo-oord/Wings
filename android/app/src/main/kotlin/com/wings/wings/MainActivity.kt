@@ -1,11 +1,14 @@
 package com.wings.wings
 
+import android.app.PictureInPictureParams
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Rational
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,9 +22,25 @@ import java.io.FileOutputStream
  */
 class MainActivity : FlutterActivity() {
     private val channelName = "wings/storage"
+    private val pipChannelName = "wings/pip"
+
+    // Only true while an episode is playing, so the app never shrinks into the
+    // floating window from an ordinary screen.
+    private var pipEnabled = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, pipChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setEnabled" -> {
+                        pipEnabled = call.arguments == true
+                        result.success(null)
+                    }
+                    "enter" -> result.success(enterPip())
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -53,6 +72,29 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /** Shrinks the activity into the system picture-in-picture window. */
+    private fun enterPip(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            return false
+        }
+        return try {
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+                .build()
+            enterPictureInPictureMode(params)
+        } catch (error: Exception) {
+            false
+        }
+    }
+
+    // Android calls this when the user goes home, which is the moment a video
+    // app is expected to shrink into the floating window.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (pipEnabled) enterPip()
     }
 
     private fun saveToDownloads(path: String, fileName: String): String? {

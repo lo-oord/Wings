@@ -93,6 +93,40 @@ void main() {
     });
   });
 
+  group('cover picture', () {
+    test('the version is published but never the bytes', () {
+      final profile = _profile(privacy: ProfilePrivacy.defaults)
+          .copyWith(coverVersion: 4);
+      final mirror = profile.toMapPublic();
+      expect(mirror['coverVersion'], 4);
+      expect(mirror.containsKey('bytes'), isFalse);
+      expect(profile.toMap()['coverVersion'], 4);
+    });
+
+    test('reads back from the owner and the public documents', () {
+      final raw = _profile(privacy: ProfilePrivacy.defaults)
+          .copyWith(coverVersion: 7)
+          .toMap();
+      expect(UserProfile.fromMap('uid-1', raw).coverVersion, 7);
+      expect(
+        UserProfile.fromPublicMap('uid-1', <String, dynamic>{
+          'username': 'shadow_07',
+          'displayName': 'Shadow',
+          'coverVersion': 2,
+        }).coverVersion,
+        2,
+      );
+      // Older documents without the field keep working.
+      expect(
+        UserProfile.fromPublicMap('uid-1', <String, dynamic>{
+          'username': 'shadow_07',
+          'displayName': 'Shadow',
+        }).coverVersion,
+        0,
+      );
+    });
+  });
+
   group('reading documents', () {
     test('tolerates missing optional fields', () {
       final profile = UserProfile.fromPublicMap('uid-9', <String, dynamic>{

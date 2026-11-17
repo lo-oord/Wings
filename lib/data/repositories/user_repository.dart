@@ -112,6 +112,22 @@ class UserRepository {
     await batch.commit();
   }
 
+  /// Bumps the cover version in both profile documents so every device drops
+  /// its cached banner and fetches the new one.
+  Future<void> setCoverVersion(String uid, int version) async {
+    final now = FieldValue.serverTimestamp();
+    final batch = _db.batch();
+    batch.update(_user(uid), <String, dynamic>{
+      'coverVersion': version,
+      'updatedAt': now,
+    });
+    batch.set(_public(uid), <String, dynamic>{
+      'coverVersion': version,
+      'updatedAt': now,
+    }, SetOptions(merge: true));
+    await batch.commit();
+  }
+
   Future<void> markPendingDeletion(String uid, {bool pending = true}) async {
     await _user(uid).set(<String, dynamic>{
       'pendingDeletion': pending,

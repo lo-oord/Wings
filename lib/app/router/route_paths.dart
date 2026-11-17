@@ -24,5 +24,8 @@ abstract final class RoutePaths {
   static String watch({required String animeId, required String episodeId}) =>
       '/watch/${Uri.encodeComponent(animeId)}/${Uri.encodeComponent(episodeId)}';
 
+  static String episodeComments(String episodeId) =>
+      '/episode/${Uri.encodeComponent(episodeId)}/comments';
+
   static String legal(String kind) => '/legal/$kind';
 }

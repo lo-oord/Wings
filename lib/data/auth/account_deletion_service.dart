@@ -11,8 +11,9 @@ import 'firebase_auth_repository.dart';
 /// Firestore does not cascade-delete subcollections, so the process is
 /// explicit and resumable:
 ///
-/// 1. Flag the profile as `pendingDeletion` so a half-finished run is visible.
-/// 2. Re-authenticate (Firebase requires a recent login for `delete()`).
+/// 1. Re-authenticate first (Firebase requires a recent login for `delete()`),
+///    so a cancelled password/Google prompt never touches the database.
+/// 2. Flag the profile as `pendingDeletion` so a half-finished run is visible.
 /// 3. Walk `users/{uid}/activity` and delete each referenced comment and
 ///    reaction, then the index entries.
 /// 4. Delete every subcollection in batches, then the avatar document.
@@ -49,38 +50,56 @@ class AccountDeletionService {
 
   Future<void> deleteAccount({required String uid, String? password}) async {
     final profile = await _users.fetch(uid);
-    await _users.markPendingDeletion(uid);
+
+    // A recent login is mandatory for `user.delete()`. Doing it before any
+    // Firestore write means a wrong password or a cancelled Google prompt
+    // leaves the account exactly as it was.
+    await _auth.reauthenticate(password: password);
+
     try {
-      await _auth.reauthenticate(password: password);
-    } on AppFailure {
-      await _users.markPendingDeletion(uid, pending: false);
-      rethrow;
+      await _users.markPendingDeletion(uid);
+    } on Object {
+      // The flag is only a marker; never let it block the deletion itself.
     }
 
-    await _deleteSocialContent(uid);
-    for (final name in _owned) {
-      await _deleteCollection(uid, name);
-    }
-    await _db
-        .collection('users')
-        .doc(uid)
-        .collection('private')
-        .doc('avatar')
-        .delete();
-
-    if (profile != null) {
-      try {
-        await _usernames.release(
-          uid: uid,
-          normalized: profile.normalizedUsername,
-        );
-      } on Object {
-        // A reservation owned by another account is left untouched.
+    try {
+      await _deleteSocialContent(uid);
+      for (final name in _owned) {
+        await _deleteCollection(uid, name);
       }
+      final private = _db.collection('users').doc(uid).collection('private');
+      for (final doc in const <String>['avatar', 'cover']) {
+        try {
+          await private.doc(doc).delete();
+        } on Object {
+          // Missing or already removed.
+        }
+      }
+
+      if (profile != null) {
+        try {
+          await _usernames.release(
+            uid: uid,
+            normalized: profile.normalizedUsername,
+          );
+        } on Object {
+          // A reservation owned by another account is left untouched.
+        }
+      }
+
+      await _db.collection('profiles').doc(uid).delete();
+      await _db.collection('users').doc(uid).delete();
+    } on FirebaseException catch (error) {
+      // Surface the exact Firestore code so the UI can explain whether the
+      // rules are outdated or the data is simply unreachable.
+      throw AppFailure(
+        FailureKind.permission,
+        technical: error.code == 'permission-denied'
+            ? 'delete-rules'
+            : error.code,
+      );
     }
 
-    await _db.collection('profiles').doc(uid).delete();
-    await _db.collection('users').doc(uid).delete();
     await _sync.detach(clearSettings: true);
     await _auth.deleteCurrentUser();
   }

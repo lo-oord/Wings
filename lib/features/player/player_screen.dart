@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -11,6 +12,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/services/picture_in_picture.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
@@ -19,6 +21,7 @@ import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/library.dart';
 import '../social/episode_social_section.dart';
+import 'playback_session.dart';
 
 class PlayerScreen extends ConsumerStatefulWidget {
   const PlayerScreen({
@@ -42,6 +45,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late final VideoController _videoController;
   final List<StreamSubscription<dynamic>> _subscriptions =
       <StreamSubscription<dynamic>>[];
+
+  PlaybackSession? _session;
+  bool _viewRegistered = false;
+
+  /// Position to restore when the floating player is expanded again, so the
+  /// viewer continues exactly where they were instead of restarting.
+  Duration _resumeFrom = Duration.zero;
 
   Anime? _anime;
   List<AnimeEpisode> _episodes = const <AnimeEpisode>[];
@@ -75,8 +85,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _player = Player(configuration: const PlayerConfiguration(title: 'Wings'));
-    _videoController = VideoController(_player);
+    // Reuse the live session when the viewer expands the floating window;
+    // otherwise this screen starts a new one.
+    final session = ref
+        .read(playbackSessionProvider.notifier)
+        .acquire(animeId: widget.animeId, episodeId: widget.episodeId);
+    _session = session;
+    _player = session.player;
+    _videoController = session.controller;
+    _resumeFrom =
+        session.attached && session.player.state.position > Duration.zero
+        ? session.player.state.position
+        : Duration.zero;
+    unawaited(PictureInPictureService.setEnabled(true));
     _attachStreams();
     _bootstrap();
     _saveTimer = Timer.periodic(
@@ -144,6 +165,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _episodes = episodes;
         _episode = episode;
       });
+      ref
+          .read(playbackSessionProvider.notifier)
+          .updateMeta(
+            animeTitle: anime.title,
+            episodeLabel: episode == null
+                ? ''
+                : AppLocalizations.of(context)
+                      .commonEpisodeNumber(episode.number),
+          );
       if (episode == null) {
         setState(() {
           _loading = false;
@@ -184,7 +214,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     try {
       final repository = ref.read(animeRepositoryProvider);
       final servers = await repository.servers(anime, episode);
-      _servers = servers;
+      // Sources and mirrors often publish the same link twice; keeping one copy
+      // per quality+flavour stops the server picker from showing duplicates.
+      final unique = <String, StreamServer>{};
+      for (final server in servers) {
+        unique.putIfAbsent(
+          '${server.quality}|${server.flavor.name}|${server.url}',
+          () => server,
+        );
+      }
+      _servers = unique.values.toList(growable: false);
       final settings = ref.read(settingsProvider);
       _candidates = _orderCandidates(servers, settings.preferredQuality);
       _candidateIndex = 0;
@@ -217,7 +256,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 entry?.animeId == anime.id && entry?.episodeId == episode.id,
             orElse: () => null,
           );
-      if (settings.rememberPosition &&
+      if (_resumeFrom > Duration.zero) {
+        await _player.seek(_resumeFrom);
+        _resumeFrom = Duration.zero;
+      } else if (settings.rememberPosition &&
           history != null &&
           history.position.inSeconds > 5 &&
           !history.completed) {
@@ -226,6 +268,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
       if (!mounted) return;
       setState(() => _loading = false);
+      if (!_viewRegistered) {
+        _viewRegistered = true;
+        // Counted once per device window, after a stream actually opened.
+        unawaited(
+          ref
+              .read(viewsRepositoryProvider)
+              .registerPlayback(episodeId: episode.id, animeId: anime.id),
+        );
+      }
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
@@ -441,6 +492,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         state == AppLifecycleState.inactive) {
       unawaited(_saveProgress(force: true));
     }
+    // Leaving the app keeps the episode in a system picture-in-picture window
+    // when the platform supports it; otherwise the session is kept alive for
+    // the in-app floating player.
+    if (state == AppLifecycleState.paused && _playing && !_fullscreen) {
+      unawaited(PictureInPictureService.enter());
+    }
   }
 
   @override
@@ -452,7 +509,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       subscription.cancel();
     }
     unawaited(_saveProgress(force: true));
-    _player.dispose();
+    // Leaving the episode hands the live stream to the floating player when it
+    // is still playing; a finished or failed playback is closed right away.
+    final session = _session;
+    if (session != null) {
+      final keepAlive =
+          _playing && !_completed && _error == null && _playbackError == null;
+      if (keepAlive) {
+        ref.read(playbackSessionProvider.notifier).detach();
+      } else {
+        unawaited(ref.read(playbackSessionProvider.notifier).close());
+      }
+    }
+    unawaited(PictureInPictureService.setEnabled(false));
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations(<DeviceOrientation>[
       DeviceOrientation.portraitUp,
@@ -595,6 +664,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               color: palette.textMuted,
                             ),
                           ),
+                        if (episode != null)
+                          _EpisodeViews(episodeId: episode.id),
                         _StreamChip(
                           label: _streamLabel(l10n),
                           onTap: _showQualitySheet,
@@ -626,7 +697,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             onDownload: () => _showDownloadSheet(anime, episode),
             onToggleSave: () => _toggleLibrary(anime),
           ),
-          const SizedBox(height: Space.sm),
+          Divider(height: 1, color: palette.border),
         ],
         WingsSectionHeader(
           title: l10n.detailsEpisodes,
@@ -637,17 +708,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             Space.sm,
           ),
         ),
-        for (final item in _episodes)
+        for (var index = 0; index < _episodes.length; index++) ...<Widget>[
           Container(
-            color: item.id == _episode?.id ? palette.surfaceAlt : null,
+            color: _episodes[index].id == _episode?.id
+                ? palette.surfaceAlt
+                : null,
             child: WingsEpisodeCard(
-              episode: item,
+              episode: _episodes[index],
               fallbackImageUrl: anime.imageUrl,
-              watched: watched.contains(item.id),
-              onPlay: () => _loadEpisode(item),
-              onDownload: () => _showDownloadSheet(anime, item),
+              watched: watched.contains(_episodes[index].id),
+              onPlay: () => _loadEpisode(_episodes[index]),
+              onDownload: () => _showDownloadSheet(anime, _episodes[index]),
             ),
           ),
+          if (index != _episodes.length - 1)
+            Divider(
+              height: 1,
+              color: palette.border,
+              indent: Space.lg + 104 + Space.md,
+              endIndent: Space.lg,
+            ),
+        ],
       ],
     );
   }
@@ -794,23 +875,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (episode == null) return;
     final label = AppLocalizations.of(context)
         .commonEpisodeNumber(episode.number);
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.75,
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(Radii.lg),
-          ),
-          child: EpisodeSocialSection(
-            episodeId: episode.id,
-            episodeTitle: label,
-          ),
-        ),
-      ),
+    context.push(
+      '/episode/${Uri.encodeComponent(episode.id)}/comments',
+      extra: label,
     );
   }
 
@@ -1035,17 +1102,20 @@ class _PlayerSurface extends StatelessWidget {
                             color: Colors.white,
                             onPressed: onBack,
                           ),
-                          WingsIconButton(
-                            icon: Icons.mode_comment_outlined,
-                            tooltip: Tr.of(
-                              context,
-                              ar: 'التعليقات',
-                              en: 'Comments',
-                            ),
-                            color: Colors.white,
-                            onPressed: onComments,
-                          ),
+                          // In portrait the action bar under the video already
+                          // owns the comments command, so the overlay only adds
+                          // it in fullscreen where that bar is hidden.
                           if (!compact) ...<Widget>[
+                            WingsIconButton(
+                              icon: Icons.mode_comment_outlined,
+                              tooltip: Tr.of(
+                                context,
+                                ar: 'التعليقات',
+                                en: 'Comments',
+                              ),
+                              color: Colors.white,
+                              onPressed: onComments,
+                            ),
                             const SizedBox(width: Space.sm),
                             Expanded(
                               child: Column(
@@ -1236,6 +1306,45 @@ class _PlayerSurface extends StatelessWidget {
     if (error is _NoEpisodes) return l10n.detailsNoEpisodes;
     if (error is _NoPlayableServer) return l10n.playerNoServers;
     return l10n.playerPlaybackErrorBody;
+  }
+}
+
+/// Episode view counter, shown next to the episode number under the video.
+/// The number comes from the cached counter, so re-opening a screen costs no
+/// extra reads.
+class _EpisodeViews extends ConsumerWidget {
+  const _EpisodeViews({required this.episodeId});
+
+  final String episodeId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    return FutureBuilder<int>(
+      future: ref.watch(viewsRepositoryProvider).episodeViews(episodeId),
+      builder: (context, snapshot) {
+        final views = snapshot.data ?? 0;
+        if (views <= 0) {
+          return Text(
+            Tr.of(context, ar: 'أول مشاهدة', en: 'First view'),
+            style: context.text.labelSmall?.copyWith(color: palette.textMuted),
+          );
+        }
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.visibility_outlined, size: 13, color: palette.textMuted),
+            const SizedBox(width: 4),
+            Text(
+              '${formatCount(views)} ${Tr.of(context, ar: 'مشاهدة', en: 'views')}',
+              style: context.text.labelSmall?.copyWith(
+                color: palette.textMuted,
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 

@@ -209,6 +209,7 @@ class UserProfile {
     this.favorites = const <ProfileFavorite>[],
     this.badges = ProfileBadges.none,
     this.photoVersion = 0,
+    this.coverVersion = 0,
     this.pendingDeletion = false,
     this.profileHidden = false,
   });
@@ -227,6 +228,10 @@ class UserProfile {
   final List<ProfileFavorite> favorites;
   final ProfileBadges badges;
   final int photoVersion;
+
+  /// Bumped whenever the cover picture changes, so every device drops its
+  /// cached banner. The bytes live in `users/{uid}/private/cover`.
+  final int coverVersion;
   final bool pendingDeletion;
 
   /// True when this came from the public mirror of an account whose owner hid
@@ -250,6 +255,7 @@ class UserProfile {
     List<ProfileFavorite>? favorites,
     ProfileBadges? badges,
     int? photoVersion,
+    int? coverVersion,
     bool? pendingDeletion,
     bool? profileHidden,
     DateTime? updatedAt,
@@ -265,6 +271,7 @@ class UserProfile {
     favorites: favorites ?? this.favorites,
     badges: badges ?? this.badges,
     photoVersion: photoVersion ?? this.photoVersion,
+    coverVersion: coverVersion ?? this.coverVersion,
     pendingDeletion: pendingDeletion ?? this.pendingDeletion,
     profileHidden: profileHidden ?? this.profileHidden,
     createdAt: createdAt,
@@ -284,6 +291,7 @@ class UserProfile {
     'favorites': favorites.map((item) => item.toMap()).toList(),
     'badges': badges.toMap(),
     'photoVersion': photoVersion,
+    'coverVersion': coverVersion,
     'pendingDeletion': pendingDeletion,
     'createdAt': Timestamp.fromDate(createdAt),
     'updatedAt': Timestamp.fromDate(updatedAt),
@@ -302,6 +310,7 @@ class UserProfile {
       'displayName': displayName,
       'badges': badges.toMap(),
       'photoVersion': photoVersion,
+      'coverVersion': coverVersion,
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
     if (!privacy.showProfile) {
@@ -344,6 +353,7 @@ class UserProfile {
           : const <ProfileFavorite>[],
       badges: ProfileBadges.fromMap(raw['badges']),
       photoVersion: (raw['photoVersion'] as num?)?.toInt() ?? 0,
+      coverVersion: (raw['coverVersion'] as num?)?.toInt() ?? 0,
       pendingDeletion: raw['pendingDeletion'] == true,
       profileHidden: raw['private'] == true,
       createdAt: readDate('createdAt'),

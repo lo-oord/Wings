@@ -215,6 +215,21 @@ String? _byCode(BuildContext context, String code) => switch (code) {
     ar: 'الصورة كبيرة جدًا. اختر صورة أخرى.',
     en: 'That picture is too large. Choose another one.',
   ),
+  'cover-too-large' => Tr.of(
+    context,
+    ar: 'صورة الغلاف كبيرة جدًا أو غير قابلة للقراءة. اختر صورة أخرى.',
+    en: 'That cover is too large or cannot be read. Choose another image.',
+  ),
+  'comment-too-fast' => Tr.of(
+    context,
+    ar: 'انتظر لحظات قبل إرسال تعليق آخر.',
+    en: 'Wait a moment before posting another comment.',
+  ),
+  'delete-rules' => Tr.of(
+    context,
+    ar: 'مُنع حذف بياناتك من الخادم. انشر أحدث قواعد Firestore ثم أعد المحاولة، وستبقى بياناتك سليمة حتى تكتمل العملية.',
+    en: 'The server blocked the deletion. Publish the latest Firestore rules and retry; your data stays intact until it completes.',
+  ),
   'no-profile' => Tr.of(
     context,
     ar: 'لم يتم تحميل ملفك الشخصي بعد. حاول بعد لحظة.',

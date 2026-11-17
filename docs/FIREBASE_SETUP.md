@@ -30,6 +30,7 @@ Other setup that must exist before Google sign-in can work:
 | --- | --- | --- | --- |
 | `users/{uid}` | Full private profile: username, display name, country, age group, bio, privacy flags, statistics, badges, photo version | Owner only | Owner (badges: admins only) |
 | `users/{uid}/private/avatar` | Profile picture bytes (JPEG ≤ 160 KB) + `byteSize` | Any signed-in user | Owner |
+| `users/{uid}/private/cover` | Cover banner bytes (JPEG ≤ 480 KB) + `byteSize` | Any signed-in user | Owner |
 | `users/{uid}/library/{animeId}` | Favourite flag, status, watched episodes, timestamps | Owner | Owner |
 | `users/{uid}/history/{animeId}__{episodeId}` | Playback position, duration, completion, timestamp | Owner | Owner |
 | `users/{uid}/settings/account` | Account-level preferences (language, autoplay, remember position, speed, preferred quality) | Owner | Owner |
@@ -40,6 +41,8 @@ Other setup that must exist before Google sign-in can work:
 | `episodes/{episodeId}/reactions/{uid}` | One reaction document per user (`like` / `dislike`) | Signed-in users | The matching uid |
 | `episodes/{episodeId}/comments/{commentId}` | Comment with a denormalized author snapshot | Signed-in users | Author, plus a +1 `replyCount` bump |
 | `episodes/{episodeId}/comments/{commentId}/replies/{replyId}` | Reply | Signed-in users | Author |
+| `episodes/{episodeId}/stats/views` | `{count, updatedAt}` episode view counter | Signed-in users | Create at 1 or +1, nothing else |
+| `anime/{animeId}/stats/views` | `{count, updatedAt}` title view counter | Signed-in users | Create at 1 or +1, nothing else |
 | `reports/{reportId}` | Moderation reports (reporter uid is never exposed to users) | Admins | Signed-in users (create only) |
 | `config/admins` | `{uids: [...]}` administrator allowlist | Admins | Nobody (console / Admin SDK only) |
 
@@ -138,12 +141,14 @@ notification setup, onboarding state, search history, playback hardware.
 
 `AccountDeletionService` runs a resumable client-side cascade:
 
-1. `pendingDeletion: true` on the profile.
-2. Re-authentication (password for email accounts, Google for Google accounts) —
-   Firebase requires a recent login.
+1. Re-authentication (password for email accounts, Google for Google accounts) —
+   Firebase requires a recent login. This happens **before any write**, so a
+   wrong password or a cancelled Google prompt leaves the account untouched.
+2. `pendingDeletion: true` on the profile (best effort; the flag never blocks
+   the deletion).
 3. Delete every comment/reaction referenced by `users/{uid}/activity`.
-4. Delete `library`, `history`, `settings`, `meta`, `activity` and the avatar in
-   batches of 100.
+4. Delete `library`, `history`, `settings`, `meta`, `activity` and the
+   avatar/cover in batches of 100.
 5. Release the username reservation (the handle becomes claimable again).
 6. Delete `profiles/{uid}` and `users/{uid}`.
 7. Delete the Firebase Authentication user and clear local account data.
@@ -208,8 +213,21 @@ firebase deploy --only firestore:rules,firestore:indexes,database
 Cost notes: reaction and comment counts use aggregation queries
 (`count()`), which bill one document read per 1000 matches. Comment pages load
 20 documents at a time with a cursor; only the visible episode's newest page is
-listened to. Profile reads are cached locally, and avatars are cached per
-`photoVersion`.
+listened to, and the player preview streams just three comments. Profile reads
+are cached locally; avatars and covers are cached per `photoVersion` /
+`coverVersion`.
+
+Write protection added for views and comments:
+
+* `episodes/{id}/stats/views` and `anime/{id}/stats/views` accept only a create
+  at `1` or an update that adds exactly one; a client cannot write any other
+  number, and the documents cannot be deleted.
+* A device counts a view at most once every 8 hours (checked locally and by the
+  counter rule), and the displayed number is cached for 5 minutes.
+* Comments and replies have a 4-second local cooldown, and the rules validate the
+  author snapshot, the timestamps and the reply parent.
+* `/watch/...` keeps a single listener while the episode is open; pagination is
+  cursor-based at 20 documents per page.
 
 Limitations that cannot be fixed without a paid backend:
 
@@ -231,7 +249,7 @@ Limitations that cannot be fixed without a paid backend:
 - [ ] Optional: enable App Check with Play Integrity before enabling
       enforcement (debug builds then need a debug token).
 
-## 11. What changed in this revision
+## 11. What changed in this revision (previous pass)
 
 Rules:
 
@@ -265,3 +283,35 @@ Client:
 * The episode screen is laid out like YouTube: reactions, share, download and
   save sit in a horizontal bar directly under the video, with the comment
   composer and comments in the same page instead of behind a button.
+
+## 12. What changed in this revision (comments, views, cover, floating player)
+
+**Publish the new `firestore.rules` before testing this build.** The new
+features add these paths and will otherwise fail with `permission-denied`:
+
+* `users/{uid}/private/cover` (read: signed-in, write: owner, ≤ 500 KB)
+* `episodes/{episodeId}/stats/views` (create at 1 or +1 only)
+* `anime/{animeId}/stats/views` (create at 1 or +1 only)
+* `coverVersion` on `users/{uid}` and `profiles/{uid}`
+* Comment and reply creation now also validates the author snapshot and both
+  timestamps
+
+Feature map:
+
+| Screen | What changed |
+| --- | --- |
+| Player | Action bar redesigned: one segmented like/dislike pill plus spaced pills for share, download, save and comments, with a divider before the comments block. Episode views sit under the episode number. The episode list has dividers between entries. |
+| Comments | The player shows the **three newest** comments and one “all comments” action. The full page (`/episode/{id}/comments`) streams the newest page, loads older pages as you scroll and keeps a composer pinned at the bottom. |
+| Views | `ViewsRepository` increments one counter document per episode and per title, at most once per device per 8 hours, after a stream actually opened. Numbers are cached for 5 minutes. Episode count shows under the episode, title total on the details screen (catalogue `views` + app counter). |
+| Settings | The account banner is now a proper card: real avatar, name, handle, email, one chevron, matching the settings groups. |
+| Profile | Cover banner (`users/{uid}/private/cover`) with change/remove actions, separate from the avatar. Public profiles show the same banner. |
+| Deletion | Re-authentication runs first, a password is mandatory for email accounts, Google accounts get an explicit confirmation step, and the cover document is removed too. A rules block now reports “publish the latest rules” instead of a generic error. |
+| Floating player | Leaving a playing episode hands the live session to a draggable mini player (expand / pause / close), hosted above every route. Leaving the app on Android 8+ requests system picture-in-picture with a 16:9 window; `android:supportsPictureInPicture` is declared in the manifest. |
+| Sources | Server lists are de-duplicated by quality + flavour + URL, and the duplicate comments command was removed from the portrait player overlay. |
+
+Manual steps for this revision:
+
+- [ ] Publish `firestore.rules` (required for cover, views and deletion).
+- [ ] Rebuild the APK; the manifest now declares picture-in-picture support.
+- [ ] Optional: seed `anime/{id}/stats/views` is **not** needed — the counter is
+      created on the first real view.
