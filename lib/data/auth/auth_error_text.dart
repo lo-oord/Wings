@@ -169,10 +169,8 @@ String? _byCode(BuildContext context, String code) => switch (code) {
   ),
   'permission-denied' => Tr.of(
     context,
-    ar:
-        'رفض الخادم العملية. تأكد من نشر قواعد Firestore الجديدة وأن الحساب مسجّل الدخول.',
-    en:
-        'The server rejected the operation. Publish the latest Firestore rules and make sure you are signed in.',
+    ar: 'رفض الخادم العملية. تأكد من نشر قواعد Firestore الجديدة وأن الحساب مسجّل الدخول.',
+    en: 'The server rejected the operation. Publish the latest Firestore rules and make sure you are signed in.',
   ),
   'unavailable' || 'deadline-exceeded' => Tr.of(
     context,

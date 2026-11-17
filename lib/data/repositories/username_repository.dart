@@ -134,10 +134,7 @@ class UsernameRepository {
   /// reservation created in the same commit is not visible to them yet and the
   /// rename would be rejected. The caller reserves first, then writes the
   /// profile, then releases the previous handle.
-  Future<void> claim({
-    required String uid,
-    required String normalized,
-  }) async {
+  Future<void> claim({required String uid, required String normalized}) async {
     await _db.runTransaction((transaction) async {
       final ref = _doc(normalized);
       final snapshot = await transaction.get(ref);

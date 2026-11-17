@@ -28,8 +28,7 @@ class FirebaseAuthRepository implements AuthRepository {
   /// changes.
   static const String serverClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
-    defaultValue:
-        '469028233998-3jga5u4v81dh9ftmri6li3a8p8j3bfd7.apps.googleusercontent.com',
+    defaultValue: '469028233998-3jga5u4v81dh9ftmri6li3a8p8j3bfd7.apps.googleusercontent.com',
   );
 
   static bool _googleInitialized = false;

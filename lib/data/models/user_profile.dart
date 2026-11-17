@@ -315,10 +315,7 @@ class UserProfile {
         if (privacy.age) 'ageGroup': ageGroup,
         if (privacy.stats) 'stats': stats.toMap(),
         if (privacy.favorites)
-          'favorites': favorites
-              .take(12)
-              .map((item) => item.toMap())
-              .toList(),
+          'favorites': favorites.take(12).map((item) => item.toMap()).toList(),
       });
   }
 

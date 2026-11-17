@@ -64,12 +64,11 @@ class ProfileScreen extends ConsumerWidget {
       final sameFavorites =
           current.favorites.length == favorites.length &&
           Iterable<int>.generate(favorites.length).every(
-            (index) => current.favorites[index].animeId == favorites[index].animeId,
+            (index) =>
+                current.favorites[index].animeId == favorites[index].animeId,
           );
       if (sameStats && sameFavorites) return;
-      ref
-          .read(authProvider.notifier)
-          .publishStats(stats, favorites: favorites);
+      ref.read(authProvider.notifier).publishStats(stats, favorites: favorites);
     });
 
     final favorites = library.favorites.length;
@@ -564,10 +563,8 @@ class ProfileScreen extends ConsumerWidget {
                 subtitle: Text(
                   Tr.of(
                     context,
-                    ar:
-                        'عند الإيقاف يظهر اسمك في التعليقات فقط، بلا بيانات أو إحصائيات.',
-                    en:
-                        'When off, only your name appears in comments — no profile details.',
+                    ar: 'عند الإيقاف يظهر اسمك في التعليقات فقط، بلا بيانات أو إحصائيات.',
+                    en: 'When off, only your name appears in comments — no profile details.',
                   ),
                   style: context.text.labelSmall?.copyWith(
                     color: context.palette.textMuted,
@@ -579,9 +576,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
               SwitchListTile(
                 value: privacy.bio,
-                title: Text(
-                  Tr.of(context, ar: 'إظهار النبذة', en: 'Show bio'),
-                ),
+                title: Text(Tr.of(context, ar: 'إظهار النبذة', en: 'Show bio')),
                 onChanged: (value) =>
                     setState(() => privacy = privacy.copyWith(bio: value)),
               ),
@@ -622,8 +617,7 @@ class ProfileScreen extends ConsumerWidget {
                   Tr.of(
                     context,
                     ar: 'تُنشر أسماء الأعمال المفضلة فقط، بلا تقدم أو سجل مشاهدة.',
-                    en:
-                        'Only favourite titles are published — never progress or history.',
+                    en: 'Only favourite titles are published — never progress or history.',
                   ),
                   style: context.text.labelSmall?.copyWith(
                     color: context.palette.textMuted,

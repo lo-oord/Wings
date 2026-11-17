@@ -386,7 +386,12 @@ class _ActionBar extends StatelessWidget {
     }
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, Space.xs),
+      padding: const EdgeInsets.fromLTRB(
+        Space.lg,
+        Space.xs,
+        Space.lg,
+        Space.xs,
+      ),
       child: Row(
         children: <Widget>[
           for (var index = 0; index < children.length; index++) ...<Widget>[

@@ -67,21 +67,17 @@ void main() {
     });
 
     test('publishes bio and favourites only when the owner allows them', () {
-      final profile = _profile(
-        privacy: const ProfilePrivacy(bio: true, favorites: true),
-      ).copyWith(
-        favorites: const <ProfileFavorite>[
-          ProfileFavorite(animeId: 'a1', title: 'Naruto'),
-        ],
-      );
+      final profile =
+          _profile(privacy: const ProfilePrivacy(bio: true, favorites: true))
+              .copyWith(
+                favorites: const <ProfileFavorite>[
+                  ProfileFavorite(animeId: 'a1', title: 'Naruto'),
+                ],
+              );
       final mirror = profile.toMapPublic();
       expect(mirror['bio'], 'anime fan');
       expect(mirror['favorites'], <Map<String, dynamic>>[
-        <String, dynamic>{
-          'animeId': 'a1',
-          'title': 'Naruto',
-          'imageUrl': '',
-        },
+        <String, dynamic>{'animeId': 'a1', 'title': 'Naruto', 'imageUrl': ''},
       ]);
     });
 
