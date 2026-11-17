@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/services/app_feedback.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/social.dart';
@@ -21,10 +24,14 @@ class CommentTile extends ConsumerStatefulWidget {
     required this.comment,
     required this.onReply,
     this.maxReplyPreview = 3,
+    this.rank,
   });
 
   final EpisodeComment comment;
   final void Function(String text) onReply;
+
+  /// Position in the list, used for the medal on the first three comments.
+  final int? rank;
 
   /// Replies shown inline before the rest move to the comments page.
   final int maxReplyPreview;
@@ -80,6 +87,10 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                           style: context.text.labelSmall,
                         ),
                       ),
+                      if (widget.rank != null && widget.rank! <= 3) ...<Widget>[
+                        const SizedBox(width: 4),
+                        _Medal(rank: widget.rank!),
+                      ],
                       const SizedBox(width: Space.xs),
                       Text(
                         relativeCommentTime(context, comment.createdAt),
@@ -170,41 +181,50 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                                   top: Space.xs,
                                   left: Space.md,
                                 ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    UserAvatar(
-                                      uid: reply.authorUid,
-                                      photoVersion: reply.photoVersion,
-                                      name: reply.authorName,
-                                      size: 24,
-                                    ),
-                                    const SizedBox(width: Space.xs + 2),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          UserHandle(
-                                            uid: reply.authorUid,
-                                            username: reply.authorUsername,
-                                            badges: reply.badges,
-                                            style: context.text.labelSmall,
-                                            onTap: () => context.push(
-                                              '/user/${reply.authorUid}',
-                                            ),
-                                          ),
-                                          Text(
-                                            reply.text,
-                                            style: context.text.bodySmall
-                                                ?.copyWith(
-                                                  color: palette.textSecondary,
-                                                ),
-                                          ),
-                                        ],
+                                child: GestureDetector(
+                                  onLongPress:
+                                      reply.authorUid ==
+                                          ref.read(authProvider)?.id
+                                      ? () => _deleteReply(comment, reply)
+                                      : null,
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      UserAvatar(
+                                        uid: reply.authorUid,
+                                        photoVersion: reply.photoVersion,
+                                        name: reply.authorName,
+                                        size: 24,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: Space.xs + 2),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            UserHandle(
+                                              uid: reply.authorUid,
+                                              username: reply.authorUsername,
+                                              badges: reply.badges,
+                                              style: context.text.labelSmall,
+                                              onTap: () => context.push(
+                                                '/user/${reply.authorUid}',
+                                              ),
+                                            ),
+                                            Text(
+                                              reply.text,
+                                              style: context.text.bodySmall
+                                                  ?.copyWith(
+                                                    color:
+                                                        palette.textSecondary,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                           ],
@@ -218,6 +238,52 @@ class _CommentTileState extends ConsumerState<CommentTile> {
         ),
       ),
     );
+  }
+
+  /// Long-pressing your own reply removes it, with the same quiet cue the
+  /// comment delete uses.
+  Future<void> _deleteReply(EpisodeComment parent, EpisodeComment reply) async {
+    final user = ref.read(authProvider);
+    if (user == null) return;
+    final confirmed = await WingsDialog.confirm(
+      context,
+      title: Tr.of(context, ar: 'حذف الرد', en: 'Delete reply'),
+      message: Tr.of(
+        context,
+        ar: 'سيختفي ردك نهائيًا. لا يمكن التراجع.',
+        en: 'Your reply will disappear for good. This cannot be undone.',
+      ),
+      confirmLabel: Tr.of(context, ar: 'حذف', en: 'Delete'),
+      destructive: true,
+    );
+    if (!confirmed) return;
+    try {
+      await ref
+          .read(socialRepositoryProvider)
+          .deleteComment(
+            episodeId: parent.episodeId,
+            commentId: reply.id,
+            uid: user.id,
+            parentId: parent.id,
+          );
+      unawaited(AppFeedback.remove());
+      if (mounted) {
+        context.showSnack(
+          Tr.of(context, ar: 'تم حذف الرد', en: 'Reply deleted'),
+        );
+      }
+    } on Object {
+      if (mounted) {
+        context.showSnack(
+          Tr.of(
+            context,
+            ar: 'تعذر حذف الرد. حاول مجددًا.',
+            en: 'Could not delete the reply. Try again.',
+          ),
+          isError: true,
+        );
+      }
+    }
   }
 
   Future<void> _replyDialog(BuildContext context) async {
@@ -331,6 +397,7 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                 'episodes/${widget.comment.episodeId}/comments/${widget.comment.id}',
             text: text,
           );
+          unawaited(AppFeedback.tap());
         }
         break;
       case 'delete':
@@ -353,6 +420,7 @@ class _CommentTileState extends ConsumerState<CommentTile> {
             commentId: widget.comment.id,
             uid: user.id,
           );
+          unawaited(AppFeedback.remove());
           if (mounted) {
             context.showSnack(
               Tr.of(context, ar: 'تم حذف التعليق', en: 'Deleted'),
@@ -391,6 +459,32 @@ class _CommentTileState extends ConsumerState<CommentTile> {
         }
         break;
     }
+  }
+}
+
+/// Gold, silver and bronze medal for the first three comments.
+class _Medal extends StatelessWidget {
+  const _Medal({required this.rank});
+
+  final int rank;
+
+  static const List<String> _badges = <String>['🥇', '🥈', '🥉'];
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.5, end: 1),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) => Transform.scale(
+        scale: value,
+        child: Opacity(opacity: value.clamp(0, 1), child: child),
+      ),
+      child: Text(
+        _badges[(rank - 1).clamp(0, 2)],
+        style: const TextStyle(fontSize: 12),
+      ),
+    );
   }
 }
 

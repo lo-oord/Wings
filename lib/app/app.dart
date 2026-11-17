@@ -8,6 +8,7 @@ import '../core/services/notification_actions.dart';
 import '../core/storage/local_store.dart';
 import '../core/widgets/wings_feedback.dart';
 import '../features/player/mini_player.dart';
+import '../features/player/playback_session.dart';
 import 'localization/app_localizations.dart';
 import 'providers.dart';
 import 'router/app_router.dart';
@@ -127,6 +128,9 @@ class _WingsAppState extends ConsumerState<WingsApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
+    // Android drops the video surface while the app is in the background or in
+    // picture-in-picture; rebuilding it here keeps the floating window alive.
+    ref.read(playbackSessionProvider.notifier).refreshSurface();
     ref.read(notificationsProvider.notifier).refresh();
     unawaited(_applyTrayActions());
     unawaited(_showReplyAlerts());

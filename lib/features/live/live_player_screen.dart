@@ -35,6 +35,9 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
   Object? _error;
   bool _playing = false;
   bool _buffering = true;
+  bool _controlsVisible = true;
+  bool _muted = false;
+  Timer? _hideControls;
 
   @override
   void initState() {
@@ -52,6 +55,12 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
       if (!mounted || value.isEmpty) return;
       setState(() => _error = value);
     });
+    _player.stream.volume.listen((value) {
+      if (!mounted) return;
+      final muted = value <= 0;
+      if (muted != _muted) setState(() => _muted = muted);
+    });
+    _scheduleHideControls();
     unawaited(
       SystemChrome.setPreferredOrientations(<DeviceOrientation>[
         DeviceOrientation.landscapeLeft,
@@ -118,8 +127,37 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
     }
   }
 
+  /// Controls fade out on their own, like a television overlay, so the live
+  /// picture is never covered by a permanent bar.
+  void _scheduleHideControls() {
+    _hideControls?.cancel();
+    _hideControls = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _controlsVisible = false);
+    });
+  }
+
+  void _toggleControls() {
+    setState(() => _controlsVisible = !_controlsVisible);
+    if (_controlsVisible) _scheduleHideControls();
+  }
+
+  Future<void> _togglePlay() async {
+    if (_playing) {
+      await _player.pause();
+    } else {
+      await _player.play();
+    }
+    _scheduleHideControls();
+  }
+
+  Future<void> _toggleMute() async {
+    await _player.setVolume(_muted ? 100 : 0);
+    _scheduleHideControls();
+  }
+
   @override
   void dispose() {
+    _hideControls?.cancel();
     _player.dispose();
     unawaited(
       SystemChrome.setPreferredOrientations(<DeviceOrientation>[
@@ -149,35 +187,97 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
                     color: Colors.black,
                     child: _error != null
                         ? _LiveError(onRetry: _start)
-                        : Video(
-                            controller: _controller,
-                            controls: AdaptiveVideoControls,
-                            fill: Colors.black,
+                        : GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _toggleControls,
+                            // No timeline: a live stream has no start or end to
+                            // scrub, so the controls are play, mute and retry
+                            // only — the seek bar of the shared player is gone.
+                            child: Video(
+                              controller: _controller,
+                              controls: NoVideoControls,
+                              fill: Colors.black,
+                            ),
                           ),
                   ),
-                  PositionedDirectional(
-                    top: Space.sm,
-                    start: Space.sm,
-                    child: _OverlayButton(
-                      icon: Icons.arrow_back_rounded,
-                      onTap: () => Navigator.of(context).maybePop(),
-                    ),
-                  ),
-                  if (channel != null)
-                    PositionedDirectional(
-                      top: Space.sm,
-                      end: Space.sm,
-                      child: Row(
+                  AnimatedOpacity(
+                    opacity: _controlsVisible ? 1 : 0,
+                    duration: const Duration(milliseconds: 220),
+                    child: IgnorePointer(
+                      ignoring: !_controlsVisible,
+                      child: Stack(
+                        fit: StackFit.expand,
                         children: <Widget>[
-                          const LiveBadge(),
-                          const SizedBox(width: Space.xs),
-                          _OverlayButton(
-                            icon: Icons.refresh_rounded,
-                            onTap: _start,
+                          PositionedDirectional(
+                            top: Space.sm,
+                            start: Space.sm,
+                            child: _OverlayButton(
+                              icon: Icons.arrow_back_rounded,
+                              onTap: () => Navigator.of(context).maybePop(),
+                            ),
+                          ),
+                          if (channel != null)
+                            PositionedDirectional(
+                              top: Space.sm,
+                              end: Space.sm,
+                              child: Row(
+                                children: <Widget>[
+                                  const LiveBadge(),
+                                  const SizedBox(width: Space.xs),
+                                  _OverlayButton(
+                                    icon: Icons.refresh_rounded,
+                                    onTap: _start,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          Center(
+                            child: _OverlayButton(
+                              icon: _playing
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              size: 30,
+                              padding: 14,
+                              onTap: _togglePlay,
+                            ),
+                          ),
+                          PositionedDirectional(
+                            bottom: Space.sm,
+                            start: Space.sm,
+                            child: Row(
+                              children: <Widget>[
+                                _OverlayButton(
+                                  icon: _muted
+                                      ? Icons.volume_off_rounded
+                                      : Icons.volume_up_rounded,
+                                  onTap: _toggleMute,
+                                ),
+                                const SizedBox(width: Space.xs),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: Space.sm,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.45),
+                                    borderRadius: BorderRadius.circular(
+                                      Radii.pill,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    Tr.of(context, ar: 'مباشر', en: 'Live'),
+                                    style: context.text.labelSmall?.copyWith(
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
+                  ),
                   if (_buffering && _error == null)
                     const Center(
                       child: SizedBox(
@@ -335,10 +435,17 @@ class _ScheduleRow extends StatelessWidget {
 }
 
 class _OverlayButton extends StatelessWidget {
-  const _OverlayButton({required this.icon, required this.onTap});
+  const _OverlayButton({
+    required this.icon,
+    required this.onTap,
+    this.size = 19,
+    this.padding = 7,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final double size;
+  final double padding;
 
   @override
   Widget build(BuildContext context) {
@@ -349,8 +456,8 @@ class _OverlayButton extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(7),
-          child: Icon(icon, size: 19, color: Colors.white),
+          padding: EdgeInsets.all(padding),
+          child: Icon(icon, size: size, color: Colors.white),
         ),
       ),
     );

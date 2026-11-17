@@ -12,6 +12,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/services/app_feedback.dart';
 import '../../core/services/picture_in_picture.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
@@ -81,6 +82,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Timer? _hideTimer;
   Timer? _saveTimer;
+  double _surfaceDrag = 0;
   late final PlaybackSessionController _sessionNotifier;
 
   @override
@@ -519,6 +521,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (state == AppLifecycleState.paused && _playing && !_fullscreen) {
       unawaited(PictureInPictureService.enter());
     }
+    // Returning from picture-in-picture destroys the platform surface; asking
+    // the session for a fresh one restores the picture instead of a black box.
+    if (state == AppLifecycleState.resumed) {
+      _sessionNotifier.refreshSurface();
+      unawaited(PictureInPictureService.setEnabled(true));
+    }
   }
 
   @override
@@ -543,8 +551,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       } else {
         unawaited(_sessionNotifier.close());
       }
+      // Keep the system window available exactly as long as the floating
+      // player has something to show.
+      unawaited(PictureInPictureService.setEnabled(keepAlive));
+    } else {
+      unawaited(PictureInPictureService.setEnabled(false));
     }
-    unawaited(PictureInPictureService.setEnabled(false));
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations(<DeviceOrientation>[
       DeviceOrientation.portraitUp,
@@ -611,6 +623,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       activeQuality: _activeQuality,
     );
 
+    // Swipe down on the picture to drop the episode into the floating window
+    // (or leave full screen first); swipe up to go full screen, like YouTube.
+    final draggable = GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onVerticalDragStart: (_) => setState(() => _surfaceDrag = 0),
+      onVerticalDragUpdate: (details) => setState(() {
+        _surfaceDrag = (_surfaceDrag + details.delta.dy).clamp(-180.0, 280.0);
+      }),
+      onVerticalDragEnd: (details) async {
+        final dy = _surfaceDrag;
+        final navigator = Navigator.of(context);
+        setState(() => _surfaceDrag = 0);
+        if (dy > 90) {
+          await AppFeedback.tap();
+          if (!mounted) return;
+          if (_fullscreen) {
+            await _toggleFullscreen();
+          } else {
+            navigator.maybePop();
+          }
+        } else if (dy < -90 && !_fullscreen) {
+          await AppFeedback.tap();
+          if (mounted) await _toggleFullscreen();
+        }
+      },
+      child: Transform.translate(
+        offset: Offset(0, _surfaceDrag * 0.35),
+        child: surface,
+      ),
+    );
+
     if (_fullscreen) {
       return PopScope(
         canPop: true,
@@ -622,7 +665,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ]);
           }
         },
-        child: Scaffold(backgroundColor: Colors.black, body: surface),
+        child: Scaffold(backgroundColor: Colors.black, body: draggable),
       );
     }
 
@@ -632,7 +675,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         bottom: false,
         child: Column(
           children: <Widget>[
-            AspectRatio(aspectRatio: 16 / 9, child: surface),
+            AspectRatio(aspectRatio: 16 / 9, child: draggable),
             Expanded(child: _buildEpisodePanel(context)),
           ],
         ),
@@ -935,9 +978,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     ? Icons.open_in_browser_rounded
                     : Icons.play_circle_outline_rounded,
                 title: server.quality,
+                // The quality is the choice; the server name is the detail, so
+                // two providers publishing 1080p stay distinguishable.
                 subtitle: server.requiresBrowser
                     ? l10n.playerOpenInBrowser
-                    : l10n.playerDirect,
+                    : server.name,
                 trailing:
                     !server.requiresBrowser && server.quality == _activeQuality
                     ? Icon(

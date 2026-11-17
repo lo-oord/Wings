@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/services/app_feedback.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_layout.dart';
@@ -127,6 +128,7 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
             text: text,
             parentId: parentId,
           );
+      unawaited(AppFeedback.publish());
       if (!mounted) return;
       if (parentId == null) _composer.clear();
       setState(() {
@@ -264,6 +266,7 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
                       children: <Widget>[
                         CommentTile(
                           comment: comment,
+                          rank: index,
                           onReply: (text) => _send(text, parentId: comment.id),
                         ),
                         if (index != merged.length)

@@ -469,7 +469,7 @@ class WingsLatestEpisodeCard extends StatelessWidget {
 }
 
 /// Episode row used inside the details screen.
-class WingsEpisodeCard extends StatelessWidget {
+class WingsEpisodeCard extends StatefulWidget {
   const WingsEpisodeCard({
     super.key,
     required this.episode,
@@ -490,118 +490,233 @@ class WingsEpisodeCard extends StatelessWidget {
   final bool showThumbnail;
 
   @override
+  State<WingsEpisodeCard> createState() => _WingsEpisodeCardState();
+}
+
+class _WingsEpisodeCardState extends State<WingsEpisodeCard> {
+  /// Tapping the card opens it like a YouTube episode row: the cover grows to
+  /// its full frame and the actions slide in underneath.
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final l10n = AppLocalizations.of(context);
-    return InkWell(
-      onTap: onPlay,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.lg,
-          vertical: Space.sm,
-        ),
-        child: Row(
-          children: <Widget>[
-            if (showThumbnail)
-              Stack(
-                children: <Widget>[
-                  WingsImage(
-                    url: (episode.thumbnailUrl?.trim().isNotEmpty ?? false)
-                        ? episode.thumbnailUrl
-                        : fallbackImageUrl,
-                    width: 104,
-                    height: 60,
-                    borderRadius: BorderRadius.circular(Radii.xs),
+    final episode = widget.episode;
+    final watched = widget.watched;
+    final showThumbnail = widget.showThumbnail;
+    final imageUrl = (episode.thumbnailUrl?.trim().isNotEmpty ?? false)
+        ? episode.thumbnailUrl
+        : widget.fallbackImageUrl;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: showThumbnail
+            ? () => setState(() => _expanded = !_expanded)
+            : widget.onPlay,
+        child: AnimatedSize(
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              if (_expanded)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.lg,
+                    Space.sm,
+                    Space.lg,
+                    0,
                   ),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: palette.overlay.withValues(alpha: 0.28),
-                        borderRadius: BorderRadius.circular(Radii.xs),
-                      ),
-                      child: Icon(
-                        watched
-                            ? Icons.replay_rounded
-                            : Icons.play_arrow_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ],
-              )
-            else
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: palette.surfaceAlt,
-                  borderRadius: BorderRadius.circular(Radii.xs),
-                  border: Border.all(color: palette.border),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  '${episode.number}',
-                  style: context.text.titleSmall,
-                ),
-              ),
-            const SizedBox(width: Space.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    l10n.commonEpisodeNumber(episode.number),
-                    style: context.text.titleSmall?.copyWith(fontSize: 13.5),
-                  ),
-                  if (episode.title != null &&
-                      episode.title!.trim().isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 2),
-                    Text(
-                      episode.title!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.text.bodySmall?.copyWith(
-                        color: palette.textMuted,
-                      ),
-                    ),
-                  ],
-                  if (watched) ...<Widget>[
-                    const SizedBox(height: Space.xs),
-                    Row(
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: <Widget>[
-                        Icon(
-                          Icons.check_circle_rounded,
-                          size: 12,
-                          color: palette.success,
+                        WingsImage(
+                          url: imageUrl,
+                          borderRadius: BorderRadius.circular(Radii.md),
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          l10n.detailsEpisodeWatched,
-                          style: context.text.labelSmall?.copyWith(
-                            color: palette.success,
+                        Positioned.fill(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: palette.overlay.withValues(alpha: 0.24),
+                              borderRadius: BorderRadius.circular(Radii.md),
+                            ),
+                            child: Icon(
+                              watched
+                                  ? Icons.replay_rounded
+                                  : Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 34,
+                            ),
                           ),
                         ),
                       ],
                     ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.lg,
+                  vertical: Space.sm,
+                ),
+                child: Row(
+                  children: <Widget>[
+                    if (showThumbnail)
+                      Stack(
+                        children: <Widget>[
+                          WingsImage(
+                            url: imageUrl,
+                            width: 104,
+                            height: 60,
+                            borderRadius: BorderRadius.circular(Radii.xs),
+                          ),
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: palette.overlay.withValues(alpha: 0.28),
+                                borderRadius: BorderRadius.circular(Radii.xs),
+                              ),
+                              child: Icon(
+                                watched
+                                    ? Icons.replay_rounded
+                                    : Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: palette.surfaceAlt,
+                          borderRadius: BorderRadius.circular(Radii.xs),
+                          border: Border.all(color: palette.border),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${episode.number}',
+                          style: context.text.titleSmall,
+                        ),
+                      ),
+                    const SizedBox(width: Space.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            l10n.commonEpisodeNumber(episode.number),
+                            style: context.text.titleSmall?.copyWith(
+                              fontSize: 13.5,
+                            ),
+                          ),
+                          if (episode.title != null &&
+                              episode.title!.trim().isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 2),
+                            Text(
+                              episode.title!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.text.bodySmall?.copyWith(
+                                color: palette.textMuted,
+                              ),
+                            ),
+                          ],
+                          if (watched) ...<Widget>[
+                            const SizedBox(height: Space.xs),
+                            Row(
+                              children: <Widget>[
+                                Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 12,
+                                  color: palette.success,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  l10n.detailsEpisodeWatched,
+                                  style: context.text.labelSmall?.copyWith(
+                                    color: palette.success,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (widget.onDownload != null)
+                      WingsIconButton(
+                        icon: Icons.download_rounded,
+                        size: 36,
+                        onPressed: widget.onDownload,
+                        color: palette.textSecondary,
+                      ),
+                    WingsIconButton(
+                      icon: Icons.play_circle_fill_rounded,
+                      size: 36,
+                      onPressed: widget.onPlay,
+                      color: palette.primary,
+                    ),
+                    if (showThumbnail)
+                      AnimatedRotation(
+                        turns: _expanded ? 0.5 : 0,
+                        duration: reduceMotion
+                            ? Duration.zero
+                            : const Duration(milliseconds: 220),
+                        child: Icon(
+                          Icons.expand_more_rounded,
+                          size: 18,
+                          color: palette.textMuted,
+                        ),
+                      ),
                   ],
-                ],
+                ),
               ),
-            ),
-            if (onDownload != null)
-              WingsIconButton(
-                icon: Icons.download_rounded,
-                size: 36,
-                onPressed: onDownload,
-                color: palette.textSecondary,
-              ),
-            WingsIconButton(
-              icon: Icons.play_circle_fill_rounded,
-              size: 36,
-              onPressed: onPlay,
-              color: palette.primary,
-            ),
-          ],
+              if (_expanded)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.lg,
+                    0,
+                    Space.lg,
+                    Space.sm,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: widget.onPlay,
+                          icon: Icon(
+                            watched
+                                ? Icons.replay_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 18,
+                          ),
+                          label: Text(l10n.detailsWatch),
+                        ),
+                      ),
+                      if (widget.onDownload != null) ...<Widget>[
+                        const SizedBox(width: Space.sm),
+                        OutlinedButton.icon(
+                          onPressed: widget.onDownload,
+                          icon: const Icon(Icons.download_rounded, size: 18),
+                          label: Text(l10n.commonDownload),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

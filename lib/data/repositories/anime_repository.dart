@@ -7,6 +7,7 @@ import '../../core/storage/local_store.dart';
 import '../../core/utils/title_series.dart';
 import '../models/anime.dart';
 import '../sources/anime_source.dart';
+import '../sources/hls_variants.dart';
 import '../sources/server_resolver.dart';
 
 /// Application-facing catalogue API.
@@ -145,10 +146,57 @@ class AnimeRepository {
     CancelToken? cancelToken,
   }) async {
     try {
-      return await _source.servers(anime, episode, cancelToken: cancelToken);
+      final servers = await _source.servers(
+        anime,
+        episode,
+        cancelToken: cancelToken,
+      );
+      return await _withQualities(servers);
     } on Object catch (error) {
       throw _failure(error);
     }
+  }
+
+  /// Turns a master HLS link into one entry per published quality.
+  ///
+  /// Sources usually hand out a single `.m3u8` address; without expanding its
+  /// ladder the picker could only show the label the source wrote, and the
+  /// viewer had no way to choose 1080p or 480p. A media playlist or a failed
+  /// request keeps the original server untouched.
+  Future<List<StreamServer>> _withQualities(List<StreamServer> servers) async {
+    if (servers.isEmpty) return servers;
+    // Only the first handful of direct links are probed: a source that lists
+    // dozens of mirrors should not turn one tap into dozens of requests.
+    var probes = 0;
+    final groups = await Future.wait(
+      servers.map((server) async {
+        if (!server.isDirectFile || server.requiresBrowser) {
+          return <StreamServer>[server];
+        }
+        if (probes >= 6) return <StreamServer>[server];
+        probes++;
+        final variants = await hlsVariants(server.url, headers: server.headers);
+        if (variants.length < 2) return <StreamServer>[server];
+        return <StreamServer>[
+          for (final variant in variants)
+            StreamServer(
+              name: server.name,
+              url: variant.url,
+              quality: variant.quality,
+              flavor: server.flavor,
+              headers: server.headers,
+              isDirectFile: true,
+            ),
+        ];
+      }),
+    );
+    final expanded = <StreamServer>[for (final group in groups) ...group];
+    expanded.sort((a, b) {
+      final byQuality = b.qualityRank.compareTo(a.qualityRank);
+      if (byQuality != 0) return byQuality;
+      return a.name.compareTo(b.name);
+    });
+    return expanded;
   }
 
   Future<ResolvedStream?> resolve(StreamServer server) =>

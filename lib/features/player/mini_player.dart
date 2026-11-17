@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -7,6 +9,8 @@ import '../../app/router/app_router.dart';
 import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/services/app_feedback.dart';
+import '../../core/services/picture_in_picture.dart';
 import '../../core/utils/tr.dart';
 import 'playback_session.dart';
 
@@ -15,19 +19,56 @@ import 'playback_session.dart';
 /// The session itself lives outside the widget tree, so navigating away from
 /// the episode only hides the full screen — the stream keeps playing here,
 /// exactly like a YouTube mini player, with close and expand actions.
-class MiniPlayerHost extends ConsumerWidget {
+class MiniPlayerHost extends ConsumerStatefulWidget {
   const MiniPlayerHost({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MiniPlayerHost> createState() => _MiniPlayerHostState();
+}
+
+class _MiniPlayerHostState extends ConsumerState<MiniPlayerHost> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPip());
+  }
+
+  /// Picture-in-picture follows the session, not the player screen.
+  ///
+  /// It used to be disabled when the full player was left, which is exactly
+  /// when the floating window appears — so leaving the app closed the video
+  /// instead of shrinking it.
+  void _syncPip() {
+    if (!mounted) return;
+    final session = ref.read(playbackSessionProvider);
+    unawaited(PictureInPictureService.setEnabled(session?.playable ?? false));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(playbackSessionProvider);
+    ref.listen(playbackSessionProvider, (previous, next) {
+      unawaited(PictureInPictureService.setEnabled(next?.playable ?? false));
+    });
     final visible = session != null && !session.attached;
     return Stack(
       children: <Widget>[
-        child,
-        if (visible) _MiniPlayer(session: session),
+        widget.child,
+        if (visible)
+          TweenAnimationBuilder<double>(
+            key: ValueKey<String>(session.episodeId),
+            tween: Tween<double>(begin: 0.85, end: 1),
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, child) => Transform.scale(
+              scale: value,
+              alignment: AlignmentDirectional.bottomEnd,
+              child: Opacity(opacity: value.clamp(0, 1), child: child),
+            ),
+            child: _MiniPlayer(session: session),
+          ),
       ],
     );
   }
@@ -47,6 +88,7 @@ class _MiniPlayerState extends ConsumerState<_MiniPlayer> {
   static const double _height = 117;
 
   Offset? _offset;
+  double _dragDy = 0;
 
   void _expand() {
     ref.read(playbackSessionProvider.notifier).markAttached();
@@ -85,8 +127,10 @@ class _MiniPlayerState extends ConsumerState<_MiniPlayer> {
       left: offset.dx.clamp(0, (media.width - _width).clamp(0, media.width)),
       top: offset.dy.clamp(0, (media.height - _height).clamp(0, media.height)),
       child: GestureDetector(
+        onPanStart: (_) => setState(() => _dragDy = 0),
         onPanUpdate: (details) {
           setState(() {
+            _dragDy += details.delta.dy;
             _offset = Offset(
               (offset.dx + details.delta.dx).clamp(
                 0,
@@ -98,6 +142,19 @@ class _MiniPlayerState extends ConsumerState<_MiniPlayer> {
               ),
             );
           });
+        },
+        // YouTube's gestures: swipe up to go full screen, swipe down to dismiss
+        // the window while keeping the session's position for later.
+        onPanEnd: (details) async {
+          final dy = _dragDy;
+          setState(() => _dragDy = 0);
+          if (dy < -70) {
+            await AppFeedback.tap();
+            if (mounted) _expand();
+          } else if (dy > 70) {
+            await AppFeedback.tap();
+            if (mounted) await _close();
+          }
         },
         onTap: _expand,
         child: Material(
@@ -112,6 +169,9 @@ class _MiniPlayerState extends ConsumerState<_MiniPlayer> {
               fit: StackFit.expand,
               children: <Widget>[
                 Video(
+                  key: ValueKey<String>(
+                    '${widget.session.episodeId}:${widget.session.surfaceEpoch}',
+                  ),
                   controller: widget.session.controller,
                   controls: NoVideoControls,
                   fit: BoxFit.cover,

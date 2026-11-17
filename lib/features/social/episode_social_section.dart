@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/services/app_feedback.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
@@ -93,6 +94,13 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
     }
     final previous = _reaction;
     final next = previous == type ? null : type;
+    // A single soft click and light pulse per change; removing a reaction is
+    // deliberately quieter than adding one.
+    if (next == null) {
+      unawaited(AppFeedback.reactionRemoved());
+    } else {
+      unawaited(AppFeedback.reaction());
+    }
     setState(() {
       _reaction = next;
       _counts = EpisodeCounts(
@@ -287,7 +295,7 @@ class _ActionBar extends StatelessWidget {
   }
 }
 
-class _ReactionButton extends StatelessWidget {
+class _ReactionButton extends StatefulWidget {
   const _ReactionButton({
     required this.icon,
     this.count,
@@ -301,11 +309,53 @@ class _ReactionButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_ReactionButton> createState() => _ReactionButtonState();
+}
+
+class _ReactionButtonState extends State<_ReactionButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _bounce = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: 1,
+  );
+  late final Animation<double> _scale = TweenSequence<double>(
+    <TweenSequenceItem<double>>[
+      TweenSequenceItem(tween: Tween<double>(begin: 1, end: 1.28), weight: 40),
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1.28,
+          end: 1,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 60,
+      ),
+    ],
+  ).animate(_bounce);
+
+  @override
+  void didUpdateWidget(_ReactionButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The icon pops only when the reaction actually turns on, never on every
+    // rebuild, so the row stays calm.
+    if (widget.active && !oldWidget.active) _bounce.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _bounce.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final color = active ? palette.primary : palette.textSecondary;
+    final color = widget.active ? palette.primary : palette.textSecondary;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        widget.onTap();
+        if (!widget.active && !reduceMotion) _bounce.forward(from: 0);
+      },
       borderRadius: BorderRadius.circular(Radii.pill),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -315,12 +365,27 @@ class _ReactionButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 17, color: color),
-            if (count != null && count! > 0) ...<Widget>[
+            ScaleTransition(
+              scale: _scale,
+              child: Icon(widget.icon, size: 17, color: color),
+            ),
+            if (widget.count != null && widget.count! > 0) ...<Widget>[
               const SizedBox(width: 5),
-              Text(
-                formatCount(count),
-                style: context.text.labelSmall?.copyWith(color: color),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SizeTransition(
+                    sizeFactor: animation,
+                    axis: Axis.horizontal,
+                    child: child,
+                  ),
+                ),
+                child: Text(
+                  formatCount(widget.count),
+                  key: ValueKey<int>(widget.count!),
+                  style: context.text.labelSmall?.copyWith(color: color),
+                ),
               ),
             ],
           ],
@@ -510,6 +575,7 @@ class _CommentPreview extends ConsumerWidget {
               for (var index = 0; index < comments.length; index++) ...<Widget>[
                 CommentTile(
                   comment: comments[index],
+                  rank: index + 1,
                   maxReplyPreview: 1,
                   onReply: (_) => onOpenAll(),
                 ),

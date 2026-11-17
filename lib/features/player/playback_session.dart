@@ -17,6 +17,7 @@ class PlaybackSession {
     required this.animeTitle,
     required this.episodeLabel,
     this.attached = true,
+    this.surfaceEpoch = 0,
   });
 
   final Player player;
@@ -30,12 +31,18 @@ class PlaybackSession {
   /// rendered when this is false.
   final bool attached;
 
+  /// Bumped when the platform destroys the video surface (for example when the
+  /// app comes back from picture-in-picture). Re-keying the [controller] widget
+  /// re-attaches the texture instead of leaving a black floating window.
+  final int surfaceEpoch;
+
   bool get playable => animeId.isNotEmpty && episodeId.isNotEmpty;
 
   PlaybackSession copyWith({
     String? animeTitle,
     String? episodeLabel,
     bool? attached,
+    int? surfaceEpoch,
   }) => PlaybackSession(
     player: player,
     controller: controller,
@@ -44,6 +51,7 @@ class PlaybackSession {
     animeTitle: animeTitle ?? this.animeTitle,
     episodeLabel: episodeLabel ?? this.episodeLabel,
     attached: attached ?? this.attached,
+    surfaceEpoch: surfaceEpoch ?? this.surfaceEpoch,
   );
 }
 
@@ -111,6 +119,17 @@ class PlaybackSessionController extends Notifier<PlaybackSession?> {
     final current = state;
     if (current == null) return;
     state = current.copyWith(attached: true);
+  }
+
+  /// Forces the floating window to rebuild its video surface.
+  ///
+  /// Android releases the surface when the activity moves into
+  /// picture-in-picture; without a rebuild the mini player came back blank or
+  /// was skipped entirely on the way home.
+  void refreshSurface() {
+    final current = state;
+    if (current == null) return;
+    state = current.copyWith(surfaceEpoch: current.surfaceEpoch + 1);
   }
 
   Future<void> close() async {
