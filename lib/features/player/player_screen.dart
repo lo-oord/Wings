@@ -897,6 +897,10 @@ class _PlayerSurface extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final maxMs = duration.inMilliseconds.toDouble();
     final progress = maxMs <= 0 ? 0.0 : position.inMilliseconds / maxMs;
+    // Loading and buffering are shown on the play/pause control itself, and
+    // that control stays visible while the video is not ready yet.
+    final busy = buffering || loading;
+    final showToggle = controlsVisible || busy;
 
     return ColoredBox(
       color: Colors.black,
@@ -927,17 +931,6 @@ class _PlayerSurface extends StatelessWidget {
             },
             child: const SizedBox.expand(),
           ),
-          if (buffering || loading)
-            const Center(
-              child: SizedBox(
-                width: 34,
-                height: 34,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              ),
-            ),
           if (error != null)
             _PlayerError(
               message: _errorMessage(context, error!),
@@ -1021,13 +1014,9 @@ class _PlayerSurface extends StatelessWidget {
                           onTap: onSeekBack,
                         ),
                         const SizedBox(width: Space.xl),
-                        _RoundControl(
-                          icon: playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          size: 58,
-                          onTap: onTogglePlay,
-                        ),
+                        // The real play/pause control lives in its own layer
+                        // below so it can stay visible while the video loads.
+                        const SizedBox(width: 58, height: 58),
                         const SizedBox(width: Space.xl),
                         _RoundControl(
                           icon: Icons.forward_10_rounded,
@@ -1146,6 +1135,23 @@ class _PlayerSurface extends StatelessWidget {
               ),
             ),
           ),
+          AnimatedOpacity(
+            opacity: showToggle ? 1 : 0,
+            duration: Motion.fast,
+            child: IgnorePointer(
+              ignoring: !showToggle,
+              child: Center(
+                child: _RoundControl(
+                  icon: playing
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  size: 58,
+                  busy: busy,
+                  onTap: onTogglePlay,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1206,11 +1212,15 @@ class _RoundControl extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.size = 44,
+    this.busy = false,
   });
 
   final IconData icon;
   final VoidCallback onTap;
   final double size;
+
+  /// Shows the loading state in place of the icon while the video loads.
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -1224,7 +1234,18 @@ class _RoundControl extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white24),
         ),
-        child: Icon(icon, color: Colors.white, size: size * 0.5),
+        child: busy
+            ? Center(
+                child: SizedBox(
+                  width: size * 0.4,
+                  height: size * 0.4,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
+                ),
+              )
+            : Icon(icon, color: Colors.white, size: size * 0.5),
       ),
     );
   }
