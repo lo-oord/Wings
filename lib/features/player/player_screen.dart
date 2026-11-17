@@ -81,16 +81,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Timer? _hideTimer;
   Timer? _saveTimer;
+  late final PlaybackSessionController _sessionNotifier;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // The notifier is captured here because a WidgetRef is no longer usable in
+    // `dispose`; reading it there silently skipped `detach()`, which is why the
+    // video kept playing with no floating window on top of the next screen.
+    _sessionNotifier = ref.read(playbackSessionProvider.notifier);
     // Reuse the live session when the viewer expands the floating window;
     // otherwise this screen starts a new one.
-    final session = ref
-        .read(playbackSessionProvider.notifier)
-        .acquire(animeId: widget.animeId, episodeId: widget.episodeId);
+    final session = _sessionNotifier.acquire(
+      animeId: widget.animeId,
+      episodeId: widget.episodeId,
+    );
     _session = session;
     _player = session.player;
     _videoController = session.controller;
@@ -529,12 +535,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // is still playing; a finished or failed playback is closed right away.
     final session = _session;
     if (session != null) {
-      final keepAlive =
-          _playing && !_completed && _error == null && _playbackError == null;
+      // Keep the session whenever it can still be resumed, including a paused
+      // or buffering one, so the floating window always has something to show.
+      final keepAlive = !_completed && _error == null && _playbackError == null;
       if (keepAlive) {
-        ref.read(playbackSessionProvider.notifier).detach();
+        _sessionNotifier.detach();
       } else {
-        unawaited(ref.read(playbackSessionProvider.notifier).close());
+        unawaited(_sessionNotifier.close());
       }
     }
     unawaited(PictureInPictureService.setEnabled(false));

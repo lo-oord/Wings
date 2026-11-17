@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../data/models/library.dart';
 import '../constants/network_constants.dart';
 import '../storage/local_store.dart';
+import 'notification_actions.dart';
 import 'notification_service.dart';
 import 'storage_service.dart';
 
@@ -73,6 +74,94 @@ class DownloadService {
     _tasks[id] = task.copyWith(status: DownloadStatus.paused);
     await _persist(_tasks[id]!);
     _emit();
+    unawaited(_notifyPaused(task));
+  }
+
+  Future<void> _notifyPaused(DownloadTask task) async {
+    if (!notificationsEnabled) return;
+    await _notifications.showDownloadProgress(
+      id: task.trayId,
+      title: '${task.animeTitle} · ${task.episodeNumber}',
+      progress: task.receivedBytes,
+      max: task.totalBytes,
+      taskId: task.id,
+      paused: true,
+    );
+  }
+
+  /// Applies pause/cancel/retry requests made from the notification tray while
+  /// the app was in the background.
+  Future<void> consumeTrayActions() async {
+    final commands = await NotificationActions.take();
+    for (final command in commands) {
+      final separator = command.indexOf(':');
+      if (separator <= 0) continue;
+      final action = command.substring(0, separator);
+      final id = command.substring(separator + 1);
+      switch (action) {
+        case 'pause':
+          await pause(id);
+        case 'resume':
+          await resume(id);
+        case 'cancel':
+          final tray = _tasks[id]?.trayId;
+          await cancel(id);
+          if (tray != null) await _notifications.cancel(tray);
+        case 'retry':
+          await retry(id);
+      }
+    }
+  }
+
+  /// Pauses every running transfer, e.g. when the device switches to mobile
+  /// data or the viewer wants to stop all downloads at once.
+  Future<void> pauseAll() async {
+    final running = _tasks.values
+        .where((task) => task.status == DownloadStatus.downloading)
+        .map((task) => task.id)
+        .toList(growable: false);
+    for (final id in running) {
+      await pause(id);
+    }
+  }
+
+  Future<void> resumeAll() async {
+    final paused = _tasks.values
+        .where(
+          (task) =>
+              task.status == DownloadStatus.paused ||
+              task.status == DownloadStatus.queued,
+        )
+        .map((task) => task.id)
+        .toList(growable: false);
+    for (final id in paused) {
+      await resume(id);
+    }
+  }
+
+  Future<void> retryAll() async {
+    final failed = _tasks.values
+        .where((task) => task.status == DownloadStatus.failed)
+        .map((task) => task.id)
+        .toList(growable: false);
+    for (final id in failed) {
+      await retry(id);
+    }
+  }
+
+  /// Removes every finished or failed transfer and its file.
+  Future<void> clearFinished() async {
+    final finished = _tasks.values
+        .where(
+          (task) =>
+              task.status == DownloadStatus.failed ||
+              task.status == DownloadStatus.paused,
+        )
+        .map((task) => task.id)
+        .toList(growable: false);
+    for (final id in finished) {
+      await cancel(id);
+    }
   }
 
   Future<void> resume(String id) async {
@@ -195,6 +284,7 @@ class DownloadService {
         title: done.animeTitle,
         body: 'الحلقة ${done.episodeNumber} جاهزة للمشاهدة',
         enabled: notificationsEnabled,
+        payload: NotificationActions.payloadFor(done.id),
       );
     } on Object catch (error) {
       final current = _tasks[task.id];
@@ -216,6 +306,7 @@ class DownloadService {
         title: failed.animeTitle,
         body: 'تعذّر تنزيل الحلقة ${failed.episodeNumber}',
         enabled: notificationsEnabled,
+        taskId: failed.id,
       );
     } finally {
       _tokens.remove(task.id);
@@ -362,6 +453,7 @@ class DownloadService {
             title: '${task.animeTitle} · ${task.episodeNumber}',
             progress: received,
             max: total > 0 ? total : 0,
+            taskId: task.id,
           ),
         );
       }

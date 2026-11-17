@@ -3,6 +3,8 @@ package com.wings.wings
 import android.app.PictureInPictureParams
 import android.content.ContentValues
 import android.content.Intent
+import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -23,6 +25,7 @@ import java.io.FileOutputStream
 class MainActivity : FlutterActivity() {
     private val channelName = "wings/storage"
     private val pipChannelName = "wings/pip"
+    private val permissionsChannelName = "wings/permissions"
 
     // Only true while an episode is playing, so the app never shrinks into the
     // floating window from an ordinary screen.
@@ -38,6 +41,29 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "enter" -> result.success(enterPip())
+                    else -> result.notImplemented()
+                }
+            }
+        // Runtime permissions the app can only resolve through the platform:
+        // notification status and the system settings page behind it.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, permissionsChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "notificationsEnabled" -> result.success(
+                        NotificationManagerCompat.from(this).areNotificationsEnabled()
+                    )
+                    "openNotificationSettings" -> {
+                        try {
+                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (error: Exception) {
+                            result.success(false)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

@@ -149,7 +149,52 @@ class MultiSourceCatalogue implements AnimeSource {
     }
     if (items.isEmpty) return _fail<Paged<Anime>>(failures);
 
-    final grouped = groupTitlesBySeason(items, (anime) => anime.title);
+    // Relevance first: an exact title beats a title that only contains the
+    // words, which in turn beats a category match. Without this the merged list
+    // kept the order of the sources, so a loosely related title could appear
+    // above the one the viewer typed.
+    final needle = normalizeArabicText(trimmed);
+    final tokens = needle
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+    int score(Anime anime) {
+      var best = 0;
+      for (final raw in <String>[anime.title, anime.englishTitle ?? '']) {
+        final title = normalizeArabicText(raw.trim());
+        if (title.isEmpty) continue;
+        if (title == needle) {
+          if (best < 1000) best = 1000;
+        } else if (title.startsWith(needle)) {
+          if (best < 700) best = 700;
+        } else if (title.contains(needle)) {
+          if (best < 450) best = 450;
+        } else if (tokens.isNotEmpty && tokens.every(title.contains)) {
+          final missing = title.length - needle.length;
+          final partial = (300 - missing.clamp(0, 120)).clamp(80, 300);
+          if (best < partial) best = partial;
+        }
+      }
+      if (best == 0) {
+        final genres = anime.genres.map(normalizeArabicText).join(' ');
+        if (tokens.any(genres.contains)) best = 120;
+      }
+      // A small popularity nudge only breaks ties between equal matches.
+      final rating = anime.rating ?? 0;
+      return best + (rating * 2).round();
+    }
+
+    final ranked = items.asMap().entries.toList()
+      ..sort((a, b) {
+        final byScore = score(b.value).compareTo(score(a.value));
+        if (byScore != 0) return byScore;
+        return a.key.compareTo(b.key);
+      });
+
+    final grouped = groupTitlesBySeason(
+      ranked.map((entry) => entry.value).toList(growable: false),
+      (anime) => anime.title,
+    );
     return Paged<Anime>(
       items: grouped.take(_mergedPageSize).toList(growable: false),
       page: 0,

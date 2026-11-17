@@ -300,6 +300,7 @@ class AppSettings {
     this.preferredQuality = '1080p',
     this.notifyNewEpisodes = true,
     this.notifyDownloads = true,
+    this.notifyReplies = true,
     this.notifyGeneral = false,
     this.onboardingDone = false,
     this.guestMode = false,
@@ -313,6 +314,7 @@ class AppSettings {
   final String preferredQuality;
   final bool notifyNewEpisodes;
   final bool notifyDownloads;
+  final bool notifyReplies;
   final bool notifyGeneral;
   final bool onboardingDone;
   final bool guestMode;
@@ -328,6 +330,7 @@ class AppSettings {
     String? preferredQuality,
     bool? notifyNewEpisodes,
     bool? notifyDownloads,
+    bool? notifyReplies,
     bool? notifyGeneral,
     bool? onboardingDone,
     bool? guestMode,
@@ -341,6 +344,7 @@ class AppSettings {
       preferredQuality: preferredQuality ?? this.preferredQuality,
       notifyNewEpisodes: notifyNewEpisodes ?? this.notifyNewEpisodes,
       notifyDownloads: notifyDownloads ?? this.notifyDownloads,
+      notifyReplies: notifyReplies ?? this.notifyReplies,
       notifyGeneral: notifyGeneral ?? this.notifyGeneral,
       onboardingDone: onboardingDone ?? this.onboardingDone,
       guestMode: guestMode ?? this.guestMode,
@@ -356,6 +360,7 @@ class AppSettings {
     'preferredQuality': preferredQuality,
     'notifyNewEpisodes': notifyNewEpisodes,
     'notifyDownloads': notifyDownloads,
+    'notifyReplies': notifyReplies,
     'notifyGeneral': notifyGeneral,
     'onboardingDone': onboardingDone,
     'guestMode': guestMode,
@@ -373,6 +378,7 @@ class AppSettings {
     preferredQuality: json['preferredQuality'] as String? ?? '1080p',
     notifyNewEpisodes: json['notifyNewEpisodes'] as bool? ?? true,
     notifyDownloads: json['notifyDownloads'] as bool? ?? true,
+    notifyReplies: json['notifyReplies'] as bool? ?? true,
     notifyGeneral: json['notifyGeneral'] as bool? ?? false,
     onboardingDone: json['onboardingDone'] as bool? ?? false,
     guestMode: json['guestMode'] as bool? ?? false,

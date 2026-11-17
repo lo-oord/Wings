@@ -9,8 +9,13 @@ import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/widgets/wings_cards.dart';
 import '../../core/widgets/wings_feedback.dart';
+import '../../core/utils/title_series.dart';
+import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
+import '../../data/models/live_channel.dart';
+import '../../data/sources/live_source.dart';
+import '../live/live_widgets.dart';
 import '../explore/explore_providers.dart';
 import 'search_providers.dart';
 
@@ -56,6 +61,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final palette = context.palette;
     final state = ref.watch(searchProvider);
     final searches = ref.watch(libraryProvider).searches;
+    // Live channels take part in search too, so typing «MBC» or «سبيستون» finds
+    // the broadcast itself instead of only on-demand titles.
+    final channels = ref.watch(liveChannelsProvider).value ?? LiveSource.seeds;
+    final needle = normalizeArabicText(state.query.trim());
+    final liveMatches = needle.isEmpty
+        ? const <LiveChannel>[]
+        : channels
+              .where(
+                (channel) =>
+                    normalizeArabicText(channel.name).contains(needle) ||
+                    normalizeArabicText(channel.description).contains(needle),
+              )
+              .toList(growable: false);
 
     return Scaffold(
       appBar: WingsAppBar(
@@ -130,15 +148,47 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   top: Space.sm,
                   bottom: Space.xxl,
                 ),
-                itemCount: state.items.length + (state.loadingMore ? 1 : 0),
+                itemCount:
+                    liveMatches.length +
+                    state.items.length +
+                    (state.loadingMore ? 1 : 0),
                 itemBuilder: (context, index) {
-                  if (index >= state.items.length) {
+                  if (index < liveMatches.length) {
+                    final channel = liveMatches[index];
+                    return ListTile(
+                      leading: const LiveBadge(compact: true),
+                      title: Text(channel.name),
+                      subtitle: Text(
+                        channel.currentProgram?.title ??
+                            Tr.of(
+                              context,
+                              ar: 'بث مباشر',
+                              en: 'Live broadcast',
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Icon(
+                        context.isRtl
+                            ? Icons.chevron_left_rounded
+                            : Icons.chevron_right_rounded,
+                        size: 18,
+                        color: palette.textMuted,
+                      ),
+                      onTap: () => context.push(
+                        RoutePaths.live(channel.id),
+                        extra: channel,
+                      ),
+                    );
+                  }
+                  final animeIndex = index - liveMatches.length;
+                  if (animeIndex >= state.items.length) {
                     return const Padding(
                       padding: EdgeInsets.all(Space.lg),
                       child: WingsLoading(),
                     );
                   }
-                  final anime = state.items[index];
+                  final anime = state.items[animeIndex];
                   return WingsAnimeListTile(
                     anime: anime,
                     onTap: () => _openAnime(anime.id, state.query),

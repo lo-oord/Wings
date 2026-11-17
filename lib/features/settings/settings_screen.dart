@@ -142,6 +142,47 @@ class SettingsScreen extends ConsumerWidget {
                   showChevron: true,
                   onTap: () => context.push(RoutePaths.downloads),
                 ),
+                WingsSettingsTile(
+                  icon: Icons.pause_circle_outline_rounded,
+                  title: Tr.of(
+                    context,
+                    ar: 'إيقاف كل التنزيلات مؤقتًا',
+                    en: 'Pause all downloads',
+                  ),
+                  showChevron: true,
+                  onTap: () async {
+                    await ref.read(downloadServiceProvider).pauseAll();
+                    if (context.mounted) {
+                      context.showSnack(
+                        Tr.of(
+                          context,
+                          ar: 'تم إيقاف التنزيلات مؤقتًا.',
+                          en: 'Downloads paused.',
+                        ),
+                      );
+                    }
+                  },
+                ),
+                WingsSettingsTile(
+                  icon: Icons.play_circle_outline_rounded,
+                  title: Tr.of(
+                    context,
+                    ar: 'استئناف التنزيلات',
+                    en: 'Resume downloads',
+                  ),
+                  showChevron: true,
+                  onTap: () => ref.read(downloadServiceProvider).resumeAll(),
+                ),
+                WingsSettingsTile(
+                  icon: Icons.replay_rounded,
+                  title: Tr.of(
+                    context,
+                    ar: 'إعادة محاولة التنزيلات الفاشلة',
+                    en: 'Retry failed downloads',
+                  ),
+                  showChevron: true,
+                  onTap: () => ref.read(downloadServiceProvider).retryAll(),
+                ),
               ],
             ),
             WingsSettingsGroup(
@@ -170,6 +211,22 @@ class SettingsScreen extends ConsumerWidget {
                         .read(settingsProvider.notifier)
                         .update(
                           (current) => current.copyWith(notifyDownloads: value),
+                        ),
+                  ),
+                ),
+                WingsSettingsTile(
+                  icon: Icons.forum_outlined,
+                  title: Tr.of(
+                    context,
+                    ar: 'إشعارات الردود على تعليقاتي',
+                    en: 'Replies to my comments',
+                  ),
+                  trailing: Switch(
+                    value: settings.notifyReplies,
+                    onChanged: (value) => ref
+                        .read(settingsProvider.notifier)
+                        .update(
+                          (current) => current.copyWith(notifyReplies: value),
                         ),
                   ),
                 ),
@@ -630,7 +687,21 @@ class _PermissionTileState extends ConsumerState<_PermissionTile> {
               final granted = await ref
                   .read(notificationServiceProvider)
                   .requestPermission();
-              if (mounted) setState(() => _granted = granted);
+              if (!mounted) return;
+              if (!granted) {
+                // Permanently denied: the OS dialog never appears again, so the
+                // only useful action is opening the app's settings page.
+                await ref
+                    .read(permissionServiceProvider)
+                    .openNotificationSettings();
+                if (!mounted) return;
+                final now = await ref
+                    .read(notificationServiceProvider)
+                    .isPermissionGranted();
+                if (mounted) setState(() => _granted = now);
+                return;
+              }
+              setState(() => _granted = granted);
             },
     );
   }

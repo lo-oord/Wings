@@ -50,6 +50,9 @@ abstract final class BrandColors {
   static const Color gold = Color(0xFFE3B341);
 
   static const Color googleBlue = Color(0xFF4285F4);
+
+  /// The red of a live broadcast pill.
+  static const Color live = Color(0xFFE5372B);
 }
 
 /// Layout breakpoints for responsive lists.

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../core/errors/app_failure.dart';
 import '../repositories/user_repository.dart';
@@ -46,8 +47,15 @@ class AccountDeletionService {
     'settings',
     'meta',
     'activity',
+    'notifications',
   ];
 
+  /// Removes the account and everything it owns.
+  ///
+  /// The steps are guarded individually: one record the rules refuse to remove
+  /// must not abort the whole run (which used to surface as "the server blocked
+  /// the deletion" with no hint about the actual step). Only a step that would
+  /// leave the account itself behind stops the process.
   Future<void> deleteAccount({required String uid, String? password}) async {
     final profile = await _users.fetch(uid);
 
@@ -62,68 +70,100 @@ class AccountDeletionService {
       // The flag is only a marker; never let it block the deletion itself.
     }
 
+    final blocked = <String>[];
+    await _deleteSocialContent(uid, blocked);
+    for (final name in _owned) {
+      await _guard(() => _deleteCollection(uid, name), name, blocked);
+    }
+
+    final private = _db.collection('users').doc(uid).collection('private');
+    for (final doc in const <String>['avatar', 'cover']) {
+      await _guard(() => private.doc(doc).delete(), 'private/$doc', blocked);
+    }
+
+    if (profile != null) {
+      try {
+        await _usernames.release(
+          uid: uid,
+          normalized: profile.normalizedUsername,
+        );
+      } on Object {
+        // A reservation owned by another account is left untouched.
+      }
+    }
+
+    await _guard(
+      () => _db.collection('profiles').doc(uid).delete(),
+      'profile',
+      blocked,
+    );
+
+    // The owner document is the last Firestore write: if it is removed, the
+    // account has no readable data left even if a subcollection was retained.
     try {
-      await _deleteSocialContent(uid);
-      for (final name in _owned) {
-        await _deleteCollection(uid, name);
-      }
-      final private = _db.collection('users').doc(uid).collection('private');
-      for (final doc in const <String>['avatar', 'cover']) {
-        try {
-          await private.doc(doc).delete();
-        } on Object {
-          // Missing or already removed.
-        }
-      }
-
-      if (profile != null) {
-        try {
-          await _usernames.release(
-            uid: uid,
-            normalized: profile.normalizedUsername,
-          );
-        } on Object {
-          // A reservation owned by another account is left untouched.
-        }
-      }
-
-      await _db.collection('profiles').doc(uid).delete();
       await _db.collection('users').doc(uid).delete();
     } on FirebaseException catch (error) {
-      // Surface the exact Firestore code so the UI can explain whether the
-      // rules are outdated or the data is simply unreachable.
       throw AppFailure(
         FailureKind.permission,
         technical: error.code == 'permission-denied'
-            ? 'delete-rules'
+            ? 'delete-rules:account'
             : error.code,
       );
     }
 
     await _sync.detach(clearSettings: true);
     await _auth.deleteCurrentUser();
+    if (blocked.isNotEmpty) {
+      // The account is gone; a retained record is reported to the log rather
+      // than failing a deletion that actually succeeded.
+      debugPrint('account deletion kept: ${blocked.take(5).join(', ')}');
+    }
+  }
+
+  Future<void> _guard(
+    Future<void> Function() action,
+    String step,
+    List<String> blocked,
+  ) async {
+    try {
+      await action();
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied') {
+        blocked.add(step);
+      }
+      // A missing document is already deleted, which is the goal.
+    } on Object {
+      blocked.add(step);
+    }
   }
 
   /// Comments and reactions are referenced by the account's own activity index,
   /// so deletion needs no collection-group index or collection scan.
-  Future<void> _deleteSocialContent(String uid) async {
+  ///
+  /// Replies are removed before their parents: deleting a parent first used to
+  /// make the reply rule resolve against a document that no longer exists, and
+  /// Firestore treats that as a denied write.
+  Future<void> _deleteSocialContent(String uid, List<String> blocked) async {
     final activity = await _db
         .collection('users')
         .doc(uid)
         .collection('activity')
         .get();
+    final paths = <String>[];
     for (final doc in activity.docs) {
       final path = doc.data()['path'];
-      if (path is String && path.isNotEmpty) {
-        try {
-          await _db.doc(path).delete();
-        } on Object {
-          // Already removed or not deletable; the account still goes away.
-        }
-      }
-      await doc.reference.delete();
+      if (path is String && path.isNotEmpty) paths.add(path);
+    }
+    paths.sort((a, b) => _depth(b).compareTo(_depth(a)));
+    for (final path in paths) {
+      await _guard(() => _db.doc(path).delete(), 'social', blocked);
+    }
+    for (final doc in activity.docs) {
+      await _guard(doc.reference.delete, 'activity', blocked);
     }
   }
+
+  int _depth(String path) => path.split('/').length;
 
   /// Deletes a subcollection in small batches to stay under write limits and to
   /// make an interrupted run cheap to resume.

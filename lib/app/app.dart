@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/services/notification_actions.dart';
+import '../core/storage/local_store.dart';
 import '../core/widgets/wings_feedback.dart';
 import '../features/player/mini_player.dart';
 import 'localization/app_localizations.dart';
@@ -32,9 +36,71 @@ class _WingsAppState extends ConsumerState<WingsApp>
     if (cold != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openPayload(cold));
     }
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => ref.read(notificationsProvider.notifier).refresh(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(notificationsProvider.notifier).refresh();
+      await _applyTrayActions();
+      await _askForNotificationsOnce();
+      await _showReplyAlerts();
+    });
+  }
+
+  /// Raises one tray alert for replies that arrived while the app was closed.
+  ///
+  /// The reply documents are written by the replier's device, so the receiving
+  /// device discovers them when it next runs; showing a single alert for the
+  /// newest unread reply keeps that honest without a push service.
+  Future<void> _showReplyAlerts() async {
+    try {
+      final uid = ref.read(authProvider)?.id;
+      if (uid == null) return;
+      final settings = ref.read(settingsProvider);
+      if (!settings.notifyReplies) return;
+      final unread = await ref.read(notificationRepositoryProvider).unread(uid);
+      if (unread.isEmpty) return;
+      final latest = unread.first;
+      final store = ref.read(localStoreProvider);
+      final key = 'reply_alert_shown_$uid';
+      if (store.getString(LocalStore.cacheBox, key) == latest.id) return;
+      await store.setString(LocalStore.cacheBox, key, latest.id);
+      await ref
+          .read(notificationServiceProvider)
+          .showReply(
+            id: latest.trayId,
+            title: latest.actorName.isEmpty
+                ? '@${latest.actorUsername}'
+                : latest.actorName,
+            body: latest.text,
+            payload: latest.route,
+            enabled: true,
+          );
+    } on Object {
+      // Never block start-up over an alert.
+    }
+  }
+
+  /// Applies pause/cancel requests pressed in the notification tray.
+  Future<void> _applyTrayActions() async {
+    try {
+      await ref.read(downloadServiceProvider).consumeTrayActions();
+    } on Object {
+      // Nothing queued or the service is not ready yet.
+    }
+  }
+
+  /// Shows the system notification prompt once, after onboarding.
+  Future<void> _askForNotificationsOnce() async {
+    try {
+      final store = ref.read(localStoreProvider);
+      const key = 'notifications_permission_asked';
+      if (store.getString(LocalStore.cacheBox, key) == '1') return;
+      if (!ref.read(settingsProvider).onboardingDone) return;
+      await store.setString(LocalStore.cacheBox, key, '1');
+      final notifications = ref.read(notificationServiceProvider);
+      if (await notifications.isPermissionGranted()) return;
+      await notifications.requestPermission();
+    } on Object {
+      // A denied or unavailable prompt never blocks the app.
+    }
   }
 
   @override
@@ -44,16 +110,29 @@ class _WingsAppState extends ConsumerState<WingsApp>
   }
 
   void _openPayload(String payload) {
+    if (payload == NotificationActions.trayPayload) {
+      unawaited(_applyTrayActions());
+      return;
+    }
     final router = _router;
     if (payload.isEmpty || router == null) return;
+    // A download notification points at its own transfer; open the list.
+    if (NotificationActions.taskIdFrom(payload) != null) {
+      router.push('/downloads');
+      return;
+    }
     router.push(payload);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      ref.read(notificationsProvider.notifier).refresh();
-    }
+    if (state != AppLifecycleState.resumed) return;
+    ref.read(notificationsProvider.notifier).refresh();
+    unawaited(_applyTrayActions());
+    unawaited(_showReplyAlerts());
+    // Pull anything the account changed on another device while the app was in
+    // the background (throttled inside the controller).
+    unawaited(ref.read(authProvider.notifier).syncNow());
   }
 
   @override

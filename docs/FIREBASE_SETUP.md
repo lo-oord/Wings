@@ -360,3 +360,47 @@ Manual steps:
       deletion and the badge mirror).
 - [ ] Optional: delete the old `stats/views` documents from the console; the app
       no longer reads them.
+
+## 14. What changed in this revision (sync, alerts, live television)
+
+**Publish the updated `firestore.rules` before using this build.** Two rules
+blocks changed and one is new:
+
+* `users/{uid}/notifications/{id}` — a reply alert is written by the device that
+  posted the reply into the **parent comment author's** list. Only the fixed
+  shape is accepted (`type == 'reply'`, `toUid == uid`, `actorUid ==
+  request.auth.uid`, `read == false`, bounded strings), the owner is the only
+  reader, the only allowed update is `read: true`, and the owner may delete an
+  entry. This is how replies reach the person they answer without Cloud
+  Functions.
+* Reply deletion now guards the parent lookup with `exists()`: when an account
+  is removed the parent comment is deleted first, and the old rule made the
+  whole request fail (this was the real cause of “the server blocked the
+  deletion”).
+* Account deletion removes the new `notifications` subcollection too, deletes
+  replies before their parents, and keeps a record the rules refuse out of the
+  way instead of aborting the whole run.
+
+Feature map:
+
+| Area | What changed |
+| --- | --- |
+| Library sync | Restoring a saved Firebase session now attaches the cloud copy (it previously only happened on a fresh sign-in), pulls the account library on start and on resume (throttled), and the library screen has a sync button. |
+| Counters | Favourites, completed, watched titles and episodes publish to `profiles/{uid}` after every library change and after a pull, so the public profile (when the owner allows stats/favourites) matches the device. |
+| Notifications | Four channels (download progress, finished downloads, new episodes, replies), a one-time system permission prompt after onboarding, and a settings tile that opens the system notification page when permission was denied permanently. |
+| Replies | A reply writes an alert into the parent author's list; the notification centre shows replies and new episodes together, marks them read and lets each one be removed. A single tray alert is raised for the newest unread reply on start/resume. |
+| Downloads | Progress notification has **pause / cancel** buttons and a paused state with **resume**; a failure notification offers **retry**. The app applies tray actions when it is resumed (the background isolate queues them in a file). Settings and the downloads screen add pause-all, resume-all and retry-failed. |
+| Live TV | Three curated channels — سبيستون, MBC 3, شارع الأنمي الياباني — read from `/api/sp/live` (encrypted envelope), with logo, LIVE badge, current programme and a full schedule. They are pinned in the app, so the home hero always shows them; tapping one opens the live player with the provider referer. They also answer in search. |
+| Search | Merged results are ranked by relevance (exact title, then prefix, then contains, then all words, then genre) instead of source order, with rating only breaking ties. |
+| Similar titles | The rail now mixes the source's own links with titles that share genres, ranked by overlap; it is no longer empty or random. |
+| Categories | Opening a category always renders a real screen: header, sort chips, count and grid, with a name-search fallback when a source has no category page (the blank grey screen is gone). |
+| Floating player | Leaving a playing episode now really detaches the session, which is what makes the mini player appear over the next screen (the previous code read the provider during `dispose`, so the detach was skipped and only the audio continued). |
+| Permissions | The manifest declares notifications, boot-completed and foreground-service permissions; `wings/permissions` exposes notification status and the system settings page. |
+
+Manual steps:
+
+- [ ] Publish `firestore.rules`.
+- [ ] No Firestore index is required for reply alerts (single-field queries on
+      one collection).
+- [ ] Rebuild the APK; the launcher colours were fixed so the release resource
+      link step no longer fails.

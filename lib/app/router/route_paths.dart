@@ -21,6 +21,9 @@ abstract final class RoutePaths {
 
   static String genre(String name) => '/genre/${Uri.encodeComponent(name)}';
 
+  static String live(String channelId) =>
+      '/live/${Uri.encodeComponent(channelId)}';
+
   static String watch({required String animeId, required String episodeId}) =>
       '/watch/${Uri.encodeComponent(animeId)}/${Uri.encodeComponent(episodeId)}';
 

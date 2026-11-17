@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import '../../core/errors/app_failure.dart';
 import '../../core/storage/local_store.dart';
+import '../../core/utils/title_series.dart';
 import '../models/anime.dart';
 import '../sources/anime_source.dart';
 import '../sources/server_resolver.dart';
@@ -210,12 +211,59 @@ class AnimeRepository {
     }
   }
 
+  /// Titles that share the source's own "related" links, then titles that
+  /// actually share genres with this one.
+  ///
+  /// A source often publishes no related list at all, which used to leave the
+  /// section empty or filled from an unrelated feed. The genre pass below keeps
+  /// the rail truthful and ranks every candidate by how much it overlaps.
   Future<List<Anime>> related(Anime anime, {CancelToken? cancelToken}) async {
+    final found = <String, Anime>{};
     try {
-      return await _source.related(anime, cancelToken: cancelToken);
-    } on Object catch (_) {
-      return const [];
+      for (final item in await _source.related(
+        anime,
+        cancelToken: cancelToken,
+      )) {
+        if (item.id != anime.id) found.putIfAbsent(item.id, () => item);
+      }
+    } on Object {
+      // A source without related links falls through to the genre pass.
     }
+
+    final wanted = anime.genres.map(normalizeArabicText).toSet();
+    if (found.length < 8 && anime.genres.isNotEmpty) {
+      for (final genre in anime.genres.take(2)) {
+        try {
+          final page = await _source.browse(
+            BrowseQuery(sort: BrowseSort.popular, genre: genre),
+            cancelToken: cancelToken,
+          );
+          for (final item in page.items) {
+            if (item.id == anime.id) continue;
+            found.putIfAbsent(item.id, () => item);
+          }
+        } on Object {
+          // Try the next genre or keep what was found so far.
+        }
+      }
+    }
+
+    final items = found.values.toList();
+    items.sort((a, b) {
+      final byOverlap = _overlap(b, wanted).compareTo(_overlap(a, wanted));
+      if (byOverlap != 0) return byOverlap;
+      return (b.rating ?? 0).compareTo(a.rating ?? 0);
+    });
+    return items.take(12).toList(growable: false);
+  }
+
+  int _overlap(Anime anime, Set<String> wanted) {
+    if (wanted.isEmpty) return 0;
+    var score = 0;
+    for (final genre in anime.genres) {
+      if (wanted.contains(normalizeArabicText(genre))) score += 10;
+    }
+    return score;
   }
 
   /// Fetches a random real title for the discovery shortcut.

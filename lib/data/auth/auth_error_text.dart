@@ -51,6 +51,15 @@ String authErrorText(BuildContext context, Object error) {
   if (error is AppFailure) {
     final code = error.technical;
     if (code != null) {
+      // `delete-rules:<step>` names the record Firestore refused to remove.
+      if (code.startsWith('delete-rules')) {
+        final step = code.split(':').skip(1).join(':').trim();
+        return Tr.of(
+          context,
+          ar: 'مُنع حذف بياناتك من الخادم${step.isEmpty ? '' : ' ($step)'}. انشر أحدث قواعد Firestore من مستودع GitHub ثم أعد المحاولة؛ حسابك وبياناتك سليمة حتى تكتمل العملية.',
+          en: 'The server blocked the deletion${step.isEmpty ? '' : ' ($step)'}. Publish the latest Firestore rules from the GitHub repository and retry; your account and data stay intact until the process completes.',
+        );
+      }
       final text = _byCode(context, code);
       if (text != null) return text;
     }

@@ -222,6 +222,33 @@ service cloud.firestore {
         allow read, write: if isSelf(uid);
       }
 
+      // Community alerts: a reply notification is written by the device that
+      // posted the reply, straight into the parent author's list. The shape is
+      // fixed so nobody can use it as a free-form mailbox, and only the owner
+      // can read, mark read or remove an entry.
+      match /notifications/{notificationId} {
+        allow read: if isSelf(uid);
+        allow create: if signedIn()
+          && request.auth.uid != uid
+          && request.resource.data.toUid == uid
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.type == 'reply'
+          && request.resource.data.read == false
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 200
+          && request.resource.data.episodeId is string
+          && request.resource.data.commentId is string
+          && request.resource.data.actorName is string
+          && request.resource.data.actorName.size() <= 40
+          && request.resource.data.actorUsername is string
+          && validUsername(request.resource.data.actorUsername)
+          && request.resource.data.createdAt is timestamp;
+        allow update: if isSelf(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+          && request.resource.data.read == true;
+        allow delete: if isSelf(uid);
+      }
+
       // Avatar bytes: readable by signed-in users so profile pictures render on
       // public profiles, writable only by the owner and capped below 1 MiB.
       // Create/update are separate from delete, because a delete request has no
@@ -412,11 +439,17 @@ service cloud.firestore {
             && resource.data.authorUid == request.auth.uid
             && request.resource.data.authorUid == resource.data.authorUid;
           // A reply disappears with its thread: either its own author or the
-          // author of the parent comment may delete it.
+          // author of the parent comment may delete it. The parent lookup is
+          // guarded because the parent is usually deleted first when an account
+          // is removed, and `get()` on a missing document makes the whole
+          // deletion request fail instead of returning false.
           allow delete: if signedIn()
             && (
               resource.data.authorUid == request.auth.uid
-              || get(/databases/$(database)/documents/episodes/$(episodeId)/comments/$(commentId)).data.authorUid == request.auth.uid
+              || (
+                exists(/databases/$(database)/documents/episodes/$(episodeId)/comments/$(commentId))
+                && get(/databases/$(database)/documents/episodes/$(episodeId)/comments/$(commentId)).data.authorUid == request.auth.uid
+              )
             );
         }
       }

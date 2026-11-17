@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/storage/local_store.dart';
 import '../models/social.dart';
 import '../models/user_profile.dart';
+import 'notification_repository.dart';
 
 /// Episode reactions, comments, replies and reports.
 ///
@@ -50,6 +51,10 @@ class SocialRepository {
 
   CollectionReference<Map<String, dynamic>> _activity(String uid) =>
       _db.collection('users').doc(uid).collection('activity');
+
+  late final NotificationRepository _notifications = NotificationRepository(
+    _db,
+  );
 
   // ---------------------------------------------------------------- reactions
 
@@ -266,6 +271,24 @@ class SocialRepository {
     }, SetOptions(merge: true));
     await batch.commit();
     await _invalidateCounts(episodeId);
+
+    if (parentId != null) {
+      // The author of the parent comment is told about the reply in their own
+      // notification list. Best effort: the reply itself is already saved.
+      try {
+        final parent = await _comments(episodeId).doc(parentId).get();
+        final owner = parent.data()?['authorUid'] as String? ?? '';
+        await _notifications.sendReply(
+          toUid: owner,
+          actor: author,
+          episodeId: episodeId,
+          commentId: parentId,
+          text: trimmed,
+        );
+      } on Object {
+        // Offline or the parent vanished; the thread stays correct.
+      }
+    }
     return ref.id;
   }
 

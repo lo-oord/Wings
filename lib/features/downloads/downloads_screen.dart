@@ -6,6 +6,7 @@ import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_feedback.dart';
 import '../../core/widgets/wings_image.dart';
@@ -56,6 +57,26 @@ class DownloadsScreen extends ConsumerWidget {
             ),
           ],
         ),
+        actions: <Widget>[
+          if (tasks.any((task) => task.status == DownloadStatus.downloading))
+            IconButton(
+              tooltip: Tr.of(context, ar: 'إيقاف الكل', en: 'Pause all'),
+              onPressed: () => ref.read(downloadServiceProvider).pauseAll(),
+              icon: const Icon(Icons.pause_circle_outline_rounded),
+            ),
+          if (tasks.any((task) => task.status == DownloadStatus.paused))
+            IconButton(
+              tooltip: Tr.of(context, ar: 'استئناف الكل', en: 'Resume all'),
+              onPressed: () => ref.read(downloadServiceProvider).resumeAll(),
+              icon: const Icon(Icons.play_circle_outline_rounded),
+            ),
+          if (failed.isNotEmpty)
+            IconButton(
+              tooltip: Tr.of(context, ar: 'إعادة المحاولة', en: 'Retry all'),
+              onPressed: () => ref.read(downloadServiceProvider).retryAll(),
+              icon: const Icon(Icons.replay_rounded),
+            ),
+        ],
       ),
       body: tasks.isEmpty
           ? WingsEmptyState(

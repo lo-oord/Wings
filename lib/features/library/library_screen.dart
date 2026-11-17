@@ -8,6 +8,7 @@ import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_cards.dart';
 import '../../core/widgets/wings_feedback.dart';
 import '../../core/widgets/wings_buttons.dart';
@@ -90,6 +91,34 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   children: <Widget>[
                     Text(l10n.libraryTitle, style: context.text.headlineSmall),
                     const Spacer(),
+                    if (ref.watch(authProvider) != null)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                          end: Space.xs,
+                        ),
+                        child: WingsIconButton(
+                          icon: Icons.sync_rounded,
+                          tooltip: Tr.of(
+                            context,
+                            ar: 'مزامنة المكتبة',
+                            en: 'Sync library',
+                          ),
+                          onPressed: () async {
+                            await ref
+                                .read(authProvider.notifier)
+                                .syncNow(force: true);
+                            if (context.mounted) {
+                              context.showSnack(
+                                Tr.of(
+                                  context,
+                                  ar: 'تمت مزامنة مكتبتك.',
+                                  en: 'Your library is synced.',
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
                     WingsIconButton(
                       icon: Icons.download_done_rounded,
                       tooltip: l10n.downloadsTitle,

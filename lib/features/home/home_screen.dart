@@ -15,6 +15,7 @@ import '../../core/widgets/wings_layout.dart';
 import '../../core/utils/formatters.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/library.dart';
+import '../live/live_widgets.dart';
 import 'home_providers.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -38,6 +39,9 @@ class HomeScreen extends ConsumerWidget {
             slivers: <Widget>[
               const SliverToBoxAdapter(child: _HomeHeader()),
               if (!online) const SliverToBoxAdapter(child: WingsOfflineStrip()),
+              // Live channels sit above the feed and never depend on it, so the
+              // three broadcast cards stay visible while the catalogue loads.
+              const SliverToBoxAdapter(child: LiveChannelRail()),
               ...feed.when(
                 data: (value) =>
                     _buildContent(context, ref, value, continueWatching),
@@ -209,7 +213,7 @@ class _HomeHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref.watch(unreadNotificationsProvider);
+    final unread = ref.watch(unreadEverythingProvider);
     final palette = context.palette;
     return Padding(
       padding: const EdgeInsets.fromLTRB(

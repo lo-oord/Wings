@@ -12,6 +12,7 @@ import '../core/services/download_service.dart';
 import '../core/services/in_app_notifications.dart';
 import '../core/services/new_episode_worker.dart';
 import '../core/services/notification_service.dart';
+import '../core/services/permission_service.dart';
 import '../core/services/share_service.dart';
 import '../core/services/storage_service.dart';
 import '../core/storage/local_store.dart';
@@ -20,13 +21,17 @@ import '../data/models/app_notification.dart';
 import '../data/models/library.dart';
 import '../data/repositories/anime_repository.dart';
 import '../data/repositories/auth_repository.dart';
+import '../data/models/social_notification.dart';
 import '../data/repositories/library_repository.dart';
+import '../data/repositories/notification_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/sources/algolia_client.dart';
 import '../data/sources/anime_source.dart';
 import '../data/sources/cartoony_source.dart';
 import '../data/sources/firestore_client.dart';
+import '../data/sources/live_source.dart';
 import '../data/sources/multi_source_catalogue.dart';
+import '../data/models/live_channel.dart';
 import '../data/sources/server_resolver.dart';
 import '../data/sources/wings_catalogue_source.dart';
 
@@ -103,6 +108,22 @@ final animeSourceProvider = Provider<AnimeSource>(
   ]),
 );
 
+/// Live television channels (Spacetoon, MBC 3, Japanese anime street).
+final liveSourceProvider = Provider<LiveSource>(
+  (ref) => LiveSource(ref.watch(httpClientProvider)),
+);
+
+/// The three pinned channels, refreshed with their live schedule at most every
+/// five minutes. The pinned list is returned whenever the endpoint fails, so a
+/// live card never disappears from the hero.
+final liveChannelsProvider = FutureProvider<List<LiveChannel>>((ref) async {
+  try {
+    return await ref.watch(liveSourceProvider).channels();
+  } on Object {
+    return LiveSource.seeds;
+  }
+});
+
 final animeRepositoryProvider = Provider<AnimeRepository>((ref) {
   return AnimeRepository(
     ref.watch(animeSourceProvider),
@@ -125,6 +146,10 @@ final notificationServiceProvider = Provider<NotificationService>(
 
 final storageServiceProvider = Provider<StorageService>(
   (ref) => StorageService(),
+);
+
+final permissionServiceProvider = Provider<PermissionService>(
+  (ref) => PermissionService(),
 );
 
 final downloadServiceProvider = Provider<DownloadService>((ref) {
@@ -291,6 +316,44 @@ class LibraryState {
 class LibraryController extends Notifier<LibraryState> {
   LibraryRepository get _repo => ref.read(libraryRepositoryProvider);
 
+  DateTime? _lastStatsPush;
+
+  /// Publishes the counters shown on the public profile.
+  ///
+  /// They used to be refreshed only when the profile screen was open, so a
+  /// favourite added from a detail page never reached the public profile.
+  /// Playback saves progress every few seconds, so writes are throttled unless
+  /// the caller forces one (a favourite, a status change, a completed episode).
+  void _publishStats({bool force = false}) {
+    final current = state;
+    final last = _lastStatsPush;
+    if (!force &&
+        last != null &&
+        DateTime.now().difference(last) < const Duration(minutes: 5)) {
+      return;
+    }
+    final user = ref.read(authProvider);
+    if (user == null || !ref.read(firebaseReadyProvider)) return;
+    final stats = ProfileStats(
+      animeWatched: current.history.map((item) => item.animeId).toSet().length,
+      episodesWatched: current.history.where((item) => item.completed).length,
+      favorites: current.favorites.length,
+      completed: current.byStatus(LibraryStatus.completed).length,
+    );
+    final favorites = <ProfileFavorite>[
+      for (final entry in current.favorites.take(12))
+        ProfileFavorite(
+          animeId: entry.anime.id,
+          title: entry.anime.title,
+          imageUrl: entry.anime.imageUrl ?? '',
+        ),
+    ];
+    _lastStatsPush = DateTime.now();
+    unawaited(
+      ref.read(authProvider.notifier).publishStats(stats, favorites: favorites),
+    );
+  }
+
   @override
   LibraryState build() => _read();
 
@@ -302,6 +365,9 @@ class LibraryController extends Notifier<LibraryState> {
 
   /// Re-reads the store after a cloud pull.
   void refresh() => state = _read();
+
+  /// Pushes the current counters to the account's public profile.
+  void publishCurrentStats() => _publishStats(force: true);
 
   /// Pushes a single record for the signed-in account. Failures stay local and
   /// are reconciled by the next incremental pull.
@@ -325,6 +391,7 @@ class LibraryController extends Notifier<LibraryState> {
     if (entry != null) {
       await _push((sync, uid) => sync.pushEntry(uid, entry));
     }
+    _publishStats(force: true);
   }
 
   Future<void> setStatus(Anime anime, LibraryStatus status) async {
@@ -334,12 +401,14 @@ class LibraryController extends Notifier<LibraryState> {
     if (entry != null) {
       await _push((sync, uid) => sync.pushEntry(uid, entry));
     }
+    _publishStats(force: true);
   }
 
   Future<void> removeFromLibrary(String animeId) async {
     await _repo.removeFromLibrary(animeId);
     state = _read();
     await _push((sync, uid) => sync.deleteEntry(uid, animeId));
+    _publishStats(force: true);
   }
 
   Future<void> saveProgress(
@@ -356,6 +425,7 @@ class LibraryController extends Notifier<LibraryState> {
     if (libraryEntry != null) {
       await _push((sync, uid) => sync.pushEntry(uid, libraryEntry));
     }
+    _publishStats(force: completed);
   }
 
   Future<void> clearHistory() async {
@@ -521,6 +591,30 @@ final socialRepositoryProvider = Provider<SocialRepository>(
   ),
 );
 
+final notificationRepositoryProvider = Provider<NotificationRepository>(
+  (ref) => NotificationRepository(FirebaseFirestore.instance),
+);
+
+/// Replies and future community alerts for one account.
+final socialNotificationsProvider = StreamProvider.autoDispose
+    .family<List<SocialNotification>, String>(
+      (ref, uid) => ref.watch(notificationRepositoryProvider).watch(uid),
+    );
+
+final socialUnreadProvider = Provider.family<int, String>((ref, uid) {
+  final items = ref.watch(socialNotificationsProvider(uid)).value;
+  if (items == null) return 0;
+  return items.where((item) => !item.read).length.clamp(0, 99).toInt();
+});
+
+/// Unread count shown on the home bell: local episode alerts plus replies.
+final unreadEverythingProvider = Provider<int>((ref) {
+  final local = ref.watch(unreadNotificationsProvider);
+  final uid = ref.watch(authProvider)?.id;
+  if (uid == null) return local;
+  return (local + ref.watch(socialUnreadProvider(uid))).clamp(0, 99).toInt();
+});
+
 /// The full profile document of the signed-in user.
 class ProfileController extends Notifier<UserProfile?> {
   @override
@@ -549,6 +643,49 @@ final publicProfileProvider = StreamProvider.autoDispose
     );
 
 class AuthController extends Notifier<AuthUser?> {
+  /// Account whose library has already been linked during this app session.
+  String? _syncedUid;
+  DateTime? _lastSync;
+
+  /// Links (or re-pulls) the cloud copy of the library.
+  ///
+  /// Restoring a saved Firebase session never went through `AccountService`, so
+  /// nothing was ever pulled and the library stayed device-local. Doing it here
+  /// covers cold starts, Google sign-ins and silent token refreshes alike.
+  Future<void> _ensureCloudSync(String uid) async {
+    final first = _syncedUid != uid;
+    if (!first) return;
+    try {
+      await ref.read(cloudSyncProvider).attach(uid);
+      _syncedUid = uid;
+      _lastSync = DateTime.now();
+    } on Object {
+      // Offline: the next app start or resume retries.
+    }
+  }
+
+  /// Pulls remote changes while the app runs (resume, manual refresh).
+  Future<void> syncNow({bool force = false}) async {
+    final user = state;
+    if (user == null || !ref.read(firebaseReadyProvider)) return;
+    final last = _lastSync;
+    if (!force &&
+        last != null &&
+        DateTime.now().difference(last) < const Duration(minutes: 2)) {
+      return;
+    }
+    try {
+      final sync = ref.read(cloudSyncProvider);
+      await sync.attach(user.id);
+      await sync.pull(user.id);
+      _syncedUid = user.id;
+      _lastSync = DateTime.now();
+      ref.read(libraryProvider.notifier).refresh();
+    } on Object {
+      // Keep the local library when the network is unavailable.
+    }
+  }
+
   @override
   AuthUser? build() {
     final repository = ref.watch(authRepositoryProvider);
@@ -594,6 +731,7 @@ class AuthController extends Notifier<AuthUser?> {
         // A rename or a new badge only shows on comments written from now on
         // unless the existing snapshots are refreshed too.
         unawaited(ref.read(socialRepositoryProvider).syncAuthor(profile));
+        await _ensureCloudSync(profile.uid);
         await _afterAccountReady();
         return;
       }
@@ -623,6 +761,9 @@ class AuthController extends Notifier<AuthUser?> {
     try {
       ref.read(libraryProvider.notifier).refresh();
       await ref.read(settingsProvider.notifier).reloadFromStore();
+      // Republish the counters so the public profile matches the library that
+      // was just downloaded, even before the profile screen is opened.
+      ref.read(libraryProvider.notifier).publishCurrentStats();
     } on Object {
       // Controllers will rebuild on their next mutation.
     }
@@ -813,6 +954,8 @@ class AuthController extends Notifier<AuthUser?> {
   }
 
   Future<void> signOut() async {
+    _syncedUid = null;
+    _lastSync = null;
     final service = ref.read(accountServiceProvider);
     if (service != null) {
       await service.signOut();

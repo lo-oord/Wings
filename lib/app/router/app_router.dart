@@ -11,6 +11,8 @@ import '../../features/explore/explore_screen.dart';
 import '../../features/explore/genre_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/library/library_screen.dart';
+import '../../features/live/live_player_screen.dart';
+import '../../data/models/live_channel.dart';
 import '../../features/notifications/notifications_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/player/player_screen.dart';
@@ -185,6 +187,19 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           GenreScreen(
             genre: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/live/:id',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          LivePlayerScreen(
+            channelId: Uri.decodeComponent(state.pathParameters['id'] ?? ''),
+            channel: state.extra is LiveChannel
+                ? state.extra! as LiveChannel
+                : null,
           ),
         ),
       ),
