@@ -49,3 +49,11 @@ app.*.map.json
 
 # Local reference material (provider source under investigation)
 .ref/
+
+# Release signing material (kept in GitHub Actions secrets, never committed)
+/android/key.properties
+*.jks
+*.keystore
+
+# Local tooling downloads (JDK used once to create the upload keystore)
+.tooling/

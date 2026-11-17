@@ -28,6 +28,26 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is missing; release artifacts will use the debug keystore."
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/wings-upload.jks
+          cat > android/key.properties <<PROPS
+          storeFile=app/wings-upload.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          PROPS
+          keytool -list -v -keystore android/app/wings-upload.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" | grep -E "SHA1:|SHA256:"
+
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib test
 

@@ -1,8 +1,33 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Stable release signing.
+// Locally: android/key.properties (git-ignored) points at the keystore on disk.
+// CI: WINGS_KEYSTORE_* environment variables, written by the workflow.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+
+fun signingValue(key: String, env: String): String? =
+    keystoreProperties.getProperty(key) ?: System.getenv(env)
+
+val releaseStorePath = signingValue("storeFile", "WINGS_KEYSTORE_FILE")
+val releaseStorePassword = signingValue("storePassword", "WINGS_KEYSTORE_PASSWORD")
+val releaseKeyAlias = signingValue("keyAlias", "WINGS_KEY_ALIAS")
+val releaseKeyPassword = signingValue("keyPassword", "WINGS_KEY_PASSWORD")
+val hasReleaseSigning =
+    releaseStorePath != null &&
+        releaseStorePassword != null &&
+        releaseKeyAlias != null &&
+        releaseKeyPassword != null
 
 android {
     namespace = "com.wings.wings"
@@ -27,11 +52,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseStorePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signed with the stable upload key when it is configured, otherwise
+            // with the debug key so `flutter run --release` still works.
+            signingConfig =
+                if (hasReleaseSigning) {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
         }
     }
 }
