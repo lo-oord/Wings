@@ -115,15 +115,19 @@ Official marks live in **`badges/{uid}`**, a document with exactly two fields:
 * The document is readable by every signed-in user and writable **only** by an
   administrator (`config/admins`) or from the Firebase console, which bypasses
   the rules.
-* It is the authoritative source. The app copies the value into
-  `users/{uid}.badges` and `profiles/{uid}.badges`; the rules accept that copy
-  only when it equals the `badges/{uid}` value, so the client can never grant
-  or silently revoke a mark.
+* It is the single authority: whatever it contains — a grant **or a removal**
+  — is what the account shows. The app never merges the older copies back in
+  while this document exists, and never writes badges itself, so turning
+  `developer` off here cannot switch itself back on. The stored copies on
+  `users/{uid}` and `profiles/{uid}` are only a fallback for accounts granted
+  before this document existed.
 * Because the app reads `badges/{uid}` live, granting or removing a mark shows
   up on every device — the owner's handle, their profile frame and every
   existing comment — without reinstalling or signing out.
-* If `badges/{uid}` does not exist, the app still honours the older copies in
-  `profiles/{uid}` and `users/{uid}`.
+* To revoke a mark, set its field to `false` (do not delete the document while
+  the other mark is still on, and do not leave the field out): the two flags are
+  independent, so `{"verified": true, "developer": false}` is a verified
+  account only.
 
 **How the marks look**
 

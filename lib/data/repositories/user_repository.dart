@@ -224,15 +224,4 @@ class UserRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
-
-  /// Copies the official badges into the two profile documents so the stored
-  /// snapshots on existing comments are refreshed by [SocialRepository].
-  Future<void> publishBadges(String uid, ProfileBadges badges) async {
-    final batch = _db.batch();
-    batch.update(_user(uid), <String, dynamic>{'badges': badges.toMap()});
-    batch.set(_public(uid), <String, dynamic>{
-      'badges': badges.toMap(),
-    }, SetOptions(merge: true));
-    await batch.commit();
-  }
 }

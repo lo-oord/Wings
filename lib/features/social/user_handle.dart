@@ -39,7 +39,9 @@ class UserHandle extends ConsumerWidget {
     final name = (live?.username.trim().isNotEmpty ?? false)
         ? live!.username
         : username;
-    final resolved = live == null ? badges : badges.merge(live.badges);
+    // The live profile (backed by the authoritative badge document) replaces
+    // the snapshot; merging kept a revoked mark alive on old comments forever.
+    final resolved = live == null ? badges : live.badges;
     return UsernameText(
       username: name,
       badges: resolved,

@@ -857,22 +857,11 @@ class AuthController extends Notifier<AuthUser?> {
             final next = current.copyWith(badges: badges);
             ref.read(profileProvider.notifier).apply(next);
             unawaited(ref.read(socialRepositoryProvider).syncAuthor(next));
-            unawaited(_publishBadges(next));
           },
           onError: (Object _) {
             // Badge rules not published yet: the stored copies keep working.
           },
         );
-  }
-
-  Future<void> _publishBadges(UserProfile profile) async {
-    try {
-      await ref
-          .read(userRepositoryProvider)
-          .publishBadges(profile.uid, profile.badges);
-    } on Object {
-      // Offline or denied; the badge document stays authoritative.
-    }
   }
 
   /// Loads the profile document so screens always read the authoritative
@@ -911,12 +900,31 @@ class AuthController extends Notifier<AuthUser?> {
     await _afterAccountReady();
   }
 
-  /// Combines the stored copies of the badges. The public mirror can carry a
-  /// grant that the owner document has not received yet, and the badge
-  /// document (when present) is already applied by the repository, so a union
-  /// never drops a mark an administrator gave.
+  /// Resolves the signature of the account.
+  ///
+  /// `badges/{uid}` is the single authority: an administrator grants and
+  /// revokes a mark there, and whatever it says — including *off* — is what the
+  /// account gets. The copies stored on the owner and public documents are only
+  /// a fallback for accounts granted before that document existed. Merging the
+  /// copies instead (the previous behaviour) meant a revoked mark was put back
+  /// by the stale copy on the next read, so developer mode switched itself on
+  /// again after the administrator turned it off.
   Future<UserProfile> _withPublicBadges(UserProfile profile) async {
     try {
+      final granted = await ref
+          .read(userRepositoryProvider)
+          .fetchBadges(profile.uid);
+      if (granted != null) {
+        return granted == profile.badges
+            ? profile
+            : profile.copyWith(badges: granted);
+      }
+    } on Object {
+      // Offline: keep what the profile already carries until the next read.
+    }
+    try {
+      // Legacy path only: no badge document, so the stored copies are all we
+      // have and a union keeps a grant that only one of them received.
       final public = await ref
           .read(userRepositoryProvider)
           .fetchPublic(profile.uid);

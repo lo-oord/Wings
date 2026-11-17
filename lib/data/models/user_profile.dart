@@ -17,8 +17,11 @@ class ProfileBadges {
   /// A handle that carries both marks is drawn with the royal gradient.
   bool get both => verified && developer;
 
-  /// The signature an administrator granted; used by the UI to pick the
-  /// colour and the badge set of a handle.
+  /// Union of two stored copies.
+  ///
+  /// Only for accounts granted before `badges/{uid}` existed: when that
+  /// document is present it wins outright, because a union would resurrect a
+  /// mark an administrator just revoked.
   ProfileBadges merge(ProfileBadges other) => ProfileBadges(
     verified: verified || other.verified,
     developer: developer || other.developer,
