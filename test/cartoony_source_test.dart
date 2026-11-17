@@ -146,6 +146,8 @@ void main() {
       expect(servers.first.url, 'https://cdn.example.com/s/1.m3u8');
       expect(servers.first.flavor, ServerFlavor.direct);
       expect(servers.first.requiresBrowser, isFalse);
+      expect(servers.first.headers['Referer'], 'https://cartoony.net/');
+      expect(servers.first.headers['Origin'], 'https://cartoony.net');
     });
 
     test('latest feed carries the anime context', () async {
@@ -187,6 +189,7 @@ void main() {
       final servers = await source.servers(anime, episodes.first);
       expect(servers.first.url, 'https://cdn.example.com/tg/1.m3u8');
       expect(servers.first.quality, 'FULL HD');
+      expect(servers.first.headers['Referer'], 'https://cartoony.net/');
     });
 
     test('has no recent-episode feed', () async {

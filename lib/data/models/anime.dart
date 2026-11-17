@@ -188,7 +188,8 @@ class StreamServer {
   final bool requiresBrowser;
   final bool isDirectFile;
 
-  /// Extra request headers the stream host requires (referer, cookies …).
+  /// Extra request headers required by the provider's media endpoint
+  /// (referer, cookies …). Existing sources leave this empty.
   final Map<String, String> headers;
 
   int get qualityRank {

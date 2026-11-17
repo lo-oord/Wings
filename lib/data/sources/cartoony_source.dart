@@ -252,7 +252,11 @@ class CartoonySource implements AnimeSource {
       return const <StreamServer>[];
     }
 
-    final headers = <String, String>{'Referer': '$_lastBase/'};
+    final headers = <String, String>{
+      'Referer': '$_lastBase/',
+      'Origin': _lastBase,
+      'Accept': 'application/vnd.apple.mpegurl, application/x-mpegURL, */*',
+    };
     if (link.contains('.m3u8')) {
       final variants = await _playlistVariants(link);
       if (variants.length > 1) {
