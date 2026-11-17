@@ -63,7 +63,14 @@ class MainActivity : FlutterActivity() {
             val resolver = contentResolver
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                put(
+                    MediaStore.MediaColumns.MIME_TYPE,
+                    if (fileName.endsWith(".ts", ignoreCase = true)) {
+                        "video/mp2t"
+                    } else {
+                        "video/mp4"
+                    },
+                )
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
                     Environment.DIRECTORY_DOWNLOADS + File.separator + "Wings",

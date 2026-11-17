@@ -154,54 +154,12 @@ class DownloadService {
   Future<void> _run(DownloadTask task) async {
     final token = CancelToken();
     _tokens[task.id] = token;
-    IOSink? sink;
     try {
       final directory = await _downloadDirectory();
       final file = File('${directory.path}/${_fileName(task)}');
-      final existing = await file.exists() ? await file.length() : 0;
-
-      final response = await _dio.get<ResponseBody>(
-        task.url,
-        cancelToken: token,
-        options: Options(
-          responseType: ResponseType.stream,
-          followRedirects: true,
-          headers: <String, String>{
-            'User-Agent': kBrowserUserAgent,
-            if (existing > 0) 'Range': 'bytes=$existing-',
-          },
-          validateStatus: (status) => status == 200 || status == 206,
-        ),
-      );
-
-      final body = response.data;
-      if (body == null) throw const FormatException('empty body');
-      final partial = response.statusCode == 206;
-      final headerLength =
-          int.tryParse(
-            response.headers.value(Headers.contentLengthHeader) ?? '',
-          ) ??
-          0;
-      final total = partial ? existing + headerLength : headerLength;
-      final startingBytes = partial ? existing : 0;
-
-      _tasks[task.id] = _tasks[task.id]!.copyWith(
-        totalBytes: total > 0 ? total : _tasks[task.id]!.totalBytes,
-        receivedBytes: startingBytes,
-      );
-      _emit();
-
-      sink = file.openWrite(mode: partial ? FileMode.append : FileMode.write);
-      var received = 0;
-      await for (final chunk in body.stream) {
-        if (token.isCancelled) break;
-        sink.add(chunk);
-        received += chunk.length;
-        _updateProgress(task.id, startingBytes + received, total);
-      }
-      await sink.flush();
-      await sink.close();
-      sink = null;
+      final transfer = _isHls(task.url)
+          ? await _downloadHls(task, file, token)
+          : await _downloadHttp(task, file, token);
 
       if (token.isCancelled ||
           _tasks[task.id]?.status == DownloadStatus.paused) {
@@ -224,8 +182,10 @@ class DownloadService {
         filePath: file.path,
         fileName: fileName,
         publicUri: publicUri,
-        receivedBytes: startingBytes + received,
-        totalBytes: total > 0 ? total : startingBytes + received,
+        receivedBytes: transfer.receivedBytes,
+        totalBytes: transfer.totalBytes > 0
+            ? transfer.totalBytes
+            : transfer.receivedBytes,
       );
       _tasks[task.id] = done;
       await _persist(done);
@@ -258,10 +218,129 @@ class DownloadService {
         enabled: notificationsEnabled,
       );
     } finally {
-      await sink?.close();
       _tokens.remove(task.id);
       unawaited(_pump());
     }
+  }
+
+  bool _isHls(String url) => url.toLowerCase().contains('.m3u8');
+
+  Map<String, String> _headers(DownloadTask task) => <String, String>{
+    'User-Agent': kBrowserUserAgent,
+    ...task.headers,
+  };
+
+  Future<_TransferStats> _downloadHttp(
+    DownloadTask task,
+    File file,
+    CancelToken token,
+  ) async {
+    final existing = await file.exists() ? await file.length() : 0;
+    final response = await _dio.get<ResponseBody>(
+      task.url,
+      cancelToken: token,
+      options: Options(
+        responseType: ResponseType.stream,
+        followRedirects: true,
+        headers: <String, String>{
+          ..._headers(task),
+          if (existing > 0) 'Range': 'bytes=$existing-',
+        },
+        validateStatus: (status) => status == 200 || status == 206,
+      ),
+    );
+    final body = response.data;
+    if (body == null) throw const FormatException('empty body');
+    final partial = response.statusCode == 206;
+    final headerLength =
+        int.tryParse(
+          response.headers.value(Headers.contentLengthHeader) ?? '',
+        ) ??
+        0;
+    final total = partial ? existing + headerLength : headerLength;
+    final startingBytes = partial ? existing : 0;
+    _tasks[task.id] = _tasks[task.id]!.copyWith(
+      totalBytes: total > 0 ? total : _tasks[task.id]!.totalBytes,
+      receivedBytes: startingBytes,
+    );
+    _emit();
+    final sink = file.openWrite(
+      mode: partial ? FileMode.append : FileMode.write,
+    );
+    var received = 0;
+    try {
+      await for (final chunk in body.stream) {
+        if (token.isCancelled) break;
+        sink.add(chunk);
+        received += chunk.length;
+        _updateProgress(task.id, startingBytes + received, total);
+      }
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+    return _TransferStats(
+      receivedBytes: startingBytes + received,
+      totalBytes: total,
+    );
+  }
+
+  Future<_TransferStats> _downloadHls(
+    DownloadTask task,
+    File file,
+    CancelToken token,
+  ) async {
+    final response = await _dio.get<String>(
+      task.url,
+      cancelToken: token,
+      options: Options(
+        responseType: ResponseType.plain,
+        headers: _headers(task),
+        validateStatus: (status) => status == 200,
+      ),
+    );
+    final playlist = response.data;
+    if (playlist == null || playlist.isEmpty) {
+      throw const FormatException('empty HLS playlist');
+    }
+    final base = Uri.parse(task.url);
+    final segments = playlist
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty && !line.startsWith('#'))
+        .map((line) => base.resolve(line))
+        .toList(growable: false);
+    if (segments.isEmpty) {
+      throw const FormatException('HLS playlist has no segments');
+    }
+    if (await file.exists()) await file.delete();
+    final sink = file.openWrite();
+    var received = 0;
+    try {
+      for (var index = 0; index < segments.length; index++) {
+        if (token.isCancelled) break;
+        final segment = await _dio.get<List<int>>(
+          segments[index].toString(),
+          cancelToken: token,
+          options: Options(
+            responseType: ResponseType.bytes,
+            headers: _headers(task),
+            validateStatus: (status) => status == 200,
+          ),
+        );
+        final bytes = segment.data;
+        if (bytes == null || bytes.isEmpty) {
+          throw const FormatException('empty HLS segment');
+        }
+        sink.add(bytes);
+        received += bytes.length;
+        _updateProgress(task.id, index + 1, segments.length);
+      }
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+    return _TransferStats(receivedBytes: received, totalBytes: received);
   }
 
   void _updateProgress(String id, int received, int total) {
@@ -311,7 +390,8 @@ class DownloadService {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     final base = title.isEmpty ? 'Wings' : title;
-    return '$base - الحلقة ${task.episodeNumber} - Wings.mp4';
+    final extension = _isHls(task.url) ? 'ts' : 'mp4';
+    return '$base - الحلقة ${task.episodeNumber} - Wings.$extension';
   }
 
   Future<void> _deleteFile(String? path) async {
@@ -338,4 +418,11 @@ class DownloadService {
     }
     _controller.close();
   }
+}
+
+class _TransferStats {
+  const _TransferStats({required this.receivedBytes, required this.totalBytes});
+
+  final int receivedBytes;
+  final int totalBytes;
 }

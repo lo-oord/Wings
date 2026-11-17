@@ -687,6 +687,7 @@ class _DownloadSheetState extends ConsumerState<_DownloadSheet> {
       episodeTitle: widget.episode.title,
       quality: server.quality,
       url: resolved.url,
+      headers: resolved.headers,
       status: DownloadStatus.queued,
       createdAt: DateTime.now(),
     );

@@ -696,6 +696,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     episodeTitle: episode.title,
                     quality: server.quality,
                     url: resolved.url,
+                    headers: resolved.headers,
                     status: DownloadStatus.queued,
                     createdAt: DateTime.now(),
                   );

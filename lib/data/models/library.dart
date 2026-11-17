@@ -170,6 +170,7 @@ class DownloadTask {
     required this.createdAt,
     this.posterUrl,
     this.episodeTitle,
+    this.headers = const <String, String>{},
     this.filePath,
     this.fileName,
     this.publicUri,
@@ -187,6 +188,7 @@ class DownloadTask {
   final String? episodeTitle;
   final String quality;
   final String url;
+  final Map<String, String> headers;
   final DownloadStatus status;
   final String? filePath;
   final String? fileName;
@@ -222,6 +224,7 @@ class DownloadTask {
       episodeTitle: episodeTitle,
       quality: quality,
       url: url,
+      headers: headers,
       status: status ?? this.status,
       filePath: filePath ?? this.filePath,
       fileName: fileName ?? this.fileName,
@@ -243,6 +246,7 @@ class DownloadTask {
     'episodeTitle': episodeTitle,
     'quality': quality,
     'url': url,
+    'headers': headers,
     'status': status.name,
     'filePath': filePath,
     'fileName': fileName,
@@ -263,6 +267,13 @@ class DownloadTask {
     episodeTitle: json['episodeTitle'] as String?,
     quality: json['quality'] as String? ?? '',
     url: json['url'] as String? ?? '',
+    headers: json['headers'] is Map
+        ? Map<String, String>.fromEntries(
+            (json['headers'] as Map).entries.map(
+              (entry) => MapEntry(entry.key.toString(), entry.value.toString()),
+            ),
+          )
+        : const <String, String>{},
     status: DownloadStatus.values.firstWhere(
       (s) => s.name == json['status'],
       orElse: () => DownloadStatus.failed,
