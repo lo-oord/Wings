@@ -139,6 +139,9 @@ class _WingsAppState extends ConsumerState<WingsApp>
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final router = ref.watch(routerProvider);
+    // Keeps the background sync timer alive for the whole app session; it is
+    // rescheduled whenever the user changes the interval in settings.
+    ref.watch(syncSchedulerProvider);
     _router = router;
 
     return MaterialApp.router(

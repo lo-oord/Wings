@@ -271,6 +271,40 @@ service cloud.firestore {
         allow read, write: if isSelf(uid);
       }
 
+      // Episodes bookmarked into «حلقاتي». They carry display information only
+      // — never a download path, a stream URL or playback progress.
+      match /episodes/{episodeKey} {
+        allow read: if isSelf(uid);
+        allow create, update: if isSelf(uid)
+          && request.resource.data.animeId is string
+          && request.resource.data.animeId.size() <= 200
+          && request.resource.data.episodeId is string
+          && request.resource.data.episodeId.size() <= 200
+          && request.resource.data.animeTitle is string
+          && request.resource.data.animeTitle.size() <= 200
+          && request.resource.data.episodeNumber is int
+          && request.resource.data.episodeNumber >= 0
+          && request.resource.data.savedAt is timestamp
+          && (!('episodeTitle' in request.resource.data)
+              || request.resource.data.episodeTitle is string)
+          && (!('posterUrl' in request.resource.data)
+              || request.resource.data.posterUrl is string)
+          && (!('contentPath' in request.resource.data)
+              || request.resource.data.contentPath is string);
+        allow delete: if isSelf(uid);
+      }
+
+      // Recent searches: one tiny document kept in step across devices.
+      match /search/{docId} {
+        allow read: if isSelf(uid);
+        allow create, update: if isSelf(uid)
+          && request.resource.data.items is list
+          && request.resource.data.items.size() <= 20
+          && (!('updatedAt' in request.resource.data)
+              || request.resource.data.updatedAt is timestamp);
+        allow delete: if isSelf(uid);
+      }
+
       // Community alerts: a reply notification is written by the device that
       // posted the reply, straight into the parent author's list. The shape is
       // fixed so nobody can use it as a free-form mailbox, and only the owner

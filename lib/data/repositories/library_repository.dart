@@ -131,8 +131,82 @@ class LibraryRepository {
   Future<void> upsertEntry(LibraryEntry entry) =>
       _store.putJson(LocalStore.libraryBox, entry.anime.id, entry.toJson());
 
-  Future<void> upsertHistory(WatchHistoryEntry entry) =>
-      _store.putJson(LocalStore.historyBox, entry.key, entry.toJson());
+  /// Applies a remote history record without ever losing local progress: the
+  /// "watched" flag is sticky and the furthest position wins, so opening the
+  /// account on a second device never un-watches an episode.
+  Future<void> upsertHistory(WatchHistoryEntry entry) async {
+    final existing = historyFor(entry.animeId, entry.episodeId);
+    if (existing == null) {
+      await _store.putJson(LocalStore.historyBox, entry.key, entry.toJson());
+      return;
+    }
+    final merged = entry.copyWith(
+      completed: entry.completed || existing.completed,
+      position: entry.position > existing.position
+          ? entry.position
+          : existing.position,
+      duration: entry.duration.inMilliseconds > 0
+          ? entry.duration
+          : existing.duration,
+    );
+    await _store.putJson(LocalStore.historyBox, merged.key, merged.toJson());
+  }
+
+  /// Episodes the viewer bookmarked into **حلقاتي**.
+  List<SavedEpisode> savedEpisodes() {
+    final list = _store
+        .valuesAsJson(LocalStore.myEpisodesBox)
+        .map(SavedEpisode.fromJson)
+        .where((item) => item.animeId.isNotEmpty && item.episodeId.isNotEmpty)
+        .toList(growable: false);
+    return list.toList()..sort((a, b) => b.savedAt.compareTo(a.savedAt));
+  }
+
+  bool isEpisodeSaved(String animeId, String episodeId) =>
+      _store.getJson(LocalStore.myEpisodesBox, '${animeId}__$episodeId') !=
+      null;
+
+  Future<SavedEpisode> toggleSavedEpisode({
+    required Anime anime,
+    required AnimeEpisode episode,
+  }) async {
+    final key = '${anime.id}__${episode.id}';
+    if (_store.getJson(LocalStore.myEpisodesBox, key) != null) {
+      await _store.delete(LocalStore.myEpisodesBox, key);
+      return SavedEpisode(
+        animeId: anime.id,
+        animeTitle: anime.title,
+        episodeId: episode.id,
+        episodeNumber: episode.number,
+        savedAt: DateTime.now(),
+      );
+    }
+    final saved = SavedEpisode(
+      animeId: anime.id,
+      animeTitle: anime.title,
+      posterUrl: anime.imageUrl,
+      contentPath: anime.contentPath,
+      episodeId: episode.id,
+      episodeNumber: episode.number,
+      episodeTitle: episode.title,
+      savedAt: DateTime.now(),
+    );
+    await _store.putJson(LocalStore.myEpisodesBox, key, saved.toJson());
+    return saved;
+  }
+
+  Future<void> removeSavedEpisode(String animeId, String episodeId) =>
+      _store.delete(LocalStore.myEpisodesBox, '${animeId}__$episodeId');
+
+  Future<void> upsertSavedEpisode(SavedEpisode episode) =>
+      _store.putJson(LocalStore.myEpisodesBox, episode.key, episode.toJson());
+
+  /// Replaces the recent searches with a merged set (used after a cloud pull).
+  Future<void> replaceSearchHistory(List<String> items) => _store.putJson(
+    LocalStore.searchBox,
+    'recent',
+    items.take(_searchLimit).toList(growable: false),
+  );
 
   /// Removes every account-scoped record. Used when the signed-in account
   /// changes so one user's library is never shown to, or pushed for, another.
@@ -140,6 +214,7 @@ class LibraryRepository {
     await _store.clear(LocalStore.libraryBox);
     await _store.clear(LocalStore.historyBox);
     await _store.clear(LocalStore.searchBox);
+    await _store.clear(LocalStore.myEpisodesBox);
   }
 
   Future<void> removeHistoryEntry(String key) =>

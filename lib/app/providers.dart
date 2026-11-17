@@ -281,11 +281,19 @@ class LibraryState {
     required this.entries,
     required this.history,
     required this.searches,
+    this.savedEpisodes = const <SavedEpisode>[],
   });
 
   final List<LibraryEntry> entries;
   final List<WatchHistoryEntry> history;
   final List<String> searches;
+
+  /// Episodes bookmarked into **حلقاتي**.
+  final List<SavedEpisode> savedEpisodes;
+
+  bool isEpisodeSaved(String animeId, String episodeId) => savedEpisodes.any(
+    (item) => item.animeId == animeId && item.episodeId == episodeId,
+  );
 
   LibraryEntry? entryFor(String animeId) {
     for (final entry in entries) {
@@ -317,26 +325,33 @@ class LibraryController extends Notifier<LibraryState> {
   LibraryRepository get _repo => ref.read(libraryRepositoryProvider);
 
   DateTime? _lastStatsPush;
+  String? _lastStatsSignature;
 
   /// Publishes the counters shown on the public profile.
   ///
-  /// They used to be refreshed only when the profile screen was open, so a
-  /// favourite added from a detail page never reached the public profile.
-  /// Playback saves progress every few seconds, so writes are throttled unless
-  /// the caller forces one (a favourite, a status change, a completed episode).
+  /// The numbers always describe what the viewer actually did: an episode is
+  /// counted as soon as it is opened, a title as soon as it has any history or
+  /// is marked watching/completed. Publishing is throttled for playback ticks
+  /// but bypassed whenever a value really changed, so a favourite or a watched
+  /// episode moves the counters immediately on every device.
   void _publishStats({bool force = false}) {
     final current = state;
-    final last = _lastStatsPush;
-    if (!force &&
-        last != null &&
-        DateTime.now().difference(last) < const Duration(minutes: 5)) {
-      return;
-    }
     final user = ref.read(authProvider);
     if (user == null || !ref.read(firebaseReadyProvider)) return;
+
+    final watchedAnime = <String>{
+      ...current.history.map((item) => item.animeId),
+      ...current.entries
+          .where(
+            (entry) =>
+                entry.status == LibraryStatus.watching ||
+                entry.status == LibraryStatus.completed,
+          )
+          .map((entry) => entry.anime.id),
+    };
     final stats = ProfileStats(
-      animeWatched: current.history.map((item) => item.animeId).toSet().length,
-      episodesWatched: current.history.where((item) => item.completed).length,
+      animeWatched: watchedAnime.length,
+      episodesWatched: current.history.length,
       favorites: current.favorites.length,
       completed: current.byStatus(LibraryStatus.completed).length,
     );
@@ -348,6 +363,25 @@ class LibraryController extends Notifier<LibraryState> {
           imageUrl: entry.anime.imageUrl ?? '',
         ),
     ];
+    final signature =
+        '${stats.animeWatched}/${stats.episodesWatched}/'
+        '${stats.favorites}/${stats.completed}/'
+        '${favorites.map((item) => item.animeId).join(',')}';
+    final last = _lastStatsPush;
+    final unchanged = signature == _lastStatsSignature;
+    if (!force &&
+        unchanged &&
+        last != null &&
+        DateTime.now().difference(last) < const Duration(minutes: 10)) {
+      return;
+    }
+    if (!force &&
+        !unchanged &&
+        last != null &&
+        DateTime.now().difference(last) < const Duration(seconds: 15)) {
+      return;
+    }
+    _lastStatsSignature = signature;
     _lastStatsPush = DateTime.now();
     unawaited(
       ref.read(authProvider.notifier).publishStats(stats, favorites: favorites),
@@ -361,6 +395,7 @@ class LibraryController extends Notifier<LibraryState> {
     entries: _repo.entries(),
     history: _repo.history(),
     searches: _repo.searchHistory(),
+    savedEpisodes: _repo.savedEpisodes(),
   );
 
   /// Re-reads the store after a cloud pull.
@@ -415,6 +450,7 @@ class LibraryController extends Notifier<LibraryState> {
     WatchHistoryEntry entry, {
     required bool completed,
   }) async {
+    final wasKnown = _repo.historyFor(entry.animeId, entry.episodeId) != null;
     await _repo.saveProgress(entry, completed: completed);
     state = _read();
     final stored = _repo.historyFor(entry.animeId, entry.episodeId);
@@ -425,38 +461,113 @@ class LibraryController extends Notifier<LibraryState> {
     if (libraryEntry != null) {
       await _push((sync, uid) => sync.pushEntry(uid, libraryEntry));
     }
-    _publishStats(force: completed);
+    // The first save of an episode (and finishing one) is a real event, so the
+    // counters move at once instead of waiting for the playback throttle.
+    _publishStats(force: completed || !wasKnown);
   }
 
   Future<void> clearHistory() async {
     await _repo.clearHistory();
     state = _read();
+    await _push((sync, uid) => sync.clearHistory(uid));
+    _publishStats(force: true);
   }
 
   Future<void> removeHistoryEntry(String key) async {
     await _repo.removeHistoryEntry(key);
     state = _read();
+    // Local keys are `animeId::episodeId`; the cloud document id is
+    // `animeId__episodeId`, so a removal reaches the other devices too.
+    final parts = key.split('::');
+    final cloudId = parts.length == 2 ? '${parts[0]}__${parts[1]}' : key;
+    await _push((sync, uid) => sync.deleteHistory(uid, cloudId));
+    _publishStats(force: true);
+  }
+
+  /// Saves or removes one episode in **حلقاتي**. The entry carries only
+  /// display information and is synced as such, not as a library title.
+  Future<void> toggleSavedEpisode(Anime anime, AnimeEpisode episode) async {
+    final saved = await _repo.toggleSavedEpisode(
+      anime: anime,
+      episode: episode,
+    );
+    state = _read();
+    final exists = _repo.isEpisodeSaved(anime.id, episode.id);
+    await _push(
+      (sync, uid) => exists
+          ? sync.pushSavedEpisode(uid, saved)
+          : sync.deleteSavedEpisode(uid, saved.key),
+    );
+  }
+
+  Future<void> removeSavedEpisode(String animeId, String episodeId) async {
+    await _repo.removeSavedEpisode(animeId, episodeId);
+    state = _read();
+    await _push(
+      (sync, uid) => sync.deleteSavedEpisode(uid, '${animeId}__$episodeId'),
+    );
   }
 
   Future<void> addSearch(String query) async {
     await _repo.addSearchQuery(query);
     state = _read();
+    await _push((sync, uid) => sync.pushSearch(uid, state.searches));
   }
 
   Future<void> removeSearch(String query) async {
     await _repo.removeSearchQuery(query);
     state = _read();
+    await _push((sync, uid) => sync.pushSearch(uid, state.searches));
   }
 
   Future<void> clearSearchHistory() async {
     await _repo.clearSearchHistory();
     state = _read();
+    await _push((sync, uid) => sync.pushSearch(uid, const <String>[]));
   }
 }
 
 final libraryProvider = NotifierProvider<LibraryController, LibraryState>(
   LibraryController.new,
 );
+
+/// Runs the account sync on the cadence picked in settings.
+///
+/// Every local change is still pushed immediately, so this only controls the
+/// periodic pull that brings in changes made on another device.
+class SyncScheduler {
+  SyncScheduler(this._ref) {
+    _ref.listen<AppSettings>(settingsProvider, (previous, next) {
+      if (previous?.syncInterval == next.syncInterval) return;
+      _schedule(next.syncInterval);
+    }, fireImmediately: true);
+  }
+
+  final Ref _ref;
+  Timer? _timer;
+
+  void _schedule(SyncInterval interval) {
+    _timer?.cancel();
+    _timer = null;
+    final period = interval.period;
+    // "فورًا" pushes each change as it happens, "يدويًا" runs only on demand.
+    if (period == null || period == Duration.zero) return;
+    _timer = Timer.periodic(period, (_) {
+      unawaited(_ref.read(authProvider.notifier).syncNow(force: true));
+    });
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+  }
+}
+
+final syncSchedulerProvider = Provider<SyncScheduler>((ref) {
+  final scheduler = SyncScheduler(ref);
+  ref.onDispose(scheduler.dispose);
+  return scheduler;
+});
 
 // ---------------------------------------------------------------------------
 // Downloads
@@ -663,30 +774,44 @@ class AuthController extends Notifier<AuthUser?> {
       await ref.read(cloudSyncProvider).attach(uid);
       _syncedUid = uid;
       _lastSync = DateTime.now();
+      ref.read(libraryProvider.notifier).refresh();
+      ref.read(libraryProvider.notifier).publishCurrentStats();
     } on Object {
       // Offline: the next app start or resume retries.
     }
   }
 
-  /// Pulls remote changes while the app runs (resume, manual refresh).
-  Future<void> syncNow({bool force = false}) async {
+  /// Pulls remote changes while the app runs (resume, timer, manual refresh).
+  ///
+  /// Returns false when there is nothing to sync or the network refused.
+  /// Selecting "أبدًا (يدويًا)" stops the automatic calls; the sync buttons in
+  /// the library and settings always pass [force].
+  Future<bool> syncNow({bool force = false}) async {
     final user = state;
-    if (user == null || !ref.read(firebaseReadyProvider)) return;
+    if (user == null || !ref.read(firebaseReadyProvider)) return false;
+    if (!force &&
+        ref.read(settingsProvider).syncInterval == SyncInterval.manual) {
+      return false;
+    }
     final last = _lastSync;
     if (!force &&
         last != null &&
         DateTime.now().difference(last) < const Duration(minutes: 2)) {
-      return;
+      return true;
     }
     try {
       final sync = ref.read(cloudSyncProvider);
+      // `attach` already runs the (incremental or full) pull for this account.
       await sync.attach(user.id);
-      await sync.pull(user.id);
+      await sync.pullSearch(user.id);
       _syncedUid = user.id;
       _lastSync = DateTime.now();
       ref.read(libraryProvider.notifier).refresh();
+      ref.read(libraryProvider.notifier).publishCurrentStats();
+      return true;
     } on Object {
       // Keep the local library when the network is unavailable.
+      return false;
     }
   }
 

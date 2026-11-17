@@ -154,6 +154,96 @@ class WatchHistoryEntry {
       );
 }
 
+/// An episode the viewer saved to **حلقاتي**. It is a display-only bookmark:
+/// no progress, file or download is attached to it, and it syncs as plain
+/// information across devices.
+@immutable
+class SavedEpisode {
+  const SavedEpisode({
+    required this.animeId,
+    required this.animeTitle,
+    required this.episodeId,
+    required this.episodeNumber,
+    required this.savedAt,
+    this.posterUrl,
+    this.contentPath,
+    this.episodeTitle,
+  });
+
+  final String animeId;
+  final String animeTitle;
+  final String? posterUrl;
+  final String? contentPath;
+  final String episodeId;
+  final int episodeNumber;
+  final String? episodeTitle;
+  final DateTime savedAt;
+
+  String get key => '${animeId}__$episodeId';
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'animeId': animeId,
+    'animeTitle': animeTitle,
+    'posterUrl': posterUrl,
+    'contentPath': contentPath,
+    'episodeId': episodeId,
+    'episodeNumber': episodeNumber,
+    'episodeTitle': episodeTitle,
+    'savedAt': savedAt.toIso8601String(),
+  };
+
+  factory SavedEpisode.fromJson(Map<String, dynamic> json) => SavedEpisode(
+    animeId: json['animeId'] as String? ?? '',
+    animeTitle: json['animeTitle'] as String? ?? '',
+    posterUrl: json['posterUrl'] as String?,
+    contentPath: json['contentPath'] as String?,
+    episodeId: json['episodeId'] as String? ?? '',
+    episodeNumber: (json['episodeNumber'] as num?)?.toInt() ?? 0,
+    episodeTitle: json['episodeTitle'] as String?,
+    savedAt:
+        DateTime.tryParse(json['savedAt'] as String? ?? '') ?? DateTime.now(),
+  );
+}
+
+/// How often the account data is synchronized in the background.
+///
+/// [instant] pushes every change as it happens (the default behaviour of the
+/// library) and [manual] disables the timer entirely, leaving the sync button
+/// in the library and settings as the only trigger.
+enum SyncInterval {
+  instant,
+  every30Minutes,
+  hourly,
+  daily,
+  weekly,
+  monthly,
+  manual;
+
+  static const SyncInterval fallback = SyncInterval.hourly;
+
+  /// Null means no timer runs for this choice.
+  Duration? get period => switch (this) {
+    SyncInterval.instant => Duration.zero,
+    SyncInterval.every30Minutes => const Duration(minutes: 30),
+    SyncInterval.hourly => const Duration(hours: 1),
+    SyncInterval.daily => const Duration(hours: 24),
+    SyncInterval.weekly => const Duration(days: 7),
+    SyncInterval.monthly => const Duration(days: 30),
+    SyncInterval.manual => null,
+  };
+
+  /// Arabic/English label used by the settings sheet.
+  String label({required bool arabic}) => switch (this) {
+    SyncInterval.instant => arabic ? 'المزامنة فورًا' : 'Sync instantly',
+    SyncInterval.every30Minutes => arabic ? 'كل 30 دقيقة' : 'Every 30 minutes',
+    SyncInterval.hourly => arabic ? 'كل ساعة' : 'Every hour',
+    SyncInterval.daily => arabic ? 'كل 24 ساعة' : 'Every 24 hours',
+    SyncInterval.weekly => arabic ? 'أسبوعيًا' : 'Weekly',
+    SyncInterval.monthly => arabic ? 'شهريًا' : 'Monthly',
+    SyncInterval.manual => arabic ? 'أبدًا (يدويًا)' : 'Never (manual)',
+  };
+}
+
 enum DownloadStatus { queued, downloading, paused, completed, failed }
 
 @immutable
@@ -304,6 +394,7 @@ class AppSettings {
     this.notifyGeneral = false,
     this.onboardingDone = false,
     this.guestMode = false,
+    this.syncInterval = SyncInterval.hourly,
   });
 
   final ThemeMode themeMode;
@@ -318,6 +409,10 @@ class AppSettings {
   final bool notifyGeneral;
   final bool onboardingDone;
   final bool guestMode;
+
+  /// Background sync cadence. A device preference, so it is not published to
+  /// the account document.
+  final SyncInterval syncInterval;
 
   Locale get locale => Locale(localeCode);
 
@@ -334,6 +429,7 @@ class AppSettings {
     bool? notifyGeneral,
     bool? onboardingDone,
     bool? guestMode,
+    SyncInterval? syncInterval,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -348,6 +444,7 @@ class AppSettings {
       notifyGeneral: notifyGeneral ?? this.notifyGeneral,
       onboardingDone: onboardingDone ?? this.onboardingDone,
       guestMode: guestMode ?? this.guestMode,
+      syncInterval: syncInterval ?? this.syncInterval,
     );
   }
 
@@ -364,6 +461,7 @@ class AppSettings {
     'notifyGeneral': notifyGeneral,
     'onboardingDone': onboardingDone,
     'guestMode': guestMode,
+    'syncInterval': syncInterval.name,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -382,5 +480,9 @@ class AppSettings {
     notifyGeneral: json['notifyGeneral'] as bool? ?? false,
     onboardingDone: json['onboardingDone'] as bool? ?? false,
     guestMode: json['guestMode'] as bool? ?? false,
+    syncInterval: SyncInterval.values.firstWhere(
+      (value) => value.name == json['syncInterval'],
+      orElse: () => SyncInterval.fallback,
+    ),
   );
 }

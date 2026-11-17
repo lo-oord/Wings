@@ -37,6 +37,7 @@ class EpisodeSocialSection extends ConsumerStatefulWidget {
   /// a bottom sheet.
   final bool embedded;
 
+  /// True when the episode itself is bookmarked in «حلقاتي».
   final bool savedToLibrary;
   final VoidCallback? onDownload;
   final VoidCallback? onToggleSave;
@@ -267,8 +268,8 @@ class _ActionBar extends StatelessWidget {
                   : Icons.bookmark_border_rounded,
               label: Tr.of(
                 context,
-                ar: savedToLibrary ? 'محفوظ' : 'حفظ',
-                en: savedToLibrary ? 'Saved' : 'Save',
+                ar: savedToLibrary ? 'محفوظة' : 'حفظ الحلقة',
+                en: savedToLibrary ? 'Saved' : 'Save episode',
               ),
               active: savedToLibrary,
               onTap: onToggleSave!,

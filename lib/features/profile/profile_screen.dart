@@ -36,40 +36,8 @@ class ProfileScreen extends ConsumerWidget {
         .where((task) => task.status == DownloadStatus.completed)
         .length;
 
-    // Statistics are derived from the library the user actually has; they are
-    // republished only when the numbers change.
-    ref.listen<LibraryState>(libraryProvider, (previous, next) {
-      final current = ref.read(profileProvider);
-      if (current == null) return;
-      final stats = ProfileStats(
-        animeWatched: next.entries.length,
-        episodesWatched: next.history.length,
-        favorites: next.favorites.length,
-        completed: next.byStatus(LibraryStatus.completed).length,
-      );
-      final favorites = <ProfileFavorite>[
-        for (final entry in next.favorites.take(12))
-          ProfileFavorite(
-            animeId: entry.anime.id,
-            title: entry.anime.title,
-            imageUrl: entry.anime.imageUrl ?? '',
-          ),
-      ];
-      final old = current.stats;
-      final sameStats =
-          stats.animeWatched == old.animeWatched &&
-          stats.episodesWatched == old.episodesWatched &&
-          stats.favorites == old.favorites &&
-          stats.completed == old.completed;
-      final sameFavorites =
-          current.favorites.length == favorites.length &&
-          Iterable<int>.generate(favorites.length).every(
-            (index) =>
-                current.favorites[index].animeId == favorites[index].animeId,
-          );
-      if (sameStats && sameFavorites) return;
-      ref.read(authProvider.notifier).publishStats(stats, favorites: favorites);
-    });
+    // Counters are published by LibraryController on every real change, so the
+    // profile screen never republishes a second, differently computed set.
 
     final favorites = library.favorites.length;
     final completed = library.byStatus(LibraryStatus.completed).length;
@@ -670,13 +638,20 @@ class ProfileScreen extends ConsumerWidget {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: Space.xl,
+          vertical: Space.xxl,
+        ),
         title: Text(
           Tr.of(context, ar: 'تغيير اسم المستخدم', en: 'Change username'),
         ),
-        content: StatefulBuilder(
-          builder: (context, setState) => UsernameField(
-            controller: controller,
-            onAvailabilityChanged: (value) => available = value,
+        content: SizedBox(
+          width: 300,
+          child: StatefulBuilder(
+            builder: (context, setState) => UsernameField(
+              controller: controller,
+              onAvailabilityChanged: (value) => available = value,
+            ),
           ),
         ),
         actions: <Widget>[

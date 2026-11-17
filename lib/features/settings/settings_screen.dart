@@ -13,6 +13,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../data/models/library.dart';
 import '../profile/avatar_view.dart';
 
 final appInfoProvider = FutureProvider<PackageInfo>(
@@ -84,6 +85,67 @@ class SettingsScreen extends ConsumerWidget {
                       : l10n.settingsEnglish,
                   showChevron: true,
                   onTap: () => _pickLanguage(context, ref, settings.localeCode),
+                ),
+              ],
+            ),
+            WingsSettingsGroup(
+              title: Tr.of(context, ar: 'المزامنة', en: 'Sync'),
+              children: <Widget>[
+                WingsSettingsTile(
+                  icon: Icons.sync_rounded,
+                  title: Tr.of(context, ar: 'المزامنة الآن', en: 'Sync now'),
+                  subtitle: Tr.of(
+                    context,
+                    ar: 'دفع وجلب المكتبة والسجل وأسماء البحث من حسابك',
+                    en: 'Push and pull your library, history and searches',
+                  ),
+                  showChevron: true,
+                  onTap: () async {
+                    if (ref.read(authProvider) == null) {
+                      context.showSnack(
+                        Tr.of(
+                          context,
+                          ar: 'سجّل الدخول لتتمكن من المزامنة.',
+                          en: 'Sign in to sync your account.',
+                        ),
+                        isError: true,
+                      );
+                      return;
+                    }
+                    final synced = await ref
+                        .read(authProvider.notifier)
+                        .syncNow(force: true);
+                    if (!context.mounted) return;
+                    context.showSnack(
+                      synced
+                          ? Tr.of(
+                              context,
+                              ar: 'تمت المزامنة بنجاح.',
+                              en: 'Synced successfully.',
+                            )
+                          : Tr.of(
+                              context,
+                              ar: 'تعذرت المزامنة الآن. تحقق من الاتصال وحاول مجددًا.',
+                              en: 'Sync failed. Check your connection and retry.',
+                            ),
+                      isError: !synced,
+                    );
+                  },
+                ),
+                WingsSettingsTile(
+                  icon: Icons.schedule_rounded,
+                  title: Tr.of(
+                    context,
+                    ar: 'تكرار المزامنة',
+                    en: 'Sync frequency',
+                  ),
+                  subtitle: settings.syncInterval.label(
+                    arabic:
+                        Localizations.localeOf(context).languageCode == 'ar',
+                  ),
+                  showChevron: true,
+                  onTap: () =>
+                      _pickSyncInterval(context, ref, settings.syncInterval),
                 ),
               ],
             ),
@@ -368,6 +430,50 @@ class SettingsScreen extends ConsumerWidget {
       ThemeMode.light => l10n.settingsThemeLight,
       ThemeMode.dark => l10n.settingsThemeDark,
     };
+  }
+
+  Future<void> _pickSyncInterval(
+    BuildContext context,
+    WidgetRef ref,
+    SyncInterval current,
+  ) async {
+    final arabic = Localizations.localeOf(context).languageCode == 'ar';
+    await WingsSheet.show<void>(
+      context,
+      title: Tr.of(context, ar: 'تكرار المزامنة', en: 'Sync frequency'),
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          for (final interval in SyncInterval.values)
+            WingsSettingsTile(
+              icon: interval == SyncInterval.instant
+                  ? Icons.flash_on_rounded
+                  : interval == SyncInterval.manual
+                  ? Icons.touch_app_outlined
+                  : Icons.schedule_rounded,
+              title: interval.label(arabic: arabic),
+              trailing: current == interval
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: sheetContext.palette.primary,
+                    )
+                  : null,
+              onTap: () async {
+                await ref
+                    .read(settingsProvider.notifier)
+                    .update(
+                      (settings) => settings.copyWith(syncInterval: interval),
+                    );
+                if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                if (interval == SyncInterval.instant && context.mounted) {
+                  await ref.read(authProvider.notifier).syncNow(force: true);
+                }
+              },
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickTheme(

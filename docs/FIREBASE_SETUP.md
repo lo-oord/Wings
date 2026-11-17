@@ -32,7 +32,9 @@ Other setup that must exist before Google sign-in can work:
 | `users/{uid}/private/avatar` | Profile picture bytes (JPEG ≤ 160 KB) + `byteSize` | Any signed-in user | Owner |
 | `users/{uid}/private/cover` | Cover banner bytes (JPEG ≤ 480 KB) + `byteSize` | Any signed-in user | Owner |
 | `users/{uid}/library/{animeId}` | Favourite flag, status, watched episodes, timestamps | Owner | Owner |
-| `users/{uid}/history/{animeId}__{episodeId}` | Playback position, duration, completion, timestamp | Owner | Owner |
+| `users/{uid}/history/{animeId}__{episodeId}` | Playback position, duration, completion, timestamp. A watched episode never becomes unwatched | Owner | Owner |
+| `users/{uid}/episodes/{animeId}__{episodeId}` | **حلقاتي**: the episodes the viewer bookmarked (title, number, artwork, date only — no file or URL) | Owner | Owner |
+| `users/{uid}/search/recent` | `{items: [...], updatedAt}` — the last 12 searches, merged across devices | Owner | Owner |
 | `users/{uid}/settings/account` | Account-level preferences (language, autoplay, remember position, speed, preferred quality) | Owner | Owner |
 | `users/{uid}/meta/stats` | Same numbers as the profile statistics | Owner | Owner |
 | `users/{uid}/activity/{id}` | Index of the user's own comments/reactions, used for deletion | Owner | Owner |
@@ -155,19 +157,39 @@ control.
 ## 5. Synchronization
 
 Synchronized across devices: library entries (favourites and every status),
-watch history and playback progress, and account-level preferences.
+watch history and progress (including **which episodes are watched**), saved
+episodes (**حلقاتي**), recent searches, the profile counters and account-level
+preferences.
 
 Device-only: downloaded episodes and their files (never uploaded), theme,
-notification setup, onboarding state, search history, playback hardware.
+notification setup, onboarding state, playback hardware, sync cadence.
 
-* Conflict rule: last-writer-wins on each record's `updatedAt`.
+* Conflict rule: last-writer-wins on each record's `updatedAt`, except that a
+  completed episode stays completed and the furthest playback position wins.
 * Pulls are incremental (`where updatedAt > lastPull`), so a small change never
-  re-downloads the library.
-* First sign-in migrates existing local guest data into the account.
+  re-downloads the library. Saved episodes are small and read in full, so an
+  unsave on one device disappears on the others.
+* Every local change (favourite, status, progress, saved episode, search) is
+  pushed immediately.
+* First sign-in merges both directions: newer cloud records are applied and
+  local records the account has never seen are uploaded, in batches below the
+  500-write limit.
 * Signing into a different account clears the previous account's local library,
-  history and search history before pulling, so data never leaks between
-  accounts.
+  history, saved episodes and search history before pulling, so data never
+  leaks between accounts.
 * Sign-out clears account data from the device.
+
+**Sync cadence** — Settings → المزامنة → تكرار المزامنة:
+
+| Choice | Behaviour |
+| --- | --- |
+| المزامنة فورًا | Every change is pushed as it happens; the periodic pull is off. |
+| كل 30 دقيقة / كل ساعة / كل 24 ساعة / أسبوعيًا / شهريًا | Background pull on that interval. **Every hour is the default.** |
+| أبدًا (يدويًا) | No automatic sync; use the sync button in the library or in Settings. |
+
+The profile counters (`animeWatched`, `episodesWatched`, `favorites`,
+`completed`) are republished whenever a value really changes — opening an
+episode counts it immediately — so the public profile follows the library.
 
 ## 6. Account deletion
 

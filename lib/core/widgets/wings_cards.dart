@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../data/models/anime.dart';
@@ -13,8 +15,100 @@ import 'wings_feedback.dart';
 import 'wings_image.dart';
 import 'wings_layout.dart';
 
+/// The short line under a poster: rating, library status and type.
+///
+/// It uses a small, readable size so a 144 px card never overflows, and the
+/// status only appears for titles that are actually in the library.
+class AnimeCardMeta extends StatelessWidget {
+  const AnimeCardMeta({
+    super.key,
+    required this.anime,
+    this.status,
+    this.compact = false,
+  });
+
+  final Anime anime;
+  final LibraryStatus? status;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final parts = <Widget>[];
+    if (anime.rating != null) {
+      parts.add(
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.star_rounded, size: 11, color: palette.warning),
+            const SizedBox(width: 2),
+            Text(anime.rating!.toStringAsFixed(1), style: _style(context)),
+          ],
+        ),
+      );
+    }
+    final label = status == null ? null : animeStatusLabel(context, status!);
+    if (label != null) {
+      parts.add(
+        Text(
+          label,
+          style: _style(
+            context,
+            color: status == LibraryStatus.completed
+                ? palette.primary
+                : palette.textSecondary,
+          ),
+        ),
+      );
+    }
+    final type = animeTypeLabel(context, anime.type);
+    if (type.isNotEmpty) parts.add(Text(type, style: _style(context)));
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Wrap(
+      spacing: Space.xs + 2,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: parts,
+    );
+  }
+
+  TextStyle? _style(BuildContext context, {Color? color}) =>
+      context.text.labelSmall?.copyWith(
+        fontSize: compact ? 10 : 10.5,
+        height: 1.15,
+        fontWeight: FontWeight.w500,
+        color: color ?? context.palette.textMuted,
+      );
+}
+
+/// Localized type of a title, e.g. مسلسل / فيلم.
+String animeTypeLabel(BuildContext context, String? type) {
+  final lower = (type ?? '').trim().toLowerCase();
+  if (lower.isEmpty) return '';
+  final arabic = Localizations.localeOf(context).languageCode == 'ar';
+  if (lower.contains('movie') || lower.contains('film')) {
+    return arabic ? 'فيلم' : 'Movie';
+  }
+  if (lower.contains('ova')) return 'OVA';
+  if (lower.contains('ona')) return 'ONA';
+  if (lower.contains('special')) return arabic ? 'خاص' : 'Special';
+  return arabic ? 'مسلسل' : 'Series';
+}
+
+/// Localized library status, e.g. مستمر / مكتمل.
+String animeStatusLabel(BuildContext context, LibraryStatus status) {
+  final l10n = AppLocalizations.of(context);
+  return switch (status) {
+    LibraryStatus.watching => l10n.detailsWatching,
+    LibraryStatus.completed => l10n.detailsCompleted,
+    LibraryStatus.planToWatch => l10n.detailsPlanToWatch,
+    LibraryStatus.onHold => l10n.detailsOnHold,
+    LibraryStatus.dropped => l10n.detailsDropped,
+  };
+}
+
 /// Portrait poster card used in horizontal rails and grids.
-class WingsPosterCard extends StatelessWidget {
+class WingsPosterCard extends ConsumerWidget {
   const WingsPosterCard({
     super.key,
     required this.anime,
@@ -33,8 +127,9 @@ class WingsPosterCard extends StatelessWidget {
   final int? rank;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
+    final status = ref.watch(libraryProvider).entryFor(anime.id)?.status;
     return SizedBox(
       width: width,
       child: InkWell(
@@ -153,6 +248,8 @@ class WingsPosterCard extends StatelessWidget {
                   color: palette.textPrimary,
                 ),
               ),
+              const SizedBox(height: 3),
+              AnimeCardMeta(anime: anime, status: status, compact: true),
             ],
           ],
         ),
@@ -162,7 +259,7 @@ class WingsPosterCard extends StatelessWidget {
 }
 
 /// Horizontal row item used by search results and library lists.
-class WingsAnimeListTile extends StatelessWidget {
+class WingsAnimeListTile extends ConsumerWidget {
   const WingsAnimeListTile({
     super.key,
     required this.anime,
@@ -179,10 +276,11 @@ class WingsAnimeListTile extends StatelessWidget {
   final Widget? badge;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
+    final status = ref.watch(libraryProvider).entryFor(anime.id)?.status;
     final meta = <String>[
-      if (anime.type != null) anime.type!,
+      if (anime.type != null) animeTypeLabel(context, anime.type),
       if (anime.year != null) '${anime.year}',
       if (anime.genres.isNotEmpty) anime.genres.first,
     ].join(' • ');
@@ -240,7 +338,19 @@ class WingsAnimeListTile extends StatelessWidget {
                         WingsRatingLabel(rating: anime.rating!, compact: true),
                         const SizedBox(width: Space.sm),
                       ],
-                      if (anime.status != null)
+                      if (status != null)
+                        Flexible(
+                          child: Text(
+                            animeStatusLabel(context, status),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.text.labelSmall?.copyWith(
+                              color: palette.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      if (status == null && anime.status != null)
                         Flexible(
                           child: Text(
                             anime.status!,

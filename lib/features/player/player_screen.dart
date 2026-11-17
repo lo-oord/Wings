@@ -716,9 +716,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             episodeId: episode.id,
             episodeTitle: l10n.commonEpisodeNumber(episode.number),
             embedded: true,
-            savedToLibrary: library.entryFor(anime.id) != null,
+            // The save button under the episode bookmarks that episode into
+            // «حلقاتي», not the whole title.
+            savedToLibrary: library.isEpisodeSaved(anime.id, episode.id),
             onDownload: () => _showDownloadSheet(anime, episode),
-            onToggleSave: () => _toggleLibrary(anime),
+            onToggleSave: () => _toggleSavedEpisode(anime, episode),
           ),
           Divider(height: 1, color: palette.border),
         ],
@@ -756,22 +758,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  /// Adds the anime to the library or removes it, so the save button under the
-  /// player works without leaving the episode.
-  Future<void> _toggleLibrary(Anime anime) async {
-    final notifier = ref.read(libraryProvider.notifier);
-    final existing = ref.read(libraryProvider).entryFor(anime.id);
-    if (existing == null) {
-      await notifier.setStatus(anime, LibraryStatus.planToWatch);
-    } else {
-      await notifier.removeFromLibrary(anime.id);
-    }
+  /// Bookmarks just this episode in **حلقاتي** (never the whole title).
+  Future<void> _toggleSavedEpisode(Anime anime, AnimeEpisode episode) async {
+    await ref.read(libraryProvider.notifier).toggleSavedEpisode(anime, episode);
     if (!mounted) return;
-    final saved = ref.read(libraryProvider).entryFor(anime.id) != null;
+    final saved = ref
+        .read(libraryProvider)
+        .isEpisodeSaved(anime.id, episode.id);
     context.showSnack(
       saved
-          ? Tr.of(context, ar: 'أضيف إلى المكتبة', en: 'Added to library')
-          : Tr.of(context, ar: 'أزيل من المكتبة', en: 'Removed from library'),
+          ? Tr.of(
+              context,
+              ar: 'تم حفظ الحلقة في حلقاتي',
+              en: 'Episode saved to my episodes',
+            )
+          : Tr.of(
+              context,
+              ar: 'أزيلت الحلقة من حلقاتي',
+              en: 'Episode removed from my episodes',
+            ),
     );
   }
 

@@ -63,6 +63,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               .toList();
   }
 
+  List<SavedEpisode> _filterSavedEpisodes(List<SavedEpisode> items) {
+    final query = _search.text.trim().toLowerCase();
+    if (query.isEmpty) return items;
+    return items
+        .where(
+          (item) =>
+              item.animeTitle.toLowerCase().contains(query) ||
+              (item.episodeTitle ?? '').toLowerCase().contains(query),
+        )
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -74,7 +86,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         .toList();
 
     return DefaultTabController(
-      length: 8,
+      length: 9,
       child: Scaffold(
         body: SafeArea(
           bottom: false,
@@ -104,18 +116,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             en: 'Sync library',
                           ),
                           onPressed: () async {
-                            await ref
+                            final synced = await ref
                                 .read(authProvider.notifier)
                                 .syncNow(force: true);
-                            if (context.mounted) {
-                              context.showSnack(
-                                Tr.of(
-                                  context,
-                                  ar: 'تمت مزامنة مكتبتك.',
-                                  en: 'Your library is synced.',
-                                ),
-                              );
-                            }
+                            if (!context.mounted) return;
+                            context.showSnack(
+                              synced
+                                  ? Tr.of(
+                                      context,
+                                      ar: 'تمت مزامنة مكتبتك.',
+                                      en: 'Your library is synced.',
+                                    )
+                                  : Tr.of(
+                                      context,
+                                      ar: 'تعذرت المزامنة الآن. تحقق من الاتصال وحاول مجددًا.',
+                                      en: 'Sync failed. Check your connection and retry.',
+                                    ),
+                              isError: !synced,
+                            );
                           },
                         ),
                       ),
@@ -185,6 +203,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   Tab(text: l10n.libraryOnHold),
                   Tab(text: l10n.libraryDropped),
                   Tab(text: l10n.libraryHistory),
+                  Tab(
+                    text: Tr.of(context, ar: 'حلقاتي', en: 'My episodes'),
+                  ),
                   Tab(text: l10n.libraryDownloaded),
                 ],
               ),
@@ -233,6 +254,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     ),
                     _HistoryTab(
                       entries: _filterHistory(library.history),
+                      onChanged: _refresh,
+                    ),
+                    _MyEpisodesTab(
+                      entries: _filterSavedEpisodes(library.savedEpisodes),
                       onChanged: _refresh,
                     ),
                     _DownloadsTab(tasks: downloads),
@@ -479,6 +504,118 @@ class _HistoryTab extends ConsumerWidget {
         ),
       ],
     );
+  }
+}
+
+/// Episodes the viewer saved from the player into **حلقاتي**. They are plain
+/// bookmarks: no file, no progress, and they sync as information only.
+class _MyEpisodesTab extends ConsumerWidget {
+  const _MyEpisodesTab({required this.entries, required this.onChanged});
+
+  final List<SavedEpisode> entries;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    if (entries.isEmpty) {
+      return WingsEmptyState(
+        icon: Icons.video_library_outlined,
+        title: Tr.of(context, ar: 'حلقاتي فارغة', en: 'My episodes is empty'),
+        message: Tr.of(
+          context,
+          ar: 'افتح أي حلقة واضغط «حفظ الحلقة» لتظهر هنا وفي كل أجهزتك.',
+          en: 'Open any episode and tap “Save episode” to keep it here and on every device.',
+        ),
+        actionLabel: AppLocalizations.of(context).exploreTitle,
+        onAction: () => context.go(RoutePaths.explore),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: Space.xs, bottom: Space.xxl),
+      itemCount: entries.length,
+      itemBuilder: (context, index) {
+        final item = entries[index];
+        return InkWell(
+          onTap: () => context.push(
+            RoutePaths.watch(animeId: item.animeId, episodeId: item.episodeId),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.lg,
+              vertical: Space.sm + 2,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                WingsImage(
+                  url: item.posterUrl,
+                  width: 62,
+                  height: 92,
+                  borderRadius: BorderRadius.circular(Radii.xs),
+                ),
+                const SizedBox(width: Space.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        item.animeTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.titleSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        <String>[
+                          AppLocalizations.of(context)
+                              .commonEpisodeNumber(item.episodeNumber),
+                          if ((item.episodeTitle ?? '').trim().isNotEmpty)
+                            item.episodeTitle!.trim(),
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.labelSmall?.copyWith(
+                          color: palette.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: Space.xs),
+                      Text(
+                        Tr.of(
+                          context,
+                          ar: 'محفوظة ${_savedDate(item.savedAt)}',
+                          en: 'Saved ${_savedDate(item.savedAt)}',
+                        ),
+                        style: context.text.labelSmall?.copyWith(
+                          color: palette.textMuted,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                WingsIconButton(
+                  icon: Icons.bookmark_remove_outlined,
+                  tooltip: Tr.of(context, ar: 'إزالة', en: 'Remove'),
+                  onPressed: () async {
+                    await ref
+                        .read(libraryProvider.notifier)
+                        .removeSavedEpisode(item.animeId, item.episodeId);
+                    onChanged();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _savedDate(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}/$month/$day';
   }
 }
 
