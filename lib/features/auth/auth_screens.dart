@@ -20,6 +20,16 @@ import 'username_field.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 
+/// Age groups offered at sign-up and in the profile editor, kept in one place
+/// so both forms always agree.
+const List<(String, String)> kAgeGroups = <(String, String)>[
+  ('under-13', 'أقل من 13'),
+  ('13-17', '13 - 17'),
+  ('18-24', '18 - 24'),
+  ('25-34', '25 - 34'),
+  ('35+', '35+'),
+];
+
 const List<(String, String)> kCountries = <(String, String)>[
   ('SA', 'السعودية'),
   ('AE', 'الإمارات'),
@@ -108,20 +118,60 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                     ),
                   ),
                   const Spacer(),
-                  WingsMark(size: 116),
-                  const SizedBox(height: Space.xl),
-                  Text(
-                    l10n.authWelcomeTitle,
-                    textAlign: TextAlign.center,
-                    style: context.text.headlineMedium,
-                  ),
-                  const SizedBox(height: Space.sm),
-                  Text(
-                    l10n.authWelcomeBody,
-                    textAlign: TextAlign.center,
-                    style: context.text.bodyMedium?.copyWith(
-                      color: palette.textSecondary,
-                      height: 1.7,
+                  // A soft halo behind the mark, with a short entrance so the
+                  // opening screen feels composed instead of snapped in.
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: 1),
+                    duration: Motion.slow,
+                    curve: Motion.enter,
+                    builder: (context, value, child) => Opacity(
+                      opacity: value,
+                      child: Transform.translate(
+                        offset: Offset(0, 14 * (1 - value)),
+                        child: child,
+                      ),
+                    ),
+                    child: Column(
+                      children: <Widget>[
+                        SizedBox(
+                          width: 164,
+                          height: 144,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: <Widget>[
+                              Container(
+                                width: 150,
+                                height: 150,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: RadialGradient(
+                                    colors: <Color>[
+                                      palette.primary.withValues(alpha: 0.22),
+                                      palette.primary.withValues(alpha: 0),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const WingsMark(size: 108),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: Space.lg),
+                        Text(
+                          l10n.authWelcomeTitle,
+                          textAlign: TextAlign.center,
+                          style: context.text.headlineMedium,
+                        ),
+                        const SizedBox(height: Space.sm),
+                        Text(
+                          l10n.authWelcomeBody,
+                          textAlign: TextAlign.center,
+                          style: context.text.bodyMedium?.copyWith(
+                            color: palette.textSecondary,
+                            height: 1.7,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const Spacer(),
@@ -152,6 +202,22 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                   TextButton(
                     onPressed: busy ? null : _continueAsGuest,
                     child: Text(l10n.authContinueGuest),
+                  ),
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () => context.push(RoutePaths.legal('terms')),
+                    child: Text(
+                      Tr.of(
+                        context,
+                        ar: 'بالمتابعة أنت توافق على الشروط وسياسة الخصوصية',
+                        en: 'By continuing you agree to the terms and privacy policy',
+                      ),
+                      textAlign: TextAlign.center,
+                      style: context.text.labelSmall?.copyWith(
+                        color: palette.textMuted,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -452,13 +518,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() => _step -= 1);
   }
 
+  /// Google **registration**: an account that already exists is refused, a new
+  /// one is greeted and sent straight to the profile completion form.
   Future<void> _google() async {
     setState(() => _loading = true);
     try {
-      await ref.read(authProvider.notifier).signInWithGoogle();
+      await ref.read(authProvider.notifier).registerWithGoogle();
       await ref.read(settingsProvider.notifier).leaveGuestMode();
       if (!mounted) return;
-      context.go(RoutePaths.profile);
+      setState(() => _loading = false);
+      context.showSnack(
+        Tr.of(
+          context,
+          ar: 'تم إنشاء الحساب! أكمل بيانات ملفك للمتابعة.',
+          en: 'Account created! Finish your profile to continue.',
+        ),
+      );
+      context.go(RoutePaths.complete);
     } on AppFailure catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -901,15 +977,9 @@ class _ProfileStep extends StatelessWidget {
             labelText: Tr.of(context, ar: 'الفئة العمرية', en: 'Age group'),
             prefixIcon: const Icon(Icons.cake_outlined, size: 18),
           ),
-          items: const <DropdownMenuItem<String>>[
-            DropdownMenuItem<String>(
-              value: 'under-13',
-              child: Text('أقل من 13'),
-            ),
-            DropdownMenuItem<String>(value: '13-17', child: Text('13 - 17')),
-            DropdownMenuItem<String>(value: '18-24', child: Text('18 - 24')),
-            DropdownMenuItem<String>(value: '25-34', child: Text('25 - 34')),
-            DropdownMenuItem<String>(value: '35+', child: Text('35+')),
+          items: <DropdownMenuItem<String>>[
+            for (final item in kAgeGroups)
+              DropdownMenuItem<String>(value: item.$1, child: Text(item.$2)),
           ],
           onChanged: (value) {
             if (value != null) onAgeGroup(value);
@@ -970,14 +1040,21 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       context.showSnack(l10n.authValidationEmail, isError: true);
       return;
     }
+    FocusScope.of(context).unfocus();
     setState(() => _loading = true);
-    await ref
-        .read(authRepositoryProvider)
-        .sendPasswordReset(_email.text.trim());
-    if (!mounted) return;
-    setState(() => _loading = false);
-    context.showSnack(l10n.authResetSent);
-    Navigator.of(context).pop();
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .sendPasswordReset(_email.text.trim());
+      if (!mounted) return;
+      setState(() => _loading = false);
+      context.showSnack(l10n.authResetSent);
+      Navigator.of(context).pop();
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      context.showSnack(authErrorText(context, error), isError: true);
+    }
   }
 
   @override
@@ -1213,10 +1290,47 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
             onPressed: _sending ? null : _resend,
           ),
           const SizedBox(height: Space.sm),
+          Container(
+            padding: const EdgeInsets.all(Space.md),
+            decoration: BoxDecoration(
+              color: palette.surfaceAlt,
+              borderRadius: BorderRadius.circular(Radii.md),
+              border: Border.all(color: palette.border),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 16,
+                  color: palette.textMuted,
+                ),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: Text(
+                    Tr.of(
+                      context,
+                      ar: 'لا يمكن المتابعة إلى التطبيق قبل تأكيد البريد. تحقق من صندوق الوارد أو مجلد الرسائل غير المرغوب فيها.',
+                      en: 'You cannot continue into the app before confirming the address. Check your inbox or spam folder.',
+                    ),
+                    style: context.text.labelSmall?.copyWith(
+                      color: palette.textMuted,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: Space.sm),
           Center(
-            child: TextButton(
-              onPressed: () => context.go(RoutePaths.profile),
-              child: Text(l10n.authContinueGuest),
+            child: TextButton.icon(
+              onPressed: () async {
+                await ref.read(authProvider.notifier).signOut();
+                if (context.mounted) context.go(RoutePaths.welcome);
+              },
+              icon: const Icon(Icons.logout_rounded, size: 16),
+              label: Text(l10n.settingsSignOut),
             ),
           ),
         ],
@@ -1239,42 +1353,45 @@ class GoogleSignInButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final enabled = onPressed != null && !loading;
+    // Google's own button is white in both themes, with the four-colour mark
+    // and a dark label; keeping it identical makes it instantly recognisable.
     return Opacity(
-      opacity: enabled ? 1 : 0.55,
+      opacity: enabled ? 1 : 0.6,
       child: Material(
-        color: palette.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(Radii.sm),
         child: InkWell(
           borderRadius: BorderRadius.circular(Radii.sm),
           onTap: onPressed,
           child: Container(
-            height: 46,
+            height: 48,
             padding: const EdgeInsets.symmetric(horizontal: Space.lg),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(Radii.sm),
-              border: Border.all(color: palette.borderStrong),
+              border: Border.all(color: const Color(0xFFDADCE0)),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 if (loading)
                   SizedBox(
-                    width: 16,
-                    height: 16,
+                    width: 18,
+                    height: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       color: palette.primary,
                     ),
                   )
                 else
-                  Text(
-                    'G',
-                    style: context.text.titleMedium?.copyWith(
-                      color: const Color(0xFF4285F4),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                const SizedBox(width: Space.sm),
+                  const GoogleGLogo(size: 19),
+                const SizedBox(width: Space.sm + 2),
                 Flexible(
                   child: Text(
                     loading
@@ -1291,7 +1408,8 @@ class GoogleSignInButton extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: context.text.labelLarge?.copyWith(
-                      color: palette.textPrimary,
+                      color: const Color(0xFF3C4043),
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -1302,6 +1420,60 @@ class GoogleSignInButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The four-colour Google "G", drawn as vectors so it stays sharp at every
+/// density without shipping another image.
+class GoogleGLogo extends StatelessWidget {
+  const GoogleGLogo({super.key, this.size = 18});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) =>
+      CustomPaint(size: Size.square(size), painter: const _GoogleGPainter());
+}
+
+class _GoogleGPainter extends CustomPainter {
+  const _GoogleGPainter();
+
+  static const Color _blue = Color(0xFF4285F4);
+  static const Color _red = Color(0xFFEA4335);
+  static const Color _yellow = Color(0xFFFBBC05);
+  static const Color _green = Color(0xFF34A853);
+
+  static double _rad(double degrees) => degrees * 3.141592653589793 / 180;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final side = size.width;
+    final stroke = side * 0.23;
+    final rect = Rect.fromCircle(
+      center: Offset(side / 2, side / 2),
+      radius: (side - stroke) / 2,
+    );
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+
+    // Angles: 0° points right, 90° down. The gap on the right is the G opening.
+    canvas.drawArc(rect, _rad(186), _rad(150), false, paint..color = _red);
+    canvas.drawArc(rect, _rad(126), _rad(60), false, paint..color = _yellow);
+    canvas.drawArc(rect, _rad(46), _rad(80), false, paint..color = _green);
+    canvas.drawArc(rect, _rad(-36), _rad(60), false, paint..color = _blue);
+
+    // The blue cross-bar that turns the circle into a G.
+    final bar = Rect.fromLTRB(
+      side * 0.46,
+      side * 0.5 - stroke / 2,
+      side - stroke * 0.35,
+      side * 0.5 + stroke / 2,
+    );
+    canvas.drawRect(bar, Paint()..color = _blue);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Dimmed, non-interactive layer shown while an authentication request is in

@@ -95,10 +95,30 @@ String? _byCode(BuildContext context, String code) => switch (code) {
     ar: 'البريد الإلكتروني غير صالح.',
     en: 'That email address is not valid.',
   ),
-  'user-not-found' || 'invalid-credential' || 'wrong-password' => Tr.of(
+  'user-not-found' => Tr.of(
     context,
-    ar: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
-    en: 'The email or password is incorrect.',
+    ar: 'لا يوجد حساب مرتبط بهذا البريد الإلكتروني. أنشئ حسابًا جديدًا أولًا.',
+    en: 'No account is linked to this email. Create one first.',
+  ),
+  'account-not-found' => Tr.of(
+    context,
+    ar: 'لا يوجد حساب مرتبط بهذا البريد الإلكتروني. أنشئ حسابًا جديدًا أولًا.',
+    en: 'No account is linked to this email. Create one first.',
+  ),
+  'google-account-not-found' => Tr.of(
+    context,
+    ar: 'لا يوجد حساب مرتبط بهذا البريد في Wings. أنشئ حسابًا جديدًا أولًا.',
+    en: 'No Wings account is linked to that Google email. Create one first.',
+  ),
+  'google-account-exists' => Tr.of(
+    context,
+    ar: 'هذا الحساب موجود بالفعل. سجّل الدخول بدلًا من إنشاء حساب جديد.',
+    en: 'This account already exists. Sign in instead of creating a new one.',
+  ),
+  'invalid-credential' || 'wrong-password' => Tr.of(
+    context,
+    ar: 'البريد الإلكتروني أو كلمة المرور غير صحيحة. إن لم تكن قد أنشأت حسابًا بعد فأنشئ حسابًا جديدًا.',
+    en: 'The email or password is incorrect. If you have not created an account yet, sign up first.',
   ),
   'user-disabled' => Tr.of(
     context,

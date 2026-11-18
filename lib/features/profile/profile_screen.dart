@@ -20,6 +20,7 @@ import '../auth/auth_screens.dart' show kCountries;
 import '../auth/username_field.dart';
 import '../social/username_text.dart';
 import 'account_deletion_overlay.dart';
+import 'account_security_section.dart';
 import 'avatar_view.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -318,6 +319,11 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: () => _deleteAccount(context, ref),
                 ),
               ],
+            ),
+            // How this account signs in, and what can still be linked to it.
+            const Padding(
+              padding: EdgeInsets.only(top: Space.md),
+              child: AccountSecuritySection(),
             ),
           ],
           WingsSettingsGroup(

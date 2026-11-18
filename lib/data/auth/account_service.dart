@@ -41,36 +41,34 @@ class AccountService {
 
   // --------------------------------------------------------------- signing in
 
+  /// Signs in an account that already exists. No profile is invented here: an
+  /// account without one is sent to the profile completion screen instead of
+  /// being given a generated handle behind its owner's back.
   Future<AuthUser> signIn({
     required String email,
     required String password,
   }) async {
     final user = await _auth.signIn(email: email, password: password);
-    final profile = await _ensureProfile(user);
+    final profile = await _users.fetch(user.id);
+    if (profile == null) return user;
     await _sync.attach(user.id);
     return _merge(user, profile);
   }
 
-  /// Google sign-in creates the Firebase user before the profile exists, so a
-  /// failure here would leave an account with no username: the app would look
-  /// broken while the user is already visible in the Firebase console. The
-  /// session is therefore closed again on failure, and the next attempt reuses
-  /// the same Firebase account.
+  /// Signs in an existing Google account. A brand new Google account is refused
+  /// by the repository, so this path never creates one.
   Future<AuthUser> signInWithGoogle() async {
     final user = await _auth.signInWithGoogle();
-    try {
-      final profile = await _ensureProfile(user);
-      await _sync.attach(user.id);
-      return _merge(user, profile);
-    } on Object {
-      try {
-        await _auth.signOut();
-      } on Object {
-        // The identity is recoverable on the next attempt either way.
-      }
-      rethrow;
-    }
+    final profile = await _users.fetch(user.id);
+    if (profile == null) return user;
+    await _sync.attach(user.id);
+    return _merge(user, profile);
   }
+
+  /// Starts a Google registration: the Firebase user is created and the session
+  /// is kept so the reader can choose a display name and username next.
+  Future<AuthUser> registerWithGoogle() =>
+      _auth.signInWithGoogle(createAccount: true);
 
   /// Restores the session on start-up: the profile is refreshed and the account
   /// sync is attached without showing a loading screen.
@@ -78,20 +76,78 @@ class AccountService {
     final user = _auth.currentUser;
     if (user == null) return null;
     final profile = await _users.fetch(user.id);
-    if (profile != null) {
-      await _users.ensurePublicMirror(profile);
-      await _sync.attach(user.id);
-      return _merge(user, profile);
-    }
-    return _ensureProfile(user).then((value) => _merge(user, value));
+    if (profile == null) return user;
+    await _users.ensurePublicMirror(profile);
+    await _sync.attach(user.id);
+    return _merge(user, profile);
   }
 
-  /// Creates the missing profile for an already signed-in account. Used when
-  /// the app opens on an account left behind by an interrupted sign-up.
-  Future<UserProfile> ensureProfile(AuthUser user) async {
-    final profile = await _ensureProfile(user);
-    await _sync.attach(user.id);
-    return profile;
+  /// Creates the profile of an account that signed up with Google.
+  ///
+  /// The username is reserved first, exactly like an email sign-up, so two
+  /// devices cannot end up with the same handle. On failure the reservation is
+  /// released again and the Google account stays signed in so the screen can
+  /// show the error and let the reader pick another handle.
+  Future<UserProfile> completeProfile({
+    required AuthUser user,
+    required String displayName,
+    required String username,
+    required String country,
+    required String ageGroup,
+    String? avatarPath,
+  }) async {
+    final validation = UsernameRules.validate(username);
+    if (!validation.ok) {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'username-invalid',
+      );
+    }
+    try {
+      await _usernames.reserve(uid: user.id, normalized: validation.normalized);
+    } on UsernameTakenException {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'username-taken',
+      );
+    }
+    final now = DateTime.now();
+    var profile = UserProfile(
+      uid: user.id,
+      username: username.trim(),
+      displayName: displayName.trim(),
+      country: country,
+      ageGroup: ageGroup,
+      createdAt: now,
+      updatedAt: now,
+    );
+    try {
+      if (avatarPath != null) {
+        try {
+          final bytes = await _avatars.compressFile(avatarPath);
+          if (bytes != null) {
+            await _avatars.save(uid: user.id, bytes: bytes);
+            profile = profile.copyWith(photoVersion: 1);
+          }
+        } on Object {
+          // A picture that cannot be stored never cancels the account.
+        }
+      }
+      await _users.create(profile);
+      await _auth.setDisplayName(displayName.trim());
+      await _sync.attach(user.id);
+      return profile;
+    } on Object {
+      try {
+        await _usernames.release(
+          uid: user.id,
+          normalized: validation.normalized,
+        );
+      } on Object {
+        // Orphaned reservations are never reassigned.
+      }
+      rethrow;
+    }
   }
 
   // -------------------------------------------------------------- register
@@ -182,73 +238,6 @@ class AccountService {
       }
       rethrow;
     }
-  }
-
-  /// Creates a profile for accounts that arrive without one (Google, or an
-  /// older email account) and reserves an available handle for them.
-  Future<UserProfile> _ensureProfile(AuthUser user) async {
-    final existing = await _users.fetch(user.id);
-    if (existing != null) {
-      // Repair an interrupted sign-up that created the owner document but not
-      // the public mirror, and make sure no other user can claim the handle.
-      await _users.ensurePublicMirror(existing);
-      return existing;
-    }
-
-    final seeds = <String>[
-      UsernameRules.sanitize(user.email.split('@').first),
-      UsernameRules.sanitize(user.displayName.replaceAll(' ', '_')),
-      'wings',
-    ];
-    String? chosen;
-    for (final seed in seeds) {
-      if (chosen != null) break;
-      final candidates = <String>[
-        if (seed.length >= UsernameRules.minLength &&
-            seed.length <= UsernameRules.maxLength)
-          seed,
-        ...UsernameRules.suggestions(seed, count: 4),
-      ];
-      for (final candidate in candidates) {
-        if (!await _usernames.isAvailable(candidate)) continue;
-        try {
-          await _usernames.claim(uid: user.id, normalized: candidate);
-          chosen = candidate;
-          break;
-        } on UsernameTakenException {
-          // Another device claimed it between the check and the transaction.
-          continue;
-        }
-      }
-    }
-    if (chosen == null) {
-      throw const AppFailure(
-        FailureKind.permission,
-        technical: 'username-unavailable',
-      );
-    }
-    final now = DateTime.now();
-    final profile = UserProfile(
-      uid: user.id,
-      username: chosen,
-      displayName: user.displayName.trim().isEmpty
-          ? chosen
-          : user.displayName.trim(),
-      createdAt: now,
-      updatedAt: now,
-    );
-    try {
-      await _users.create(profile);
-    } on Object {
-      try {
-        await _usernames.release(uid: user.id, normalized: chosen);
-      } on Object {
-        // The handle stays reserved to this uid, so it is never taken by
-        // someone else while the account is unusable.
-      }
-      rethrow;
-    }
-    return profile;
   }
 
   // -------------------------------------------------------------- profile

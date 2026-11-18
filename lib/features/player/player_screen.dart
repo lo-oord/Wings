@@ -18,6 +18,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_cards.dart';
+import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/library.dart';
@@ -707,6 +708,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              // Poster first, like a video app: the title alone made the
+              // portrait player feel like a settings page.
+              ClipRRect(
+                borderRadius: BorderRadius.circular(Radii.sm),
+                child: WingsImage(
+                  url: anime.imageUrl,
+                  width: 58,
+                  height: 78,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: Space.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -738,15 +751,46 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                       ],
                     ),
+                    if (_nextEpisode != null) ...<Widget>[
+                      const SizedBox(height: Space.xs),
+                      TextButton.icon(
+                        onPressed: () => _loadEpisode(_nextEpisode!),
+                        style: TextButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: EdgeInsets.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.skip_next_rounded, size: 16),
+                        label: Text(
+                          Tr.of(
+                            context,
+                            ar: 'الحلقة التالية',
+                            en: 'Next episode',
+                          ),
+                          style: context.text.labelSmall,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              WingsIconButton(
-                icon: _fullscreen
-                    ? Icons.fullscreen_exit_rounded
-                    : Icons.fullscreen_rounded,
-                color: palette.textSecondary,
-                onPressed: _toggleFullscreen,
+              Column(
+                children: <Widget>[
+                  WingsIconButton(
+                    icon: _fullscreen
+                        ? Icons.fullscreen_exit_rounded
+                        : Icons.fullscreen_rounded,
+                    color: palette.textSecondary,
+                    onPressed: _toggleFullscreen,
+                  ),
+                  if (episode != null)
+                    WingsIconButton(
+                      icon: Icons.download_rounded,
+                      color: palette.textSecondary,
+                      onPressed: () => _showDownloadSheet(anime, episode),
+                    ),
+                ],
               ),
             ],
           ),

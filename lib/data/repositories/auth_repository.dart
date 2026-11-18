@@ -14,6 +14,8 @@ class AuthUser {
     this.username = '',
     this.country = '',
     this.emailVerified = false,
+    this.hasPassword = false,
+    this.hasGoogle = false,
     this.avatarPath,
     this.bio,
   });
@@ -25,23 +27,35 @@ class AuthUser {
   final String country;
   final bool emailVerified;
   final DateTime createdAt;
+
+  /// Signed in with an email address and a password.
+  final bool hasPassword;
+
+  /// Signed in with Google, either alone or linked to the password account.
+  final bool hasGoogle;
+
   final String? avatarPath;
   final String? bio;
 
   AuthUser copyWith({
+    String? email,
     String? displayName,
     String? username,
     String? country,
     String? avatarPath,
     String? bio,
     bool? emailVerified,
+    bool? hasPassword,
+    bool? hasGoogle,
   }) => AuthUser(
     id: id,
-    email: email,
+    email: email ?? this.email,
     displayName: displayName ?? this.displayName,
     username: username ?? this.username,
     country: country ?? this.country,
     emailVerified: emailVerified ?? this.emailVerified,
+    hasPassword: hasPassword ?? this.hasPassword,
+    hasGoogle: hasGoogle ?? this.hasGoogle,
     createdAt: createdAt,
     avatarPath: avatarPath ?? this.avatarPath,
     bio: bio ?? this.bio,
@@ -68,7 +82,13 @@ abstract interface class AuthRepository {
 
   Future<AuthUser> signIn({required String email, required String password});
 
-  Future<AuthUser> signInWithGoogle();
+  /// Signs in with Google.
+  ///
+  /// With [createAccount] false an unknown Google account is refused instead of
+  /// being created, which is what a sign-in button must do. With it true a
+  /// known account is refused instead, so registration never silently signs an
+  /// existing account in.
+  Future<AuthUser> signInWithGoogle({bool createAccount = false});
 
   Future<AuthUser> createAccount({
     required String email,
@@ -87,6 +107,26 @@ abstract interface class AuthRepository {
   Future<void> reauthenticate({String? password});
 
   Future<void> linkGoogle();
+
+  /// Starts adding an email + password to the signed-in account.
+  ///
+  /// Returns true when the address is already the account's own email (Google
+  /// has verified it, so no second verification is needed) and false when a
+  /// verification link was sent to the new address. The password stays in
+  /// memory only until [completeEmailLink] finishes.
+  Future<bool> requestEmailLink({
+    required String email,
+    required String password,
+  });
+
+  /// True when the verification link of a pending email link was used.
+  Future<bool> emailLinkVerified();
+
+  /// Links the password provider once the pending address is verified.
+  Future<void> completeEmailLink();
+
+  /// Whether an email link is waiting for its verification.
+  bool get hasPendingEmailLink;
 
   Future<void> deleteCurrentUser();
 
@@ -138,13 +178,14 @@ class LocalDevelopmentAuthRepository implements AuthRepository {
       username: email.split('@').first,
       country: 'SA',
       emailVerified: true,
+      hasPassword: true,
       createdAt: DateTime.now(),
     );
     return _user!;
   }
 
   @override
-  Future<AuthUser> signInWithGoogle() async {
+  Future<AuthUser> signInWithGoogle({bool createAccount = false}) async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     _user = AuthUser(
       id: 'local-google',
@@ -153,6 +194,7 @@ class LocalDevelopmentAuthRepository implements AuthRepository {
       username: 'google_user',
       country: 'SA',
       emailVerified: true,
+      hasGoogle: true,
       createdAt: DateTime.now(),
     );
     return _user!;
@@ -196,7 +238,26 @@ class LocalDevelopmentAuthRepository implements AuthRepository {
   Future<void> reauthenticate({String? password}) async {}
 
   @override
-  Future<void> linkGoogle() async {}
+  Future<void> linkGoogle() async {
+    _user = _user?.copyWith(hasGoogle: true);
+  }
+
+  @override
+  bool get hasPendingEmailLink => false;
+
+  @override
+  Future<bool> requestEmailLink({
+    required String email,
+    required String password,
+  }) async => true;
+
+  @override
+  Future<bool> emailLinkVerified() async => true;
+
+  @override
+  Future<void> completeEmailLink() async {
+    _user = _user?.copyWith(hasPassword: true);
+  }
 
   @override
   Future<void> deleteCurrentUser() async {

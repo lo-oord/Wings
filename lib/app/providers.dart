@@ -747,6 +747,20 @@ final profileProvider = NotifierProvider<ProfileController, UserProfile?>(
   ProfileController.new,
 );
 
+/// True once the signed-in account's profile has been looked up, so the router
+/// does not send a fully registered account to the completion screen while its
+/// profile is still loading.
+class ProfileResolved extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void update(bool value) => state = value;
+}
+
+final profileResolvedProvider = NotifierProvider<ProfileResolved, bool>(
+  ProfileResolved.new,
+);
+
 /// Public profile of another user, read from the privacy-filtered mirror.
 final publicProfileProvider = StreamProvider.autoDispose
     .family<UserProfile?, String>(
@@ -876,18 +890,36 @@ class AuthController extends Notifier<AuthUser?> {
   ///
   /// A signed-in account without a profile document (an interrupted Google or
   /// email sign-up) is repaired here instead of being left in a half state.
+  /// Copies the sign-in methods of the live Firebase session onto the state,
+  /// so the profile can show «متصل بالبريد/بجوجل» correctly after a link.
+  AuthUser _withProviders(AuthUser user) {
+    final repository = ref.read(authRepositoryProvider);
+    final current = repository.currentUser;
+    return user.copyWith(
+      // A linked email can replace the address on the Firebase account, so the
+      // state follows the live session instead of the value read at sign-in.
+      email: current?.email ?? user.email,
+      hasPassword: repository.hasPasswordProvider,
+      hasGoogle: repository.hasGoogleProvider,
+      emailVerified: repository.emailVerified,
+    );
+  }
+
   Future<void> _refresh(AuthUser user) async {
+    // Only a completed lookup may mark the account as "resolved": an offline
+    // start must not be mistaken for an account without a profile.
+    var resolved = false;
     try {
-      var profile = await ref.read(userRepositoryProvider).fetch(user.id);
-      profile ??= await ref.read(accountServiceProvider)?.ensureProfile(user);
-      if (profile != null) {
+      final found = await ref.read(userRepositoryProvider).fetch(user.id);
+      resolved = true;
+      if (found != null) {
         // Badges are granted by an administrator on the public mirror. The
         // owner document may still hold the old values, so the mirror is the
         // authoritative source for the signature that colours a handle.
-        profile = await _withPublicBadges(profile);
+        final profile = await _withPublicBadges(found);
         ref.read(profileProvider.notifier).apply(profile);
         _watchBadges(profile.uid);
-        state = user.copyWith(
+        state = _withProviders(user).copyWith(
           displayName: profile.displayName,
           username: profile.username,
           country: profile.country,
@@ -900,10 +932,15 @@ class AuthController extends Notifier<AuthUser?> {
         await _afterAccountReady();
         return;
       }
+      // Signed in without a profile (a Google sign-up that was not finished):
+      // the profile completion screen creates it, so no handle is invented.
+      ref.read(profileProvider.notifier).apply(null);
     } on Object {
       // Offline or not permitted; the identity state remains valid.
+    } finally {
+      if (resolved) ref.read(profileResolvedProvider.notifier).update(true);
     }
-    state = user;
+    state = _withProviders(user);
     await _afterAccountReady();
   }
 
@@ -962,6 +999,85 @@ class AuthController extends Notifier<AuthUser?> {
         : await ref.read(authRepositoryProvider).signInWithGoogle();
     final current = state;
     if (current != null) await _refresh(current);
+  }
+
+  /// Starts a Google registration and keeps the session open so the profile can
+  /// be completed with a real username instead of one generated behind the
+  /// reader's back.
+  Future<AuthUser> registerWithGoogle() async {
+    final service = ref.read(accountServiceProvider);
+    final user = service != null
+        ? await service.registerWithGoogle()
+        : await ref
+              .read(authRepositoryProvider)
+              .signInWithGoogle(createAccount: true);
+    ref.read(profileProvider.notifier).apply(null);
+    ref.read(profileResolvedProvider.notifier).update(true);
+    state = _withProviders(user);
+    return user;
+  }
+
+  /// Creates the profile of a Google account after the completion form.
+  Future<UserProfile> completeProfile({
+    required String displayName,
+    required String username,
+    required String country,
+    required String ageGroup,
+    String? avatarPath,
+  }) async {
+    final user = state;
+    final service = ref.read(accountServiceProvider);
+    if (user == null || service == null) {
+      throw const AppFailure(FailureKind.unknown, technical: 'no-user');
+    }
+    final profile = await service.completeProfile(
+      user: user,
+      displayName: displayName,
+      username: username,
+      country: country,
+      ageGroup: ageGroup,
+      avatarPath: avatarPath,
+    );
+    ref.read(profileProvider.notifier).apply(profile);
+    state = user.copyWith(
+      displayName: profile.displayName,
+      username: profile.username,
+      country: profile.country,
+    );
+    unawaited(ref.read(socialRepositoryProvider).syncAuthor(profile));
+    return profile;
+  }
+
+  /// Links the Google account picked in the system sheet to the signed-in
+  /// account. A Google account that already belongs to another Wings user is
+  /// refused by Firebase and reported as such.
+  Future<void> linkGoogleAccount() async {
+    await ref.read(authRepositoryProvider).linkGoogle();
+    final current = state;
+    if (current != null) state = _withProviders(current);
+  }
+
+  /// Starts adding an email + password to a Google-only account. Returns true
+  /// when the address needed no verification (it is the Google address) and the
+  /// link already completed.
+  Future<bool> requestEmailLink({
+    required String email,
+    required String password,
+  }) async {
+    final immediate = await ref
+        .read(authRepositoryProvider)
+        .requestEmailLink(email: email, password: password);
+    if (immediate) await completeEmailLink();
+    return immediate;
+  }
+
+  Future<bool> emailLinkVerified() =>
+      ref.read(authRepositoryProvider).emailLinkVerified();
+
+  Future<void> completeEmailLink() async {
+    await ref.read(authRepositoryProvider).completeEmailLink();
+    final current = state;
+    if (current != null) state = _withProviders(current);
   }
 
   Future<void> register({
@@ -1131,6 +1247,7 @@ class AuthController extends Notifier<AuthUser?> {
   Future<void> signOut() async {
     _syncedUid = null;
     _lastSync = null;
+    ref.read(profileResolvedProvider.notifier).update(false);
     await _badgesSubscription?.cancel();
     _badgesSubscription = null;
     final service = ref.read(accountServiceProvider);
@@ -1153,6 +1270,7 @@ class AuthController extends Notifier<AuthUser?> {
       await ref.read(authRepositoryProvider).deleteCurrentUser();
     }
     ref.read(profileProvider.notifier).apply(null);
+    ref.read(profileResolvedProvider.notifier).update(false);
     state = null;
   }
 }

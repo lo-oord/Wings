@@ -89,6 +89,75 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             WingsSettingsGroup(
+              title: Tr.of(context, ar: 'الحساب', en: 'Account'),
+              children: <Widget>[
+                if (user == null) ...<Widget>[
+                  WingsSettingsTile(
+                    icon: Icons.login_rounded,
+                    title: l10n.authLogin,
+                    subtitle: Tr.of(
+                      context,
+                      ar: 'سجّل الدخول لمزامنة مكتبتك وأمان حسابك',
+                      en: 'Sign in to sync your library and secure the account',
+                    ),
+                    showChevron: true,
+                    onTap: () => context.push(RoutePaths.welcome),
+                  ),
+                  WingsSettingsTile(
+                    icon: Icons.person_add_alt_1_rounded,
+                    title: l10n.authRegister,
+                    subtitle: Tr.of(
+                      context,
+                      ar: 'حساب جديد ببريد إلكتروني أو بجوجل',
+                      en: 'A new account with email or Google',
+                    ),
+                    showChevron: true,
+                    onTap: () => context.push(RoutePaths.register),
+                  ),
+                ] else ...<Widget>[
+                  WingsSettingsTile(
+                    icon: Icons.shield_outlined,
+                    title: Tr.of(
+                      context,
+                      ar: 'المصادقة والأمان',
+                      en: 'Sign-in & security',
+                    ),
+                    subtitle: user.hasGoogle && user.hasPassword
+                        ? Tr.of(
+                            context,
+                            ar: 'متصل بجوجل والبريد الإلكتروني',
+                            en: 'Google and email',
+                          )
+                        : user.hasGoogle
+                        ? Tr.of(context, ar: 'متصل بجوجل', en: 'Google')
+                        : Tr.of(
+                            context,
+                            ar: 'متصل بالبريد الإلكتروني',
+                            en: 'Email',
+                          ),
+                    showChevron: true,
+                    onTap: () => context.push(RoutePaths.profile),
+                  ),
+                  WingsSettingsTile(
+                    icon: Icons.logout_rounded,
+                    title: l10n.settingsSignOut,
+                    destructive: true,
+                    onTap: () async {
+                      await ref.read(authProvider.notifier).signOut();
+                      if (!context.mounted) return;
+                      context.showSnack(
+                        Tr.of(
+                          context,
+                          ar: 'تم تسجيل الخروج.',
+                          en: 'Signed out.',
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+            WingsSettingsGroup(
               title: Tr.of(context, ar: 'المزامنة', en: 'Sync'),
               children: <Widget>[
                 WingsSettingsTile(

@@ -9,6 +9,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/services/app_feedback.dart';
 import '../../core/utils/tr.dart';
 import '../../data/models/live_channel.dart';
 import '../../data/sources/live_source.dart';
@@ -37,6 +38,7 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
   bool _buffering = true;
   bool _controlsVisible = true;
   bool _muted = false;
+  bool _immersive = false;
   Timer? _hideControls;
 
   @override
@@ -142,6 +144,7 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
   }
 
   Future<void> _togglePlay() async {
+    unawaited(AppFeedback.tap());
     if (_playing) {
       await _player.pause();
     } else {
@@ -151,7 +154,31 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
   }
 
   Future<void> _toggleMute() async {
+    unawaited(AppFeedback.tap());
     await _player.setVolume(_muted ? 100 : 0);
+    _scheduleHideControls();
+  }
+
+  /// Full-screen live TV: the picture fills the screen, the schedule is hidden
+  /// and the system bars step aside until the reader leaves.
+  Future<void> _toggleImmersive() async {
+    unawaited(AppFeedback.tap());
+    final next = !_immersive;
+    setState(() => _immersive = next);
+    if (next) {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
     _scheduleHideControls();
   }
 
@@ -159,6 +186,7 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
   void dispose() {
     _hideControls?.cancel();
     _player.dispose();
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     unawaited(
       SystemChrome.setPreferredOrientations(<DeviceOrientation>[
         DeviceOrientation.portraitUp,
@@ -178,188 +206,270 @@ class _LivePlayerScreenState extends ConsumerState<LivePlayerScreen> {
       body: SafeArea(
         child: Column(
           children: <Widget>[
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  ColoredBox(
-                    color: Colors.black,
-                    child: _error != null
-                        ? _LiveError(onRetry: _start)
-                        : GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: _toggleControls,
-                            // No timeline: a live stream has no start or end to
-                            // scrub, so the controls are play, mute and retry
-                            // only — the seek bar of the shared player is gone.
-                            child: Video(
-                              controller: _controller,
-                              controls: NoVideoControls,
-                              fill: Colors.black,
-                            ),
-                          ),
-                  ),
-                  AnimatedOpacity(
-                    opacity: _controlsVisible ? 1 : 0,
-                    duration: const Duration(milliseconds: 220),
-                    child: IgnorePointer(
-                      ignoring: !_controlsVisible,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          PositionedDirectional(
-                            top: Space.sm,
-                            start: Space.sm,
-                            child: _OverlayButton(
-                              icon: Icons.arrow_back_rounded,
-                              onTap: () => Navigator.of(context).maybePop(),
-                            ),
-                          ),
-                          if (channel != null)
-                            PositionedDirectional(
-                              top: Space.sm,
-                              end: Space.sm,
-                              child: Row(
-                                children: <Widget>[
-                                  const LiveBadge(),
-                                  const SizedBox(width: Space.xs),
-                                  _OverlayButton(
-                                    icon: Icons.refresh_rounded,
-                                    onTap: _start,
+            // Loose in portrait (16:9 under the header), tight in full screen
+            // so the picture takes every pixel the system bars leave.
+            Flexible(
+              fit: _immersive ? FlexFit.tight : FlexFit.loose,
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      ColoredBox(
+                        color: Colors.black,
+                        child: _error != null
+                            ? _LiveError(onRetry: _start)
+                            : GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: _toggleControls,
+                                // No timeline: a live stream has no start or end to
+                                // scrub, so the controls are play, mute and retry
+                                // only — the seek bar of the shared player is gone.
+                                child: Video(
+                                  controller: _controller,
+                                  controls: NoVideoControls,
+                                  fill: Colors.black,
+                                ),
+                              ),
+                      ),
+                      AnimatedOpacity(
+                        opacity: _controlsVisible ? 1 : 0,
+                        duration: const Duration(milliseconds: 220),
+                        child: IgnorePointer(
+                          ignoring: !_controlsVisible,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: <Widget>[
+                              PositionedDirectional(
+                                top: Space.sm,
+                                start: Space.sm,
+                                child: _OverlayButton(
+                                  icon: _immersive
+                                      ? Icons.fullscreen_exit_rounded
+                                      : Icons.arrow_back_rounded,
+                                  onTap: _immersive
+                                      ? _toggleImmersive
+                                      : () => Navigator.of(context).maybePop(),
+                                ),
+                              ),
+                              if (channel != null)
+                                PositionedDirectional(
+                                  top: Space.sm,
+                                  end: Space.sm,
+                                  child: Row(
+                                    children: <Widget>[
+                                      const LiveBadge(),
+                                      const SizedBox(width: Space.xs),
+                                      _OverlayButton(
+                                        icon: Icons.refresh_rounded,
+                                        onTap: _start,
+                                      ),
+                                      const SizedBox(width: Space.xs),
+                                      _OverlayButton(
+                                        icon: _immersive
+                                            ? Icons.fullscreen_exit_rounded
+                                            : Icons.fullscreen_rounded,
+                                        onTap: _toggleImmersive,
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
+                              Center(
+                                child: _OverlayButton(
+                                  icon: _playing
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 30,
+                                  padding: 14,
+                                  onTap: _togglePlay,
+                                ),
+                              ),
+                              PositionedDirectional(
+                                bottom: Space.sm,
+                                start: Space.sm,
+                                child: Row(
+                                  children: <Widget>[
+                                    _OverlayButton(
+                                      icon: _muted
+                                          ? Icons.volume_off_rounded
+                                          : Icons.volume_up_rounded,
+                                      onTap: _toggleMute,
+                                    ),
+                                    const SizedBox(width: Space.xs),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: Space.sm,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.45,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          Radii.pill,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        Tr.of(context, ar: 'مباشر', en: 'Live'),
+                                        style: context.text.labelSmall
+                                            ?.copyWith(color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (_error == null)
+                        Center(
+                          child: AnimatedOpacity(
+                            opacity: _buffering ? 1 : 0,
+                            duration: Motion.normal,
+                            child: Container(
+                              padding: const EdgeInsets.all(Space.md),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.black.withValues(alpha: 0.4),
+                              ),
+                              child: const SizedBox(
+                                width: 26,
+                                height: 26,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
-                          Center(
-                            child: _OverlayButton(
-                              icon: _playing
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              size: 30,
-                              padding: 14,
-                              onTap: _togglePlay,
-                            ),
                           ),
-                          PositionedDirectional(
-                            bottom: Space.sm,
-                            start: Space.sm,
-                            child: Row(
-                              children: <Widget>[
-                                _OverlayButton(
-                                  icon: _muted
-                                      ? Icons.volume_off_rounded
-                                      : Icons.volume_up_rounded,
-                                  onTap: _toggleMute,
-                                ),
-                                const SizedBox(width: Space.xs),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: Space.sm,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.45),
-                                    borderRadius: BorderRadius.circular(
-                                      Radii.pill,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    Tr.of(context, ar: 'مباشر', en: 'Live'),
-                                    style: context.text.labelSmall?.copyWith(
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
+                    ],
                   ),
-                  if (_buffering && _error == null)
-                    const Center(
-                      child: SizedBox(
-                        width: 26,
-                        height: 26,
-                        child: CircularProgressIndicator(strokeWidth: 2.4),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Container(
-                color: palette.background,
-                child: ListView(
-                  padding: const EdgeInsets.all(Space.lg),
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            channel?.name ??
-                                Tr.of(context, ar: 'قناة مباشرة', en: 'Live'),
-                            style: context.text.titleLarge,
-                          ),
-                        ),
-                        if (channel != null)
-                          IconButton(
-                            tooltip: Tr.of(
-                              context,
-                              ar: _playing ? 'إيقاف مؤقت' : 'تشغيل',
-                              en: _playing ? 'Pause' : 'Play',
-                            ),
-                            onPressed: () =>
-                                _playing ? _player.pause() : _player.play(),
-                            icon: Icon(
-                              _playing
-                                  ? Icons.pause_circle_rounded
-                                  : Icons.play_circle_rounded,
-                              size: 34,
-                              color: palette.primary,
-                            ),
-                          ),
-                      ],
-                    ),
-                    if (channel != null && channel.description.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: Space.xs),
-                        child: Text(
-                          channel.description,
-                          style: context.text.bodySmall?.copyWith(
-                            color: palette.textMuted,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: Space.lg),
-                    Text(
-                      Tr.of(context, ar: 'جدول اليوم', en: 'Today'),
-                      style: context.text.titleSmall,
-                    ),
-                    const SizedBox(height: Space.sm),
-                    if (programs.isEmpty)
-                      Text(
-                        Tr.of(
-                          context,
-                          ar: 'لا يوجد جدول منشور لهذه القناة الآن.',
-                          en: 'No schedule is published for this channel yet.',
-                        ),
-                        style: context.text.bodySmall?.copyWith(
-                          color: palette.textMuted,
-                        ),
-                      )
-                    else
-                      for (final program in programs)
-                        _ScheduleRow(
-                          program: program,
-                          isCurrent: channel?.currentProgram == program,
-                        ),
-                  ],
                 ),
               ),
             ),
+            if (!_immersive)
+              Expanded(
+                child: Container(
+                  color: palette.background,
+                  child: ListView(
+                    padding: const EdgeInsets.all(Space.lg),
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          if (channel?.logoUrl != null &&
+                              channel!.logoUrl!.isNotEmpty) ...<Widget>[
+                            Container(
+                              width: 38,
+                              height: 38,
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: palette.surfaceAlt,
+                                borderRadius: BorderRadius.circular(Radii.sm),
+                                border: Border.all(color: palette.border),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(Radii.xs),
+                                child: Image.network(
+                                  channel.logoUrl!,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, _, _) => Icon(
+                                    Icons.live_tv_rounded,
+                                    size: 20,
+                                    color: palette.textMuted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: Space.sm),
+                          ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  channel?.name ??
+                                      Tr.of(
+                                        context,
+                                        ar: 'قناة مباشرة',
+                                        en: 'Live',
+                                      ),
+                                  style: context.text.titleLarge,
+                                ),
+                                if (channel?.currentProgram != null)
+                                  Text(
+                                    Tr.of(
+                                      context,
+                                      ar: 'الآن: ${channel!.currentProgram!.title}',
+                                      en: 'Now: ${channel.currentProgram!.title}',
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: context.text.labelSmall?.copyWith(
+                                      color: palette.primary,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (channel != null)
+                            IconButton(
+                              tooltip: Tr.of(
+                                context,
+                                ar: _playing ? 'إيقاف مؤقت' : 'تشغيل',
+                                en: _playing ? 'Pause' : 'Play',
+                              ),
+                              onPressed: () =>
+                                  _playing ? _player.pause() : _player.play(),
+                              icon: Icon(
+                                _playing
+                                    ? Icons.pause_circle_rounded
+                                    : Icons.play_circle_rounded,
+                                size: 34,
+                                color: palette.primary,
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (channel != null && channel.description.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: Space.xs),
+                          child: Text(
+                            channel.description,
+                            style: context.text.bodySmall?.copyWith(
+                              color: palette.textMuted,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: Space.lg),
+                      Text(
+                        Tr.of(context, ar: 'جدول اليوم', en: 'Today'),
+                        style: context.text.titleSmall,
+                      ),
+                      const SizedBox(height: Space.sm),
+                      if (programs.isEmpty)
+                        Text(
+                          Tr.of(
+                            context,
+                            ar: 'لا يوجد جدول منشور لهذه القناة الآن.',
+                            en: 'No schedule is published for this channel yet.',
+                          ),
+                          style: context.text.bodySmall?.copyWith(
+                            color: palette.textMuted,
+                          ),
+                        )
+                      else
+                        for (final program in programs)
+                          _ScheduleRow(
+                            program: program,
+                            isCurrent: channel?.currentProgram == program,
+                          ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),

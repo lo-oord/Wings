@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/anime.dart';
 import '../../features/auth/auth_screens.dart';
+import '../../features/auth/complete_profile_screen.dart';
 import '../../features/details/anime_details_screen.dart';
 import '../../features/downloads/downloads_screen.dart';
 import '../../features/explore/catalog_screen.dart';
@@ -79,6 +80,10 @@ class _RouterRefresh extends ChangeNotifier {
   _RouterRefresh(Ref ref) {
     ref.listen(authProvider, (_, _) => notifyListeners());
     ref.listen(settingsProvider, (_, _) => notifyListeners());
+    // The redirect decides whether the account still needs a profile, so it
+    // must re-run when the profile arrives or is created.
+    ref.listen(profileProvider, (_, _) => notifyListeners());
+    ref.listen(profileResolvedProvider, (_, _) => notifyListeners());
   }
 }
 
@@ -103,8 +108,22 @@ final routerProvider = Provider<GoRouter>((ref) {
     if (account == null && !current.guestMode) {
       return _authRoutes.contains(location) ? null : RoutePaths.welcome;
     }
-    if (account != null && location == RoutePaths.welcome) {
-      return RoutePaths.latest;
+    if (account != null) {
+      // An email + password account cannot move on before the address is
+      // confirmed; the verification screen is the only place it may stay.
+      if (account.hasPassword && !account.emailVerified) {
+        return location == RoutePaths.verify ? null : RoutePaths.verify;
+      }
+      final resolved = ref.read(profileResolvedProvider);
+      final hasProfile = ref.read(profileProvider) != null;
+      // A Google sign-up that has not chosen its username yet finishes here.
+      if (resolved && !hasProfile) {
+        return location == RoutePaths.complete ? null : RoutePaths.complete;
+      }
+      if (hasProfile && location == RoutePaths.complete) {
+        return RoutePaths.latest;
+      }
+      if (location == RoutePaths.welcome) return RoutePaths.latest;
     }
     return null;
   }
@@ -279,6 +298,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.verify,
         pageBuilder: (context, state) =>
             _wingsPage(context, state, const VerifyEmailScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.complete,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const CompleteProfileScreen()),
       ),
       GoRoute(
         path: RoutePaths.about,

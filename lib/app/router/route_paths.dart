@@ -16,6 +16,7 @@ abstract final class RoutePaths {
   static const String register = '/auth/register';
   static const String forgot = '/auth/forgot';
   static const String verify = '/auth/verify';
+  static const String complete = '/auth/complete';
 
   static String anime(String id) => '/anime/${Uri.encodeComponent(id)}';
 

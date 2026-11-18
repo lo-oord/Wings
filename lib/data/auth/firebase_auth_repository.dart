@@ -64,12 +64,17 @@ class FirebaseAuthRepository implements AuthRepository {
 
   AuthUser? _map(fb.User? user) {
     if (user == null) return null;
+    final providers = user.providerData
+        .map((provider) => provider.providerId)
+        .toSet();
     return AuthUser(
       id: user.uid,
       email: user.email ?? '',
       displayName: user.displayName ?? '',
       createdAt: user.metadata.creationTime ?? DateTime.now(),
       emailVerified: user.emailVerified,
+      hasPassword: providers.contains('password'),
+      hasGoogle: providers.contains('google.com'),
     );
   }
 
@@ -85,18 +90,70 @@ class FirebaseAuthRepository implements AuthRepository {
       );
       return _require(result.user);
     } on fb.FirebaseAuthException catch (error) {
+      // A missing account must never be reported as a bad password, and a
+      // sign-in attempt must never create one: the account has to exist.
+      if (error.code == 'user-not-found') {
+        throw const AppFailure(
+          FailureKind.permission,
+          technical: 'account-not-found',
+        );
+      }
       throw _failure(error);
     }
   }
 
+  /// Signs in with Google without ever creating an account unless
+  /// [createAccount] is set.
+  ///
+  /// `signInWithCredential` creates the Firebase user when the Google account
+  /// is new. Doing that from a sign-in button left an account behind for every
+  /// stranger who tapped it, so a new user is removed again and reported as
+  /// "no account"; registration refuses the mirror case.
   @override
-  Future<AuthUser> signInWithGoogle() async {
+  Future<AuthUser> signInWithGoogle({bool createAccount = false}) async {
     final credential = await _googleCredential();
+    fb.UserCredential result;
     try {
-      final result = await _auth.signInWithCredential(credential);
-      return _require(result.user);
+      result = await _auth.signInWithCredential(credential);
     } on fb.FirebaseAuthException catch (error) {
       throw _failure(error);
+    }
+    final isNew = result.additionalUserInfo?.isNewUser ?? false;
+    if (isNew && !createAccount) {
+      await _discardFreshGoogleUser(result.user);
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'google-account-not-found',
+      );
+    }
+    if (!isNew && createAccount) {
+      // Registration must not silently sign an existing account in.
+      try {
+        await _auth.signOut();
+      } on Object {
+        // The next attempt recovers either way.
+      }
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'google-account-exists',
+      );
+    }
+    return _require(result.user);
+  }
+
+  /// Deletes the user `signInWithCredential` just created for a Google account
+  /// that is not registered in Wings.
+  Future<void> _discardFreshGoogleUser(fb.User? user) async {
+    try {
+      await user?.delete();
+    } on Object {
+      // The token is fresh, so a delete failure is rare; sign out instead of
+      // leaving the app on an account it did not offer to create.
+      try {
+        await _auth.signOut();
+      } on Object {
+        // Nothing else to do.
+      }
     }
   }
 
@@ -135,9 +192,14 @@ class FirebaseAuthRepository implements AuthRepository {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
     } on fb.FirebaseAuthException catch (error) {
-      // The UI must not reveal whether an account exists, so a missing user is
-      // reported as a successful request.
-      if (error.code == 'user-not-found') return;
+      // Wings now tells the reader when no account uses that address, instead
+      // of claiming a message was sent to an inbox that will never receive it.
+      if (error.code == 'user-not-found') {
+        throw const AppFailure(
+          FailureKind.permission,
+          technical: 'account-not-found',
+        );
+      }
       throw _failure(error);
     }
   }
@@ -196,9 +258,96 @@ class FirebaseAuthRepository implements AuthRepository {
     if (hasGoogleProvider) return;
     final credential = await _googleCredential();
     try {
+      // `linkWithCredential` refuses a Google account that already belongs to
+      // another Wings user (`credential-already-in-use`), so one Google account
+      // can never end up on two profiles.
       await user.linkWithCredential(credential);
     } on fb.FirebaseAuthException catch (error) {
       throw _failure(error);
+    }
+  }
+
+  // ------------------------------------------------------- email linking
+
+  String? _pendingEmail;
+  String? _pendingPassword;
+
+  @override
+  bool get hasPendingEmailLink => _pendingEmail != null;
+
+  @override
+  Future<bool> requestEmailLink({
+    required String email,
+    required String password,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw const AppFailure(FailureKind.permission);
+    final address = email.trim();
+    if (password.length < 8) {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'weak-password',
+      );
+    }
+    _pendingEmail = address;
+    _pendingPassword = password;
+    // The Google address was already verified by Google itself.
+    if (address.toLowerCase() == (user.email ?? '').toLowerCase()) return true;
+    try {
+      await _verifyBeforeUpdate(user, address);
+      return false;
+    } on fb.FirebaseAuthException catch (error) {
+      _pendingEmail = null;
+      _pendingPassword = null;
+      throw _failure(error);
+    }
+  }
+
+  /// Sends the verification link that Firebase uses before changing an email.
+  /// A stale session (`requires-recent-login`) is refreshed with the Google
+  /// account once, so a long-running session does not dead-end here.
+  Future<void> _verifyBeforeUpdate(fb.User user, String address) async {
+    try {
+      await user.verifyBeforeUpdateEmail(address);
+    } on fb.FirebaseAuthException catch (error) {
+      if (error.code != 'requires-recent-login') rethrow;
+      await user.reauthenticateWithCredential(await _googleCredential());
+      await user.verifyBeforeUpdateEmail(address);
+    }
+  }
+
+  @override
+  Future<bool> emailLinkVerified() async {
+    final pending = _pendingEmail;
+    final user = _auth.currentUser;
+    if (pending == null || user == null) return false;
+    try {
+      await user.reload();
+    } on fb.FirebaseAuthException catch (error) {
+      throw _failure(error);
+    }
+    final current = _auth.currentUser;
+    return (current?.email ?? '').toLowerCase() == pending.toLowerCase() &&
+        (current?.emailVerified ?? false);
+  }
+
+  @override
+  Future<void> completeEmailLink() async {
+    final pending = _pendingEmail;
+    final password = _pendingPassword;
+    final user = _auth.currentUser;
+    if (pending == null || password == null || user == null) {
+      throw const AppFailure(FailureKind.permission, technical: 'no-user');
+    }
+    try {
+      await user.linkWithCredential(
+        fb.EmailAuthProvider.credential(email: pending, password: password),
+      );
+    } on fb.FirebaseAuthException catch (error) {
+      throw _failure(error);
+    } finally {
+      _pendingEmail = null;
+      _pendingPassword = null;
     }
   }
 

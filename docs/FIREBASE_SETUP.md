@@ -466,3 +466,28 @@ Manual steps:
       one collection).
 - [ ] Rebuild the APK; the launcher colours were fixed so the release resource
       link step no longer fails.
+
+## 13. Sign-in and sign-up (strict, verified, linkable)
+
+| Journey | Behaviour |
+| --- | --- |
+| Email sign-in | Only an existing account signs in. A missing account reports «لا يوجد حساب مرتبط بهذا البريد الإلكتروني. أنشئ حسابًا جديدًا أولًا.» and never creates one. |
+| Email sign-up | The form reserves the username and the profile, then sends the verification link. The router keeps the account on `/auth/verify` until `emailVerified` is true; the screen no longer offers a way around it. |
+| Google sign-in | `signInWithGoogle` never creates an account: a brand new Google user is deleted again and reported as «لا يوجد حساب مرتبط بهذا البريد في Wings». |
+| Google sign-up | A known account is refused with «هذا الحساب موجود بالفعل» and the session is closed. A new account is greeted with «تم إنشاء الحساب» and sent to `/auth/complete`, where the display name, username (live availability + suggestions), country, age group, picture and terms are chosen. No profile is invented automatically any more. |
+| Password reset | An unknown address now reports that no account uses it instead of claiming a message was sent. With Firebase *email enumeration protection* turned on, Firebase itself always answers generically, so the exact message cannot be shown in that configuration. |
+| Sign-in status | The profile shows «متصل بالبريد الإلكتروني / بجوجل / بجوجل والبريد» with both marks, plus a verification shortcut while the address is unconfirmed. |
+| Link Google (email account) | `linkWithCredential` on the Google provider. A Google account already attached to another Wings user is refused (`credential-already-in-use`), so one Google email can never reach two profiles. |
+| Link an email (Google account) | The email must be unregistered. `verifyBeforeUpdateEmail` sends the link; the password is kept in memory only, and `linkWithCredential(EmailAuthProvider)` runs after the address is verified. When the address is the Google one, Google already verified it and the password links immediately. |
+
+No Firestore rule change is needed for this revision: linking happens entirely in
+Firebase Authentication, and a Google account completing its profile uses the
+same `users/{uid}`, `profiles/{uid}` and `usernames/{handle}` writes as an email
+sign-up. Publish the current `firestore.rules` anyway so the badge-clear rule from
+the previous revision is live.
+
+Player work in this revision: the portrait player now opens with the poster, the
+resulting header (title, episode, views, stream) and a next-episode action, and
+the live player adds a channel logo, the current programme, a full-screen mode
+and light haptic cues on play, mute and full-screen. Like/dislike and comment
+create/delete keep their existing light cue.
