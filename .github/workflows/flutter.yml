@@ -11,6 +11,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Maven Central and the Gradle plugin portal occasionally answer a shared
+      # runner IP with 429 "Too Many Requests". Gradle retries a repository by
+      # default only three times with a very short backoff, which is not enough
+      # for that case; these settings give it a longer, still bounded, retry.
+      GRADLE_OPTS: >-
+        -Dorg.gradle.internal.repository.max.retries=8
+        -Dorg.gradle.internal.repository.initial.backoff=2000
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +32,10 @@ jobs:
           channel: stable
           flutter-version: 3.50.0
           cache: true
+
+      # Caches ~/.gradle between runs, so a re-run does not have to download the
+      # Kotlin/Android artifacts again (the step that failed with HTTP 429).
+      - uses: gradle/actions/setup-gradle@v4
 
       - name: Install dependencies
         run: flutter pub get
