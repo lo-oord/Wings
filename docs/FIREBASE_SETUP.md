@@ -115,23 +115,25 @@ Official marks live in **`badges/{uid}`**, a document with exactly two fields:
 * The document is readable by every signed-in user and writable **only** by an
   administrator (`config/admins`) or from the Firebase console, which bypasses
   the rules.
-* It is the single authority: whatever it contains — a grant **or a removal**
-  — is what the account shows. The app never merges the older copies back in
-  while this document exists, and never writes badges itself, so turning
-  `developer` off here cannot switch itself back on. The stored copies on
-  `users/{uid}` and `profiles/{uid}` are only a fallback for accounts granted
-  before this document existed.
+* **While it exists it is the single authority**: a `true` grants the mark and a
+  `false` removes it, whatever the copies on the profile documents say.
+* **A missing document is not a revocation.** Grants are often made straight in
+  the console on `users/{uid}` or `profiles/{uid}` (the `badges` map is right
+  there), so when `badges/{uid}` does not exist the app keeps the mark already
+  stored on those documents. The app writes back the value it resolved, so such
+  a console grant is never overwritten with `false` on the next profile edit —
+  that overwrite is what made a grant look “cancelled” seconds later.
+* To revoke a mark, set its field to `false` in `badges/{uid}` (or on both
+  profile documents). The two flags are independent, so
+  `{"verified": true, "developer": false}` is a verified account only. Deleting
+  only `badges/{uid}` no longer clears a mark that is already copied on the
+  profile — set the flags to `false` instead.
 * Because the app reads `badges/{uid}` live, granting or removing a mark shows
   up on every device — the owner's handle, their profile frame and every
   existing comment — without reinstalling or signing out.
-* To revoke a mark, set its field to `false`; the two flags are independent, so
-  `{"verified": true, "developer": false}` is a verified account only. Deleting
-  the document revokes **both** marks, and the app treats a missing document as
-  “no badges” instead of falling back to the stale copies, so a revocation can
-  never switch itself back on.
-* The rules let an owner write badges that are **off** (never on), so the client
-  can copy a revocation into its own documents instead of being rejected and
-  keeping the old `true`. Publish the current `firestore.rules` for this.
+* Reading the document also needs the current `firestore.rules` published: with
+  older rules the read is denied and the app can only show the copies on the
+  profile documents. Publish the rules first, then grant.
 
 **How the marks look**
 

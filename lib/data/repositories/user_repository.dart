@@ -62,26 +62,27 @@ class UserRepository {
   }
 
   /// Overrides the badges copied on a profile document with the administrator
-  /// document. The copies are only a fallback for when that read fails.
+  /// document when it exists. Without it the copies stay as they are, because
+  /// an administrator may grant a mark directly in the console.
   Future<UserProfile> _applyBadges(UserProfile profile) async {
     try {
       final badges = await fetchBadges(profile.uid);
-      final resolved = badges ?? ProfileBadges.none;
-      return resolved == profile.badges
+      if (badges == null) return profile;
+      return badges == profile.badges
           ? profile
-          : profile.copyWith(badges: resolved);
+          : profile.copyWith(badges: badges);
     } on Object {
       // Rules not published yet or offline: keep the stored copy for now.
       return profile;
     }
   }
 
-  /// Live official badges. Missing means revoked, so the stream emits "none"
-  /// instead of leaving a handle marked after the grant was removed.
-  Stream<ProfileBadges> watchBadges(String uid) =>
+  /// Live official badges. A missing document emits `null` (no record) so the
+  /// caller keeps the copies already on the profile instead of clearing them.
+  Stream<ProfileBadges?> watchBadges(String uid) =>
       _badges(uid).snapshots().map((snapshot) {
         final data = snapshot.data();
-        if (!snapshot.exists || data == null) return ProfileBadges.none;
+        if (!snapshot.exists || data == null) return null;
         return ProfileBadges.fromMap(data);
       });
 
@@ -121,11 +122,12 @@ class UserRepository {
       badgeSub = _badges(uid).snapshots().listen((snapshot) {
         hasBadges = true;
         final data = snapshot.data();
-        // Missing document = the marks were revoked; the stale copies on the
-        // profile documents must not bring them back.
+        // No document = no administrator record, so the copies already on the
+        // profile stay (that is where a console grant lives). Values that are
+        // explicitly `false` do clear the mark.
         badges = snapshot.exists && data != null
             ? ProfileBadges.fromMap(data)
-            : ProfileBadges.none;
+            : null;
         emit();
       }, onError: (Object _) {});
     };

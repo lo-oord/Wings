@@ -12,6 +12,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../data/models/social.dart';
+import '../auth/sign_in_prompt.dart';
 import 'comment_tile.dart';
 
 /// YouTube-inspired interaction area under the player.
@@ -89,7 +90,16 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
   Future<void> _toggleReaction(ReactionType type) async {
     final user = ref.read(authProvider);
     if (user == null) {
-      context.push('/login');
+      // A guest gets the floating gate instead of a silent no-op, and the
+      // counters stay untouched until the account exists.
+      await showSignInPrompt(
+        context,
+        message: Tr.of(
+          context,
+          ar: 'سجّل الدخول لتتمكن من الإعجاب بالحلقات أو عدم الإعجاب بها.',
+          en: 'Sign in to like or dislike episodes.',
+        ),
+      );
       return;
     }
     final previous = _reaction;

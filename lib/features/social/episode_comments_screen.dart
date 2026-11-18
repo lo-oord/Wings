@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
@@ -13,6 +12,7 @@ import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/social.dart';
+import '../auth/sign_in_prompt.dart';
 import 'comment_tile.dart';
 
 /// Full comments page, modelled on YouTube: the newest page streams live, older
@@ -109,7 +109,14 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
     final user = ref.read(authProvider);
     final profile = ref.read(profileProvider);
     if (user == null) {
-      context.push('/login');
+      await showSignInPrompt(
+        context,
+        message: Tr.of(
+          context,
+          ar: 'سجّل الدخول لتتمكن من كتابة تعليق أو الرد على تعليق.',
+          en: 'Sign in to write a comment or reply to one.',
+        ),
+      );
       return;
     }
     if (profile == null) {
@@ -304,7 +311,14 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
                   ),
                   icon: Icons.login_rounded,
                   expand: true,
-                  onPressed: () => context.push('/login'),
+                  onPressed: () => showSignInPrompt(
+                    context,
+                    message: Tr.of(
+                      context,
+                      ar: 'سجّل الدخول لتتمكن من كتابة تعليق ومتابعة الردود.',
+                      en: 'Sign in to write comments and reply to others.',
+                    ),
+                  ),
                 ),
               ),
             )

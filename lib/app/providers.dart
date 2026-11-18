@@ -782,7 +782,7 @@ class AuthController extends Notifier<AuthUser?> {
 
   /// Watches the administrator-managed badge document of the signed-in
   /// account, so a grant appears without relaunching the app.
-  StreamSubscription<ProfileBadges>? _badgesSubscription;
+  StreamSubscription<ProfileBadges?>? _badgesSubscription;
 
   /// Links (or re-pulls) the cloud copy of the library.
   ///
@@ -873,6 +873,9 @@ class AuthController extends Notifier<AuthUser?> {
         .watchBadges(uid)
         .listen(
           (badges) {
+            // `null` means no administrator document: the mark already on the
+            // profile stays, so a console grant is never erased.
+            if (badges == null) return;
             final current = ref.read(profileProvider);
             if (current == null || current.badges == badges) return;
             final next = current.copyWith(badges: badges);
@@ -946,21 +949,17 @@ class AuthController extends Notifier<AuthUser?> {
 
   /// Resolves the signature of the account.
   ///
-  /// `badges/{uid}` is the single authority: an administrator grants and
-  /// revokes a mark there, and whatever it says — including *off*, or a missing
-  /// document — is what the account gets. The copies stored on the owner and
-  /// public documents are never merged in: that union is what switched a
-  /// revoked mark back on the next time the app read the profile. The copies are
-  /// only used while the badge document cannot be read (offline, or rules that
-  /// predate it).
+  /// `badges/{uid}` is the authority while it exists: a grant or an explicit
+  /// `false` is exactly what the account gets. When the document is absent the
+  /// copies already on `users/{uid}` / `profiles/{uid}` are kept, because an
+  /// administrator may grant a mark straight from the console — treating a
+  /// missing document as “revoked” is what switched such grants off again.
   Future<UserProfile> _withPublicBadges(UserProfile profile) async {
     final repository = ref.read(userRepositoryProvider);
     try {
       final granted = await repository.fetchBadges(profile.uid);
-      final resolved = granted ?? ProfileBadges.none;
-      return resolved == profile.badges
-          ? profile
-          : profile.copyWith(badges: resolved);
+      if (granted == null || granted == profile.badges) return profile;
+      return profile.copyWith(badges: granted);
     } on Object {
       // Offline or old rules: keep what the profile already carries until the
       // next read instead of guessing.
