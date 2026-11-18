@@ -439,6 +439,7 @@ class SocialRepository {
     required String reason,
     String? episodeId,
     String? commentId,
+    String? targetUid,
   }) async {
     await _db.collection('reports').add(<String, dynamic>{
       'reporterUid': reporterUid,
@@ -446,6 +447,7 @@ class SocialRepository {
       'reason': reason,
       'episodeId': episodeId,
       'commentId': commentId,
+      if (targetUid != null && targetUid.isNotEmpty) 'targetUid': targetUid,
       'status': 'open',
       'createdAt': FieldValue.serverTimestamp(),
     });

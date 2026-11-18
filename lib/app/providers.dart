@@ -42,6 +42,9 @@ import '../data/auth/account_deletion_service.dart';
 import '../data/auth/account_service.dart';
 import '../data/auth/firebase_auth_repository.dart';
 import '../data/models/user_profile.dart';
+import '../data/models/account_status.dart';
+import '../data/models/admin_models.dart';
+import '../data/repositories/admin_repository.dart';
 import '../data/repositories/avatar_repository.dart';
 import '../data/repositories/cover_repository.dart';
 import '../data/repositories/social_repository.dart';
@@ -705,6 +708,63 @@ final socialRepositoryProvider = Provider<SocialRepository>(
 final notificationRepositoryProvider = Provider<NotificationRepository>(
   (ref) => NotificationRepository(FirebaseFirestore.instance),
 );
+
+// ---------------------------------------------------------------------------
+// Owner administration
+// ---------------------------------------------------------------------------
+
+final adminRepositoryProvider = Provider<AdminRepository>(
+  (ref) => AdminRepository(FirebaseFirestore.instance),
+);
+
+/// The trusted staff role of the signed-in account.
+///
+/// The value comes from `config/admins`, which only the Firebase console can
+/// write, and the request is refused by the rules for everybody else. It is
+/// never derived from a username, an email, a local Boolean or a profile field.
+final staffRoleProvider = FutureProvider<StaffRole>((ref) async {
+  if (!ref.watch(firebaseReadyProvider)) return StaffRole.user;
+  final user = ref.watch(authProvider);
+  if (user == null) return StaffRole.user;
+  return ref.watch(adminRepositoryProvider).fetchRole(user.id);
+});
+
+/// True only for the Owner. Developer Tools is built on this and the router
+/// independently refuses the route for anyone else.
+final isOwnerProvider = Provider<bool>((ref) {
+  final role = ref.watch(staffRoleProvider).value;
+  return role == StaffRole.owner;
+});
+
+final isStaffProvider = Provider<bool>(
+  (ref) => ref.watch(staffRoleProvider).value?.isStaff ?? false,
+);
+
+/// Live administrative standing of one account, read from its own document.
+final accountStandingProvider = StreamProvider.autoDispose
+    .family<AccountStanding?, String>(
+      (ref, uid) => ref.watch(userRepositoryProvider).watchStanding(uid),
+    );
+
+/// Standing of the signed-in account, or null for a guest.
+final myStandingProvider = Provider<AccountStanding?>((ref) {
+  final uid = ref.watch(authProvider)?.id;
+  if (uid == null) return null;
+  return ref.watch(accountStandingProvider(uid)).value;
+});
+
+/// Personal messages from the Wings owner.
+final ownerMessagesProvider = StreamProvider.autoDispose
+    .family<List<OwnerMessage>, String>(
+      (ref, uid) => ref.watch(adminRepositoryProvider).watchOwnerMessages(uid),
+    );
+
+/// Administrative notifications kept for the account, separate from community
+/// replies so they can always be re-read.
+final adminNoticesProvider = StreamProvider.autoDispose
+    .family<List<AdminNotice>, String>(
+      (ref, uid) => ref.watch(adminRepositoryProvider).watchAdminNotices(uid),
+    );
 
 /// Replies and future community alerts for one account.
 final socialNotificationsProvider = StreamProvider.autoDispose

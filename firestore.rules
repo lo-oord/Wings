@@ -21,10 +21,107 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/config/admins).data.uids;
     }
 
+    function staffConfig() {
+      return get(/databases/$(database)/documents/config/admins).data;
+    }
+
     function isAdmin() {
       return signedIn()
         && exists(/databases/$(database)/documents/config/admins)
         && request.auth.uid in adminUids();
+    }
+
+    // Highest role. The owner is listed in `owners` inside the same trusted
+    // document, which only the console (or a trusted server) can write. An
+    // older project that has no `owners` list treats its admins as owners so
+    // the bootstrap cannot lock the real owner out.
+    function isOwner() {
+      return isAdmin()
+        && (
+          request.auth.uid in staffConfig().get('owners', [])
+          || (!('owners' in staffConfig()) && request.auth.uid in adminUids())
+        );
+    }
+
+    // ------------------------------------------------ account administration
+    // The state lives on `users/{uid}` (a single document), never in a field a
+    // client can write: the self-update rule below refuses to touch it.
+    function accountExists(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function accountData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function accountState(uid) {
+      return accountExists(uid)
+        ? accountData(uid).get('accountStatus', 'active')
+        : 'active';
+    }
+
+    // A suspension is evaluated against `request.time`, so it expires without
+    // a scheduled job and cannot stay active because a client stayed offline.
+    function suspensionLive(uid) {
+      return accountState(uid) == 'suspended'
+        && (
+          !('statusExpiresAt' in accountData(uid))
+          || accountData(uid).statusExpiresAt == null
+          || accountData(uid).statusExpiresAt > request.time
+        );
+    }
+
+    function accountBlocked(uid) {
+      return accountState(uid) == 'banned'
+        || accountState(uid) == 'deleted'
+        || suspensionLive(uid);
+    }
+
+    // A single restriction is disabled for as long as its expiry allows.
+    function restrictionOff(uid, key) {
+      return accountExists(uid)
+        && ('restrictions' in accountData(uid))
+        && accountData(uid).restrictions.get(key, false) == true
+        && (
+          !('restrictionsExpireAt' in accountData(uid))
+          || accountData(uid).restrictionsExpireAt == null
+          || accountData(uid).restrictionsExpireAt > request.time
+        );
+    }
+
+    // The signed-in author may perform [key] when the account is not blocked
+    // and that feature is not restricted.
+    function canAct(uid, key) {
+      return signedIn()
+        && request.auth.uid == uid
+        && !accountBlocked(uid)
+        && !restrictionOff(uid, key);
+    }
+
+    function validRestrictions(value) {
+      return value is map
+        && value.keys().hasOnly(['comment', 'post', 'interact', 'community', 'report'])
+        && value.get('comment', false) is bool
+        && value.get('post', false) is bool
+        && value.get('interact', false) is bool
+        && value.get('community', false) is bool
+        && value.get('report', false) is bool;
+    }
+
+    function validAccountState(value) {
+      return value in [
+        'active', 'warned', 'restricted', 'suspended', 'banned',
+        'underReview', 'deleted'
+      ];
+    }
+
+    // Administrative fields that the account owner may never write.
+    function adminFields() {
+      return [
+        'accountStatus', 'statusReason', 'statusUpdatedAt', 'statusExpiresAt',
+        'statusActorUid', 'restrictions', 'restrictionsExpireAt',
+        'warningsCount', 'emailHash'
+      ];
     }
 
     // Official marks live in `badges/{uid}` and only an administrator writes
@@ -154,10 +251,17 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------- users
+    // Staff may read any account document (that is what the administrative
+    // profile page needs, including for a private profile), while ordinary
+    // users only ever read their own.
     match /users/{uid} {
-      allow read: if isSelf(uid);
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
 
       allow create: if isSelf(uid)
+        && request.resource.data.emailHash is string
+        && request.resource.data.emailHash.size() == 64
+        && !exists(/databases/$(database)/documents/emailBlocks/$(request.resource.data.emailHash))
         && request.resource.data.username is string
         && validUsername(request.resource.data.username)
         && request.resource.data.normalizedUsername == request.resource.data.username.lower()
@@ -188,6 +292,8 @@ service cloud.firestore {
       // bio without the write being rejected. A rename is only accepted when
       // the matching reservation belongs to them.
       allow update: if isSelf(uid)
+        && !accountBlocked(uid)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(adminFields())
         && (
           isAdmin()
           || (
@@ -238,7 +344,70 @@ service cloud.firestore {
           )
         );
 
+      // Administrative state changes. The shape is fixed so a staff write can
+      // never become an arbitrary profile edit, and the state itself is a
+      // closed list.
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(adminFields())
+        && (!('accountStatus' in request.resource.data)
+            || validAccountState(request.resource.data.accountStatus))
+        && (!('statusReason' in request.resource.data)
+            || (request.resource.data.statusReason is string
+                && request.resource.data.statusReason.size() <= 500))
+        && (!('restrictions' in request.resource.data)
+            || validRestrictions(request.resource.data.restrictions))
+        && (!('warningsCount' in request.resource.data)
+            || (request.resource.data.warningsCount is int
+                && request.resource.data.warningsCount >= 0));
+
+      // The owner may rewrite the document wholesale (account purge and
+      // tombstone). Lower roles cannot.
+      allow write: if isOwner();
+
       allow delete: if isSelf(uid) || isAdmin();
+
+      // Formal warnings. Readable by the account and by staff; only staff
+      // writes them, and a warning is revoked rather than deleted so the
+      // audit history survives.
+      match /warnings/{warningId} {
+        allow get, list: if isSelf(uid) || isAdmin();
+        allow create: if isAdmin()
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.category is string
+          && request.resource.data.category.size() <= 40
+          && request.resource.data.reason is string
+          && request.resource.data.reason.size() <= 500
+          && request.resource.data.active == true
+          && request.resource.data.createdAt is timestamp;
+        allow update: if isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'active', 'revokedAt', 'revokedBy'
+          ]);
+        allow delete: if false;
+      }
+
+      // Administrative notifications. They are stored separately from community
+      // replies so the account can always re-read an action it missed, and so
+      // the reply stream is never polluted.
+      match /adminNotices/{noticeId} {
+        allow get, list: if isSelf(uid) || isAdmin();
+        allow create: if isAdmin()
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 160
+          && request.resource.data.body is string
+          && request.resource.data.body.size() <= 4000
+          && request.resource.data.category in [
+            'account-status', 'warning', 'restriction', 'message',
+            'deletion', 'info'
+          ]
+          && request.resource.data.severity in ['info', 'warning', 'critical']
+          && request.resource.data.read == false
+          && request.resource.data.createdAt is timestamp;
+        allow update: if isSelf(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+          && request.resource.data.read == true;
+        allow delete: if isSelf(uid);
+      }
 
       // Owned subcollections. Deletes are always allowed for the owner: a rule
       // that inspects request.resource.data would otherwise reject them,
@@ -416,11 +585,44 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
       allow create: if signedIn()
+        && !accountBlocked(request.auth.uid)
+        && !exists(/databases/$(database)/documents/usernameBlocks/$(normalized))
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.username == normalized
         && request.resource.data.createdAt is timestamp;
       allow update: if false;
-      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      allow delete: if signedIn()
+        && (resource.data.uid == request.auth.uid || isOwner());
+    }
+
+    // --------------------------------------------------- blocked usernames
+    // A blocked handle cannot be reserved by anyone, including the account that
+    // used to own it. The registry stays an exact-lookup collection so it can
+    // never be enumerated; staff can list it.
+    match /usernameBlocks/{normalized} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, update, delete: if isOwner()
+        && (!('username' in request.resource.data)
+            || request.resource.data.username == normalized);
+    }
+
+    // ------------------------------------------------------ blocked emails
+    // Documents are keyed by the SHA-256 of the normalized address, so no raw
+    // address is stored. Only staff can read the list; registration asks the
+    // rules through `emailChecks` instead of reading it.
+    match /emailBlocks/{hash} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isOwner();
+    }
+
+    // Registration probe: creating the throw-away marker is only allowed while
+    // the address is **not** blocked. A denied write is the "blocked" answer.
+    match /emailChecks/{hash} {
+      allow create: if request.resource.data.hash == hash
+        && !exists(/databases/$(database)/documents/emailBlocks/$(hash));
+      allow delete: if resource.data.hash == hash;
+      allow read, update: if false;
     }
 
     // --------------------------------------------------------- catalogue
@@ -455,6 +657,7 @@ service cloud.firestore {
       match /reactions/{uid} {
         allow read: if signedIn();
         allow create, update: if isSelf(uid)
+          && canAct(uid, 'interact')
           && request.resource.data.uid == uid
           && request.resource.data.episodeId == episodeId
           && request.resource.data.type in ['like', 'dislike'];
@@ -465,6 +668,7 @@ service cloud.firestore {
         allow read: if signedIn();
 
         allow create: if signedIn()
+          && canAct(request.auth.uid, 'comment')
           && request.resource.data.authorUid == request.auth.uid
           && request.resource.data.episodeId == episodeId
           && request.resource.data.text is string
@@ -519,12 +723,15 @@ service cloud.firestore {
             )
           );
 
+        // The author may remove their own comment; the owner may remove any
+        // comment as part of moderation or an account purge.
         allow delete: if signedIn()
-          && resource.data.authorUid == request.auth.uid;
+          && (resource.data.authorUid == request.auth.uid || isOwner());
 
         match /replies/{replyId} {
           allow read: if signedIn();
           allow create: if signedIn()
+            && canAct(request.auth.uid, 'comment')
             && request.resource.data.authorUid == request.auth.uid
             && request.resource.data.parentId == commentId
             && request.resource.data.episodeId == episodeId
@@ -547,7 +754,8 @@ service cloud.firestore {
           // deletion request fail instead of returning false.
           allow delete: if signedIn()
             && (
-              resource.data.authorUid == request.auth.uid
+              isOwner()
+              || resource.data.authorUid == request.auth.uid
               || (
                 exists(/databases/$(database)/documents/episodes/$(episodeId)/comments/$(commentId))
                 && get(/databases/$(database)/documents/episodes/$(episodeId)/comments/$(commentId)).data.authorUid == request.auth.uid
@@ -590,17 +798,71 @@ service cloud.firestore {
     // ----------------------------------------------------------- reports
     match /reports/{reportId} {
       allow create: if signedIn()
+        && canAct(request.auth.uid, 'report')
         && request.resource.data.reporterUid == request.auth.uid
         && request.resource.data.status == 'open'
         && request.resource.data.reason is string
-        && request.resource.data.reason.size() <= 200;
-      allow read, update, delete: if isAdmin();
+        && request.resource.data.reason.size() <= 200
+        && (!('targetUid' in request.resource.data)
+            || request.resource.data.targetUid is string);
+      allow read, delete: if isAdmin();
+      // Review only moves the report between the closed states and records who
+      // decided and why; the reporter's original text is immutable.
+      allow update: if isAdmin()
+        && request.resource.data.status in ['open', 'reviewed', 'resolved', 'dismissed']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewNote', 'reviewedBy', 'updatedAt'
+        ]);
+    }
+
+    // ------------------------------------------------- administrative audit
+    // Append-only by staff, readable by staff only. A moderator's or admin's
+    // action is recorded next to the owner's so responsibility is clear.
+    match /adminActions/{actionId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.action is string
+        && request.resource.data.action.size() <= 40
+        && request.resource.data.targetUid is string
+        && request.resource.data.targetUid.size() <= 200
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
+
+    // ------------------------------------------- personal owner messages
+    // One thread per recipient. The owner writes, the recipient reads and may
+    // mark a message read or remove it from their own mailbox.
+    match /ownerMessages/{uid}/items/{messageId} {
+      allow get, list: if isSelf(uid) || isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() <= 160
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 1
+        && request.resource.data.body.size() <= 4000
+        && request.resource.data.read == false
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isSelf(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        && request.resource.data.read == true;
+      allow delete: if isSelf(uid);
+    }
+
+    match /ownerMessages/{uid} {
+      allow read, write: if false;
     }
 
     // ------------------------------------------------------------ config
     // Read by rules through get()/exists(), which bypass this match. Clients
     // can never read or write it, so the admin allowlist stays private.
     match /config/{docId} {
+      // Staff may read the allowlist so the app can resolve its role. Nobody can
+      // read it before being staff, and only the console can write it.
+      allow get: if docId == 'admins' && isAdmin();
       allow read, write: if false;
     }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../models/account_status.dart';
 import '../models/user_profile.dart';
 
 /// Profiles live in two documents:
@@ -140,6 +141,23 @@ class UserRepository {
     return controller.stream;
   }
 
+  /// Live administrative standing of one account. Every account may read its
+  /// own state (and staff may read any), so a suspension or a restriction is
+  /// reflected on the device that is signed in, not only on the next launch.
+  Stream<AccountStanding?> watchStanding(String uid) =>
+      _user(uid).snapshots().map((snapshot) {
+        final data = snapshot.data();
+        if (!snapshot.exists || data == null) return null;
+        return AccountStanding.fromMap(uid, data);
+      });
+
+  Future<AccountStanding?> fetchStanding(String uid) async {
+    final snapshot = await _user(uid).get();
+    final data = snapshot.data();
+    if (!snapshot.exists || data == null) return null;
+    return AccountStanding.fromMap(uid, data);
+  }
+
   Future<UserProfile?> fetchPublic(String uid) async {
     final snapshot = await _public(uid).get();
     final data = snapshot.data();
@@ -148,9 +166,16 @@ class UserRepository {
   }
 
   /// Creates the owner document, its public mirror and the stats document.
-  Future<void> create(UserProfile profile) async {
+  ///
+  /// [emailHash] is the normalized SHA-256 of the account address. The security
+  /// rules require it on creation and refuse a hash listed in `emailBlocks`,
+  /// which is what makes an owner email block survive a new registration.
+  Future<void> create(UserProfile profile, {String? emailHash}) async {
     final batch = _db.batch();
     final data = profile.toMap()..['createdAt'] = FieldValue.serverTimestamp();
+    if (emailHash != null && emailHash.isNotEmpty) {
+      data['emailHash'] = emailHash;
+    }
     batch.set(_user(profile.uid), data);
     batch.set(_public(profile.uid), profile.toMapPublic());
     batch.set(

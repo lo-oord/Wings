@@ -224,6 +224,16 @@ String? _byCode(BuildContext context, String code) => switch (code) {
     ar: 'خطأ داخلي من Firebase. حاول مرة أخرى بعد قليل.',
     en: 'Firebase returned an internal error. Try again shortly.',
   ),
+  'email-blocked' => Tr.of(
+    context,
+    ar: 'التسجيل بهذا البريد الإلكتروني غير مسموح. إذا كنت تعتقد أن هذا خطأ فتواصل مع دعم Wings.',
+    en: 'Registration with this email address is not permitted. If you believe this is a mistake, contact Wings support.',
+  ),
+  'username-blocked' => Tr.of(
+    context,
+    ar: 'اسم المستخدم هذا غير متاح. اختر اسمًا آخر.',
+    en: 'That username is unavailable. Pick another one.',
+  ),
   'username-taken' => Tr.of(
     context,
     ar: 'اسم المستخدم هذا محجوز الآن. اختر اسمًا آخر.',

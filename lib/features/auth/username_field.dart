@@ -227,6 +227,61 @@ class _Status extends StatelessWidget {
       );
     }
 
+    if (value.status == UsernameStatus.blocked) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.block_rounded, size: 14, color: palette.danger),
+              const SizedBox(width: 4),
+              Text(
+                Tr.of(
+                  context,
+                  ar: 'هذا الاسم غير متاح. اختر اسمًا آخر.',
+                  en: 'This username is unavailable. Pick another one.',
+                ),
+                style: context.text.labelSmall?.copyWith(color: palette.danger),
+              ),
+            ],
+          ),
+          if (value.suggestions.isNotEmpty) ...<Widget>[
+            const SizedBox(height: Space.xs + 2),
+            Wrap(
+              spacing: Space.xs + 2,
+              runSpacing: Space.xs,
+              children: <Widget>[
+                for (final suggestion in value.suggestions)
+                  InkWell(
+                    onTap: () => onSuggestion(suggestion),
+                    borderRadius: BorderRadius.circular(Radii.pill),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Space.sm,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(Radii.pill),
+                        border: Border.all(
+                          color: palette.primary.withValues(alpha: 0.45),
+                        ),
+                        color: palette.primary.withValues(alpha: 0.08),
+                      ),
+                      child: Text(
+                        '@$suggestion',
+                        style: context.text.labelSmall?.copyWith(
+                          color: palette.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      );
+    }
+
     if (value.status == UsernameStatus.taken) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,

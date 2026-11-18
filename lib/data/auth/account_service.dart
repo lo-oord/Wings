@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/errors/app_failure.dart';
+import '../../core/utils/email_hash.dart';
 import '../models/user_profile.dart';
+import '../repositories/email_block_guard.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/avatar_repository.dart';
 import '../repositories/cover_repository.dart';
@@ -67,8 +69,26 @@ class AccountService {
 
   /// Starts a Google registration: the Firebase user is created and the session
   /// is kept so the reader can choose a display name and username next.
-  Future<AuthUser> registerWithGoogle() =>
-      _auth.signInWithGoogle(createAccount: true);
+  ///
+  /// A Google address the owner blocked is refused here: Google authentication
+  /// itself cannot know about the denylist, so the freshly created identity is
+  /// discarded instead of being left behind.
+  Future<AuthUser> registerWithGoogle() async {
+    final user = await _auth.signInWithGoogle(createAccount: true);
+    if (user.email.isNotEmpty &&
+        await EmailBlockGuard.isBlocked(_db, user.email)) {
+      try {
+        await _auth.deleteCurrentUser();
+      } on Object {
+        await _auth.signOut();
+      }
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'email-blocked',
+      );
+    }
+    return user;
+  }
 
   /// Restores the session on start-up: the profile is refreshed and the account
   /// sync is attached without showing a loading screen.
@@ -103,6 +123,19 @@ class AccountService {
         technical: 'username-invalid',
       );
     }
+    if (await _usernames.isBlocked(validation.normalized)) {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'username-blocked',
+      );
+    }
+    if (user.email.isNotEmpty &&
+        await EmailBlockGuard.isBlocked(_db, user.email)) {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'email-blocked',
+      );
+    }
     try {
       await _usernames.reserve(uid: user.id, normalized: validation.normalized);
     } on UsernameTakenException {
@@ -133,7 +166,7 @@ class AccountService {
           // A picture that cannot be stored never cancels the account.
         }
       }
-      await _users.create(profile);
+      await _users.create(profile, emailHash: hashEmail(user.email));
       await _auth.setDisplayName(displayName.trim());
       await _sync.attach(user.id);
       return profile;
@@ -166,6 +199,21 @@ class AccountService {
       throw const AppFailure(
         FailureKind.permission,
         technical: 'username-invalid',
+      );
+    }
+    // The denylist is checked before any Firebase account is created, so a
+    // blocked address never leaves a usable account behind. The same hash is
+    // re-validated by the `users` creation rule.
+    if (await EmailBlockGuard.isBlocked(_db, email)) {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'email-blocked',
+      );
+    }
+    if (await _usernames.isBlocked(validation.normalized)) {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'username-blocked',
       );
     }
     final user = await _auth.createAccount(
@@ -210,7 +258,7 @@ class AccountService {
           // Keep the account without a picture.
         }
       }
-      await _users.create(profile);
+      await _users.create(profile, emailHash: hashEmail(email));
       await _auth.sendEmailVerification();
       await _sync.attach(user.id);
       return _merge(user, profile);
@@ -295,6 +343,12 @@ class AccountService {
       throw const AppFailure(
         FailureKind.permission,
         technical: 'username-cooldown',
+      );
+    }
+    if (await _usernames.isBlocked(validation.normalized)) {
+      throw const AppFailure(
+        FailureKind.permission,
+        technical: 'username-blocked',
       );
     }
     final next = profile.copyWith(

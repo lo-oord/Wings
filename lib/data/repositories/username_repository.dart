@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../username/username_rules.dart';
 
-enum UsernameStatus { invalid, checking, available, taken, error }
+enum UsernameStatus { invalid, checking, available, taken, blocked, error }
 
 /// Result of a live availability check shown under the username field.
 class UsernameAvailability {
@@ -44,10 +44,27 @@ class UsernameRepository {
   DocumentReference<Map<String, dynamic>> _doc(String normalized) =>
       _db.collection(collection).doc(normalized);
 
+  /// Owner-blocked handles. The document is an exact lookup (never listed), so
+  /// checking one costs a single read and cannot enumerate the denylist.
+  Future<bool> isBlocked(String normalized) async {
+    try {
+      final snapshot = await _db
+          .collection('usernameBlocks')
+          .doc(normalized)
+          .get(const GetOptions(source: Source.server));
+      return snapshot.exists;
+    } on Object {
+      // Rules not published yet or offline: the reservation rule still refuses
+      // a blocked handle on the server.
+      return false;
+    }
+  }
+
   Future<bool> isAvailable(String normalized) async {
     final snapshot = await _doc(normalized)
         .get(const GetOptions(source: Source.server));
-    return !snapshot.exists;
+    if (snapshot.exists) return false;
+    return !await isBlocked(normalized);
   }
 
   /// Validates locally first, then performs a single exact-document lookup.
@@ -60,6 +77,13 @@ class UsernameRepository {
         UsernameStatus.invalid,
         normalized: validation.normalized,
         problem: validation.problem,
+      );
+    }
+    if (await isBlocked(validation.normalized)) {
+      return UsernameAvailability(
+        UsernameStatus.blocked,
+        normalized: validation.normalized,
+        suggestions: await suggestions(validation.normalized),
       );
     }
     final available = await isAvailable(validation.normalized);
