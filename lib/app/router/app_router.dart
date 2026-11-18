@@ -3,6 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/anime.dart';
+import '../../features/account_status/account_status_screen.dart';
+import '../../features/admin/admin_announcements_screen.dart';
+import '../../features/admin/admin_home_screen.dart';
+import '../../features/admin/admin_log_screen.dart';
+import '../../features/admin/admin_messages_screen.dart';
+import '../../features/admin/admin_monitor_screen.dart';
+import '../../features/admin/admin_policies_screen.dart';
+import '../../features/admin/admin_providers.dart';
+import '../../features/admin/admin_reports_screen.dart';
+import '../../features/admin/admin_user_screen.dart';
+import '../../features/admin/admin_users_screen.dart';
+import '../../features/admin/owner_message_screen.dart';
 import '../../features/auth/auth_screens.dart';
 import '../../features/auth/complete_profile_screen.dart';
 import '../../features/details/anime_details_screen.dart';
@@ -84,6 +96,9 @@ class _RouterRefresh extends ChangeNotifier {
     // must re-run when the profile arrives or is created.
     ref.listen(profileProvider, (_, _) => notifyListeners());
     ref.listen(profileResolvedProvider, (_, _) => notifyListeners());
+    // A suspension, ban or deletion applied from the console takes effect on the
+    // next status refresh instead of waiting for a restart.
+    ref.listen(myAccountStatusProvider, (_, _) => notifyListeners());
   }
 }
 
@@ -109,6 +124,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       return _authRoutes.contains(location) ? null : RoutePaths.welcome;
     }
     if (account != null) {
+      // Developer tools are Owner-only. A direct navigation by anyone else goes
+      // back to a safe screen; the screens and the server re-check the role.
+      if (location.startsWith('/admin')) {
+        final role = ref.read(staffRoleProvider).value;
+        if (role != null && !role.isAdmin) return RoutePaths.settings;
+      }
+      // A locked account can only read its own status page. The rules refuse
+      // its writes independently of this check.
+      final status = ref.read(myAccountStatusProvider).value;
+      if (status != null &&
+          status.isLockedAt(DateTime.now()) &&
+          location != RoutePaths.accountStatus) {
+        return RoutePaths.accountStatus;
+      }
       // An email + password account cannot move on before the address is
       // confirmed; the verification screen is the only place it may stay.
       if (account.hasPassword && !account.emailVerified) {
@@ -315,6 +344,77 @@ final routerProvider = Provider<GoRouter>((ref) {
           context,
           state,
           LegalScreen(kind: state.pathParameters['kind'] ?? 'privacy'),
+        ),
+      ),
+      // -------------------------------------------------- developer tools
+      GoRoute(
+        path: RoutePaths.admin,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AdminHomeScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.adminUsers,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AdminUsersScreen()),
+      ),
+      GoRoute(
+        path: '/admin/users/:uid',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          AdminUserScreen(
+            uid: Uri.decodeComponent(state.pathParameters['uid'] ?? ''),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: RoutePaths.adminPolicies,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AdminPoliciesScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.adminReports,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AdminReportsScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.adminMessages,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AdminMessagesScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.adminAnnouncements,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AdminAnnouncementsScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.adminMonitor,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AdminMonitorScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.adminLog,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AdminLogScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.accountStatus,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const AccountStatusScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.ownerMessages,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const OwnerInboxScreen()),
+      ),
+      GoRoute(
+        path: '/owner-message/:id',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          OwnerMessageScreen(
+            messageId: Uri.decodeComponent(state.pathParameters['id'] ?? ''),
+          ),
         ),
       ),
     ],

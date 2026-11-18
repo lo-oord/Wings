@@ -1000,6 +1000,35 @@ class AuthController extends Notifier<AuthUser?> {
     if (current != null) await _refresh(current);
   }
 
+  /// One Google tap that both signs in and registers.
+  ///
+  /// An existing Wings account is signed in exactly as before; when the Google
+  /// account has never used Wings, the registration starts and the reader is
+  /// sent to the profile completion form. Returns true when a new account was
+  /// created, so the caller can choose the right destination.
+  Future<bool> continueWithGoogle() async {
+    final service = ref.read(accountServiceProvider);
+    if (service == null) {
+      final user = await ref
+          .read(authRepositoryProvider)
+          .signInWithGoogle(createAccount: true);
+      state = _withProviders(user);
+      return false;
+    }
+    try {
+      final user = await service.signInWithGoogle();
+      state = _withProviders(user);
+      await _refresh(state ?? user);
+      return false;
+    } on AppFailure catch (error) {
+      // `google-account-not-found` means Google authenticated a person who has
+      // no Wings account yet: create it instead of dead-ending the button.
+      if (error.technical != 'google-account-not-found') rethrow;
+      await registerWithGoogle();
+      return true;
+    }
+  }
+
   /// Starts a Google registration and keeps the session open so the profile can
   /// be completed with a real username instead of one generated behind the
   /// reader's back.

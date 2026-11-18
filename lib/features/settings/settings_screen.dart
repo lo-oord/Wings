@@ -13,7 +13,11 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../data/models/admin_models.dart';
 import '../../data/models/library.dart';
+import '../account_status/account_status_screen.dart';
+import '../admin/admin_providers.dart';
+import '../admin/admin_widgets.dart';
 import '../profile/avatar_view.dart';
 
 final appInfoProvider = FutureProvider<PackageInfo>(
@@ -32,6 +36,12 @@ class SettingsScreen extends ConsumerWidget {
     final profile = ref.watch(profileProvider);
     final info = ref.watch(appInfoProvider).value;
     final storage = ref.watch(storageUsedProvider);
+    final isStaff = ref.watch(isAdminRoleProvider);
+    final ownerUnread = ref.watch(ownerUnreadProvider);
+    final accountStatus = ref.watch(myAccountStatusProvider).value;
+    final now = DateTime.now();
+    final accountState =
+        accountStatus?.effectiveState(now) ?? AccountState.active;
 
     return Scaffold(
       body: SafeArea(
@@ -157,6 +167,89 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ],
             ),
+            if (user != null) const AccountStatusBanner(),
+            if (user != null)
+              WingsSettingsGroup(
+                title: Tr.of(
+                  context,
+                  ar: 'الرسائل الرسمية',
+                  en: 'Official messages',
+                ),
+                children: <Widget>[
+                  WingsSettingsTile(
+                    icon: Icons.mark_email_unread_outlined,
+                    title: Tr.of(
+                      context,
+                      ar: 'رسائل المالك',
+                      en: 'Owner messages',
+                    ),
+                    subtitle: Tr.of(
+                      context,
+                      ar: 'رسائل شخصية من مطوّر Wings',
+                      en: 'Personal messages from the Wings developer',
+                    ),
+                    trailing: ownerUnread == 0
+                        ? null
+                        : Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: kOwnerGold.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(Radii.pill),
+                            ),
+                            child: Text(
+                              '$ownerUnread',
+                              style: context.text.labelSmall?.copyWith(
+                                color: kOwnerGold,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                    showChevron: true,
+                    onTap: () => context.push(RoutePaths.ownerMessages),
+                  ),
+                  WingsSettingsTile(
+                    icon: Icons.shield_outlined,
+                    title: Tr.of(
+                      context,
+                      ar: 'حالة الحساب والقيود',
+                      en: 'Account status & restrictions',
+                    ),
+                    subtitle: adminStateLabel(context, accountState),
+                    showChevron: true,
+                    onTap: () => context.push(RoutePaths.accountStatus),
+                  ),
+                ],
+              ),
+            if (isStaff)
+              WingsSettingsGroup(
+                title: Tr.of(context, ar: 'المطوّر', en: 'Developer'),
+                footer: Tr.of(
+                  context,
+                  ar: 'هذه الأدوات تظهر فقط للحساب المصرّح له من جهة الخادم. كل إجراء يُعاد التحقق منه في قواعد Firestore.',
+                  en: 'These tools appear only for the account authorized by the server. Every action is re-checked in Firestore rules.',
+                ),
+                children: <Widget>[
+                  WingsSettingsTile(
+                    icon: Icons.developer_mode_rounded,
+                    title: Tr.of(
+                      context,
+                      ar: 'أدوات المطوّر',
+                      en: 'Developer tools',
+                    ),
+                    subtitle: Tr.of(
+                      context,
+                      ar: 'إدارة الأعضاء والبلاغات وسياسات الحساب',
+                      en: 'Manage members, reports and account policies',
+                    ),
+                    trailing: const OwnerBadge(compact: true),
+                    showChevron: true,
+                    onTap: () => context.push(RoutePaths.admin),
+                  ),
+                ],
+              ),
             WingsSettingsGroup(
               title: Tr.of(context, ar: 'المزامنة', en: 'Sync'),
               children: <Widget>[

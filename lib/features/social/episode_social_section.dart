@@ -11,7 +11,9 @@ import '../../core/services/app_feedback.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
+import '../../data/models/admin_models.dart';
 import '../../data/models/social.dart';
+import '../admin/admin_providers.dart';
 import '../auth/sign_in_prompt.dart';
 import 'comment_tile.dart';
 
@@ -164,6 +166,11 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final user = ref.watch(authProvider);
+    // Restriction is enforced by the security rules as well; this only explains
+    // the decision before the composer is offered.
+    final canComment = ref.watch(
+      canUseFeatureProvider(RestrictionFeature.comment),
+    );
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -182,6 +189,8 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
         Divider(height: 1, color: palette.border),
         if (user == null)
           _SignInPrompt(onSignIn: () => context.push('/login'))
+        else if (!canComment)
+          _RestrictedNotice()
         else ...<Widget>[
           _Composer(onOpenAll: _openComments),
           _CommentPreview(
@@ -636,6 +645,52 @@ class _CommentPreview extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Shown instead of the composer while the account may not comment.
+class _RestrictedNotice extends StatelessWidget {
+  const _RestrictedNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        Space.lg,
+        Space.sm,
+        Space.lg,
+        Space.sm,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(Space.md),
+        decoration: BoxDecoration(
+          color: palette.surfaceAlt,
+          borderRadius: BorderRadius.circular(Radii.sm),
+          border: Border.all(color: palette.border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Icon(Icons.info_outline_rounded, size: 16, color: palette.warning),
+            const SizedBox(width: Space.sm),
+            Expanded(
+              child: Text(
+                Tr.of(
+                  context,
+                  ar: 'التعليق غير متاح على حسابك حاليًا بسبب قيد إداري. يمكنك مراجعة حالة حسابك من الإعدادات.',
+                  en: 'Commenting is not available on your account because of an administrative restriction. You can review your account status in Settings.',
+                ),
+                style: context.text.bodySmall?.copyWith(
+                  color: palette.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -27,6 +27,91 @@ service cloud.firestore {
         && request.auth.uid in adminUids();
     }
 
+    // ------------------------------------------------ trusted staff roles
+    //
+    // `staff/{uid}` is the trusted role document. The console (which bypasses
+    // these rules) creates the first Owner; from then on an Owner may grant
+    // `moderator` or `admin` to somebody else. A client can never write its own
+    // role, and the Owner role itself is console-only, so nobody can promote
+    // themselves. The document is readable only by its own account, which is
+    // how the app decides to show Developer Tools — while every write below is
+    // re-checked here, so hiding the UI is never the security boundary.
+    function staffRole(uid) {
+      return exists(/databases/$(database)/documents/staff/$(uid))
+        ? get(/databases/$(database)/documents/staff/$(uid)).data.get('role', '')
+        : '';
+    }
+
+    function isStaff() {
+      return signedIn()
+        && staffRole(request.auth.uid) in ['owner', 'admin', 'moderator'];
+    }
+
+    function isAdminRole() {
+      return signedIn()
+        && staffRole(request.auth.uid) in ['owner', 'admin'];
+    }
+
+    function isOwner() {
+      return signedIn() && staffRole(request.auth.uid) == 'owner';
+    }
+
+    // ------------------------------------------- account policy enforcement
+    //
+    // One status document per account. The timestamps are compared with
+    // `request.time`, so an expired suspension stops applying by itself: no
+    // scheduled job has to run for the account to work again.
+    function hasStatus(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)/admin/status);
+    }
+
+    function statusOf(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)/admin/status).data;
+    }
+
+    function accountLocked(uid) {
+      return hasStatus(uid)
+        && (
+          statusOf(uid).get('state', '') in ['banned', 'deleted']
+          || (
+            statusOf(uid).get('state', '') == 'suspended'
+            && (
+              statusOf(uid).get('permanent', false) == true
+              || statusOf(uid).get('expiresAt', request.time) > request.time
+            )
+          )
+        );
+    }
+
+    function featureRestricted(uid, field) {
+      return hasStatus(uid)
+        && statusOf(uid).get(field, false) == true
+        && (
+          statusOf(uid).get('restrictionsPermanent', false) == true
+          || statusOf(uid).get('restrictionsExpireAt', request.time) > request.time
+        );
+    }
+
+    // ------------------------------------------------- identity denylists
+    //
+    // A blocked address is one document whose id is the lower-cased email.
+    // `get` is public so the registration form can test exactly one address;
+    // `list` is refused so the denylist can never be enumerated, and the
+    // document does not contain a copy of the address at all.
+    function authEmail() {
+      return request.auth.token.get('email', '');
+    }
+
+    function emailBlocked() {
+      return request.auth != null
+        && authEmail() != ''
+        && exists(/databases/$(database)/documents/emailBlocks/$(authEmail().lower()));
+    }
+
+    function usernameBlocked(normalized) {
+      return exists(/databases/$(database)/documents/blockedUsernames/$(normalized));
+    }
+
     // Official marks live in `badges/{uid}` and only an administrator writes
     // them. Clients read the document so a verified or developer handle is
     // drawn the same way on every device, and the owner's profile documents
@@ -155,7 +240,9 @@ service cloud.firestore {
 
     // ------------------------------------------------------------- users
     match /users/{uid} {
-      allow read: if isSelf(uid);
+      // The owner document is private; staff may read it for administration,
+      // which is also the authorized path to a private profile.
+      allow read: if isSelf(uid) || isStaff();
 
       allow create: if isSelf(uid)
         && request.resource.data.username is string
@@ -180,7 +267,11 @@ service cloud.firestore {
             || (request.resource.data.coverVersion is int
                 && request.resource.data.coverVersion >= 0))
         && (!('pendingDeletion' in request.resource.data)
-            || request.resource.data.pendingDeletion is bool);
+            || request.resource.data.pendingDeletion is bool)
+        // A blocked address or handle can never finish a registration, even
+        // when Firebase Authentication itself accepted the credentials.
+        && !emailBlocked()
+        && !usernameBlocked(request.resource.data.normalizedUsername);
 
       // Owners may edit their own profile but never grant themselves badges.
       // They may only copy the badges an administrator already published on
@@ -214,6 +305,10 @@ service cloud.firestore {
         && request.resource.data.ageGroup is string
         && request.resource.data.ageGroup.size() <= 12
         && request.resource.data.pendingDeletion is bool
+        // An account cannot change its own administrative status; only the
+        // staff branch below may. Without this a client could clear a ban.
+        && request.resource.data.get('status', 'active')
+            == resource.data.get('status', 'active')
         && (!('coverVersion' in request.resource.data)
             || (request.resource.data.coverVersion is int
                 && request.resource.data.coverVersion >= 0))
@@ -238,25 +333,58 @@ service cloud.firestore {
           )
         );
 
-      allow delete: if isSelf(uid) || isAdmin();
+      // Administrative writes: status, statusUpdatedAt, warningCount and the
+      // role mirror. Kept as its own rule so it never inflates the access-call
+      // budget of the self-service update above.
+      allow update: if isAdminRole();
+
+      allow delete: if isSelf(uid) || isAdmin() || isAdminRole();
+
+      // The administrative status record and warnings of one account.
+      match /admin/{docId} {
+        allow read: if isSelf(uid) || isStaff();
+        allow write: if isAdminRole();
+      }
+
+      // Formal warnings are an audit trail: a revoked warning keeps its
+      // document and is only marked inactive.
+      match /warnings/{warningId} {
+        allow read: if isSelf(uid) || isStaff();
+        allow create, update: if isAdminRole();
+        // Never removed by the subject; the console may remove them only as
+        // part of deleting the whole account.
+        allow delete: if isAdminRole();
+      }
+
+      // The recipient's private copy of an Owner message. Nobody else can read
+      // it, and only a read flag can be changed by the recipient.
+      match /ownerMessages/{messageId} {
+        allow read: if isSelf(uid) || isStaff();
+        allow create: if isAdminRole()
+          && request.resource.data.toUid == uid;
+        allow update: if isSelf(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+          && request.resource.data.read == true;
+        allow delete: if isSelf(uid) || isAdminRole();
+      }
 
       // Owned subcollections. Deletes are always allowed for the owner: a rule
       // that inspects request.resource.data would otherwise reject them,
       // because a delete carries no resource payload.
       match /library/{animeId} {
-        allow read: if isSelf(uid);
+        allow read: if isSelf(uid) || isStaff();
         allow create, update: if isSelf(uid) && validLibraryEntry(request.resource.data);
-        allow delete: if isSelf(uid);
+        allow delete: if isSelf(uid) || isAdminRole();
       }
 
       match /history/{episodeKey} {
-        allow read: if isSelf(uid);
+        allow read: if isSelf(uid) || isStaff();
         allow create, update: if isSelf(uid) && validHistoryEntry(request.resource.data);
-        allow delete: if isSelf(uid);
+        allow delete: if isSelf(uid) || isAdminRole();
       }
 
       match /settings/account {
-        allow read: if isSelf(uid);
+        allow read: if isSelf(uid) || isStaff();
         allow create, update: if isSelf(uid)
           && request.resource.data.localeCode is string
           && request.resource.data.localeCode.size() <= 5
@@ -267,23 +395,30 @@ service cloud.firestore {
           && request.resource.data.playbackSpeed <= 3.0
           && request.resource.data.preferredQuality is string
           && request.resource.data.preferredQuality.size() <= 8;
-        allow delete: if isSelf(uid);
+        allow delete: if isSelf(uid) || isAdminRole();
       }
 
       match /meta/{docId} {
-        allow read: if isSelf(uid);
+        allow read: if isSelf(uid) || isStaff();
         allow create, update: if isSelf(uid) && validStats(request.resource.data);
-        allow delete: if isSelf(uid);
+        allow delete: if isSelf(uid) || isAdminRole();
+      }
+
+      // Read state of the global announcements (one tiny document). It is
+      // additive to `meta/{docId}` above, which keeps its stricter shape.
+      match /meta/announcements {
+        allow read, write: if isSelf(uid) || isStaff();
       }
 
       match /activity/{activityId} {
-        allow read, write: if isSelf(uid);
+        allow read: if isSelf(uid) || isStaff();
+        allow write: if isSelf(uid) || isAdminRole();
       }
 
       // Episodes bookmarked into «حلقاتي». They carry display information only
       // — never a download path, a stream URL or playback progress.
       match /episodes/{episodeKey} {
-        allow read: if isSelf(uid);
+        allow read: if isSelf(uid) || isStaff();
         allow create, update: if isSelf(uid)
           && request.resource.data.animeId is string
           && request.resource.data.animeId.size() <= 200
@@ -300,18 +435,18 @@ service cloud.firestore {
               || request.resource.data.posterUrl is string)
           && (!('contentPath' in request.resource.data)
               || request.resource.data.contentPath is string);
-        allow delete: if isSelf(uid);
+        allow delete: if isSelf(uid) || isAdminRole();
       }
 
       // Recent searches: one tiny document kept in step across devices.
       match /search/{docId} {
-        allow read: if isSelf(uid);
+        allow read: if isSelf(uid) || isStaff();
         allow create, update: if isSelf(uid)
           && request.resource.data.items is list
           && request.resource.data.items.size() <= 20
           && (!('updatedAt' in request.resource.data)
               || request.resource.data.updatedAt is timestamp);
-        allow delete: if isSelf(uid);
+        allow delete: if isSelf(uid) || isAdminRole();
       }
 
       // Community alerts: a reply notification is written by the device that
@@ -319,7 +454,7 @@ service cloud.firestore {
       // fixed so nobody can use it as a free-form mailbox, and only the owner
       // can read, mark read or remove an entry.
       match /notifications/{notificationId} {
-        allow read: if isSelf(uid);
+        allow read: if isSelf(uid) || isStaff();
         allow create: if signedIn()
           && request.auth.uid != uid
           && request.resource.data.toUid == uid
@@ -335,10 +470,22 @@ service cloud.firestore {
           && request.resource.data.actorUsername is string
           && validUsername(request.resource.data.actorUsername)
           && request.resource.data.createdAt is timestamp;
+        // Official notices (warning, restriction, suspension, ban, restore,
+        // Owner message, report/appeal update) are written by staff into the
+        // recipient's own list, so the in-app record stays the source of truth.
+        allow create: if isAdminRole()
+          && request.resource.data.toUid == uid
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.type == 'admin'
+          && request.resource.data.title is string
+          && request.resource.data.body is string
+          && request.resource.data.body.size() <= 4000
+          && request.resource.data.read == false
+          && request.resource.data.createdAt is timestamp;
         allow update: if isSelf(uid)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
           && request.resource.data.read == true;
-        allow delete: if isSelf(uid);
+        allow delete: if isSelf(uid) || isAdminRole();
       }
 
       // Avatar bytes: readable by signed-in users so profile pictures render on
@@ -346,18 +493,18 @@ service cloud.firestore {
       // Create/update are separate from delete, because a delete request has no
       // `request.resource` payload and would otherwise always be rejected.
       match /private/avatar {
-        allow read: if signedIn();
+        allow read: if signedIn() || isStaff();
         allow create, update: if isSelf(uid)
           && request.resource.data.byteSize is int
           && request.resource.data.byteSize <= 204800
           && request.resource.data.bytes is bytes;
-        allow delete: if isSelf(uid);
+        allow delete: if isSelf(uid) || isAdminRole();
       }
 
       // Cover banner bytes: same contract as the avatar, with a wider budget
       // because a 16:10 banner needs more pixels.
       match /private/cover {
-        allow read: if signedIn();
+        allow read: if signedIn() || isStaff();
         allow create, update: if isSelf(uid)
           && request.resource.data.byteSize is int
           && request.resource.data.byteSize <= 500000
@@ -369,6 +516,8 @@ service cloud.firestore {
         allow read, write: if isSelf(uid)
           && docId != 'avatar'
           && docId != 'cover';
+        // Account deletion from the console removes the stored pictures.
+        allow delete: if isAdminRole();
       }
     }
 
@@ -401,7 +550,7 @@ service cloud.firestore {
           )
         );
 
-      allow delete: if isSelf(uid) || isAdmin();
+      allow delete: if isSelf(uid) || isAdmin() || isAdminRole();
     }
 
     // --------------------------------------------------------- usernames
@@ -418,9 +567,14 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.username == normalized
-        && request.resource.data.createdAt is timestamp;
+        && request.resource.data.createdAt is timestamp
+        // A blocked handle can never be reserved — not at sign-up and not by a
+        // rename — and a suspended or banned account cannot claim a new one.
+        && !usernameBlocked(normalized)
+        && !accountLocked(request.auth.uid);
       allow update: if false;
-      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      allow delete: if signedIn()
+        && (resource.data.uid == request.auth.uid || isAdminRole());
     }
 
     // --------------------------------------------------------- catalogue
@@ -457,7 +611,9 @@ service cloud.firestore {
         allow create, update: if isSelf(uid)
           && request.resource.data.uid == uid
           && request.resource.data.episodeId == episodeId
-          && request.resource.data.type in ['like', 'dislike'];
+          && request.resource.data.type in ['like', 'dislike']
+          && !accountLocked(request.auth.uid)
+          && !featureRestricted(request.auth.uid, 'restrictInteract');
         allow delete: if isSelf(uid);
       }
 
@@ -476,7 +632,12 @@ service cloud.firestore {
           && validUsername(request.resource.data.authorUsername)
           && validBadges(request.resource.data.authorBadges)
           && request.resource.data.createdAt is timestamp
-          && request.resource.data.updatedAt is timestamp;
+          && request.resource.data.updatedAt is timestamp
+          // Account state and the commenting restriction are enforced on the
+          // write itself, not by hiding the composer.
+          && !accountLocked(request.auth.uid)
+          && !featureRestricted(request.auth.uid, 'restrictComment')
+          && !featureRestricted(request.auth.uid, 'restrictCommunity');
 
         allow update: if signedIn()
           && (
@@ -536,7 +697,10 @@ service cloud.firestore {
             && validUsername(request.resource.data.authorUsername)
             && validBadges(request.resource.data.authorBadges)
             && request.resource.data.createdAt is timestamp
-            && request.resource.data.updatedAt is timestamp;
+            && request.resource.data.updatedAt is timestamp
+            && !accountLocked(request.auth.uid)
+            && !featureRestricted(request.auth.uid, 'restrictComment')
+            && !featureRestricted(request.auth.uid, 'restrictCommunity');
           allow update: if signedIn()
             && resource.data.authorUid == request.auth.uid
             && request.resource.data.authorUid == resource.data.authorUid;
@@ -593,8 +757,95 @@ service cloud.firestore {
         && request.resource.data.reporterUid == request.auth.uid
         && request.resource.data.status == 'open'
         && request.resource.data.reason is string
-        && request.resource.data.reason.size() <= 200;
-      allow read, update, delete: if isAdmin();
+        && request.resource.data.reason.size() <= 200
+        // A restricted or banned account cannot use the report form.
+        && !accountLocked(request.auth.uid)
+        && !featureRestricted(request.auth.uid, 'restrictReport');
+      allow read, update, delete: if isAdmin() || isStaff();
+    }
+
+    // ---------------------------------------------------------- appeals
+    // A review request written by the affected account. Only its author and the
+    // staff can read it; only staff decide it.
+    match /appeals/{appealId} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.message is string
+        && request.resource.data.message.size() >= 1
+        && request.resource.data.message.size() <= 1000;
+      allow get: if signedIn()
+        && (resource.data.uid == request.auth.uid || isStaff());
+      allow list: if signedIn() && isStaff();
+      allow update, delete: if isAdminRole();
+    }
+
+    // ----------------------------------------------- blocked identities
+    // Exactly one address or handle can be tested at a time, and nothing in the
+    // document reveals the list. Only an administrator writes it.
+    match /emailBlocks/{normalized} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdminRole();
+    }
+
+    match /blockedUsernames/{normalized} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdminRole();
+    }
+
+    // ------------------------------------------------- trusted staff roles
+    match /staff/{uid} {
+      allow get: if isSelf(uid) || isOwner();
+      allow list: if isOwner();
+      allow create, update: if isOwner()
+        && uid != request.auth.uid
+        && request.resource.data.role in ['moderator', 'admin'];
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------ activity log (append)
+    // Append-only: no client may edit or remove a record, including the Owner.
+    match /adminLog/{entryId} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.action is string
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
+
+    // --------------------------------------------- Owner message history
+    // The recipient reads its private copy under `users/{uid}/ownerMessages`;
+    // this collection is the staff-only index used by the console history.
+    match /ownerMessages/{messageId} {
+      allow read: if isStaff();
+      allow create: if isAdminRole()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid is string
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 1
+        && request.resource.data.read == false
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
+
+    // ------------------------------------------------------ announcements
+    match /announcements/{announcementId} {
+      allow read: if signedIn();
+      allow create, update: if isAdminRole()
+        && request.resource.data.title is string
+        && request.resource.data.title.size() >= 1
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.body is string
+        && request.resource.data.body.size() <= 4000;
+      allow delete: if isAdminRole();
+    }
+
+    // ---------------------------------------------------- system monitor
+    match /systemMonitor/{sourceId} {
+      allow read, write: if isAdminRole();
     }
 
     // ------------------------------------------------------------ config

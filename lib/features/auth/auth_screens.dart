@@ -74,13 +74,29 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     if (mounted) context.go(RoutePaths.latest);
   }
 
+  /// One Google tap: sign in when the account exists, create it otherwise.
+  ///
+  /// The old button could only sign in, so a first-time visitor was told their
+  /// account did not exist and had to guess that they needed the other button.
   Future<void> _google() async {
     setState(() => _googleLoading = true);
     try {
-      await ref.read(authProvider.notifier).signInWithGoogle();
+      final created = await ref
+          .read(authProvider.notifier)
+          .continueWithGoogle();
       await ref.read(settingsProvider.notifier).leaveGuestMode();
       if (!mounted) return;
-      context.go(RoutePaths.profile);
+      setState(() => _googleLoading = false);
+      if (created) {
+        context.showSnack(
+          Tr.of(
+            context,
+            ar: 'تم إنشاء الحساب! أكمل بيانات ملفك للمتابعة.',
+            en: 'Account created! Finish your profile to continue.',
+          ),
+        );
+      }
+      context.go(created ? RoutePaths.complete : RoutePaths.profile);
     } on AppFailure catch (error) {
       if (!mounted) return;
       setState(() => _googleLoading = false);
@@ -178,6 +194,23 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                   GoogleSignInButton(
                     loading: _googleLoading,
                     onPressed: busy ? null : _google,
+                    label: Tr.of(
+                      context,
+                      ar: 'إنشاء حساب أو الدخول باستخدام Google',
+                      en: 'Create an account or sign in with Google',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    Tr.of(
+                      context,
+                      ar: 'حساب جديد؟ يُنشأ تلقائيًا. لديك حساب؟ يُسجّل الدخول مباشرة.',
+                      en: 'New here? An account is created. Already a member? You are signed in.',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: context.text.labelSmall?.copyWith(
+                      color: palette.textMuted,
+                    ),
                   ),
                   const SizedBox(height: Space.sm),
                   WingsButton(
@@ -225,8 +258,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
           ),
           if (_googleLoading)
             const _AuthBusyOverlay(
-              message: 'جارٍ تسجيل الدخول…',
-              messageEn: 'Signing you in…',
+              message: 'جارٍ المتابعة باستخدام Google…',
+              messageEn: 'Continuing with Google…',
             ),
         ],
       ),
@@ -1341,9 +1374,18 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
 
 /// "Continue with Google" button used on the login and welcome screens.
 class GoogleSignInButton extends StatelessWidget {
-  const GoogleSignInButton({super.key, this.onPressed, this.loading = false});
+  const GoogleSignInButton({
+    super.key,
+    this.onPressed,
+    this.loading = false,
+    this.label,
+  });
 
   final VoidCallback? onPressed;
+
+  /// Optional copy, so the welcome screen can promise "create or sign in" while
+  /// the login screen keeps its plain "continue" wording.
+  final String? label;
 
   /// A Google sign-in can take a few seconds (account picker, profile repair),
   /// so the button shows its own spinner instead of silently ignoring taps.
@@ -1400,11 +1442,12 @@ class GoogleSignInButton extends StatelessWidget {
                             ar: 'جارٍ المتابعة…',
                             en: 'Continuing…',
                           )
-                        : Tr.of(
-                            context,
-                            ar: 'المتابعة باستخدام Google',
-                            en: 'Continue with Google',
-                          ),
+                        : (label ??
+                              Tr.of(
+                                context,
+                                ar: 'المتابعة باستخدام Google',
+                                en: 'Continue with Google',
+                              )),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: context.text.labelLarge?.copyWith(

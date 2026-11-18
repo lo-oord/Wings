@@ -25,7 +25,9 @@ class NotificationRepository {
           .map(
             (snapshot) => snapshot.docs
                 .map((doc) => SocialNotification.fromDoc(doc.id, doc.data()))
-                .where((item) => item.episodeId.isNotEmpty)
+                .where(
+                  (item) => item.episodeId.isNotEmpty || item.type == 'admin',
+                )
                 .toList(growable: false),
           );
 

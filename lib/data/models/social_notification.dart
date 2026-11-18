@@ -25,6 +25,10 @@ class SocialNotification {
     this.photoVersion = 0,
     this.episodeNumber,
     this.animeTitle,
+    this.title = '',
+    this.body = '',
+    this.kind = '',
+    this.targetRoute = '',
   });
 
   final String id;
@@ -39,12 +43,22 @@ class SocialNotification {
   final String commentId;
   final String? episodeNumber;
   final String? animeTitle;
+
+  /// Administrative notification (`type == 'admin'`) fields.
+  final String title;
+  final String body;
+  final String kind;
+  final String targetRoute;
   final DateTime createdAt;
   final bool read;
   final ProfileBadges badges;
   final int photoVersion;
 
-  String get route => '/episode/$episodeId/comments';
+  bool get isAdmin => type == 'admin';
+
+  String get route => isAdmin
+      ? (targetRoute.isEmpty ? '/account-status' : targetRoute)
+      : '/episode/$episodeId/comments';
 
   /// Stable tray id so the same alert never buzzes twice.
   int get trayId => 'reply:$id'.hashCode.abs() % 100000;
@@ -64,6 +78,10 @@ class SocialNotification {
     read: read ?? this.read,
     badges: badges,
     photoVersion: photoVersion,
+    title: title,
+    body: body,
+    kind: kind,
+    targetRoute: targetRoute,
   );
 
   factory SocialNotification.fromDoc(String id, Map<String, dynamic> data) {
@@ -85,6 +103,10 @@ class SocialNotification {
       read: data['read'] == true,
       badges: ProfileBadges.fromMap(data['actorBadges']),
       photoVersion: (data['photoVersion'] as num?)?.toInt() ?? 0,
+      title: data['title'] as String? ?? '',
+      body: data['body'] as String? ?? '',
+      kind: data['kind'] as String? ?? '',
+      targetRoute: data['route'] as String? ?? '',
     );
   }
 }

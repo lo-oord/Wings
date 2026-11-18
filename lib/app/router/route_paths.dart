@@ -32,4 +32,27 @@ abstract final class RoutePaths {
       '/episode/${Uri.encodeComponent(episodeId)}/comments';
 
   static String legal(String kind) => '/legal/$kind';
+
+  // Developer tools (Owner only). The screens verify the trusted role again and
+  // the server refuses every administrative write from anyone else.
+  static const String admin = '/admin';
+  static const String adminUsers = '/admin/users';
+  static const String adminPolicies = '/admin/policies';
+  static const String adminReports = '/admin/reports';
+  static const String adminMessages = '/admin/messages';
+  static const String adminAnnouncements = '/admin/notifications';
+  static const String adminMonitor = '/admin/monitor';
+  static const String adminLog = '/admin/log';
+
+  static String adminUser(String uid) =>
+      '/admin/users/${Uri.encodeComponent(uid)}';
+
+  static const String accountStatus = '/account-status';
+  static const String ownerMessages = '/owner-messages';
+
+  static String ownerMessage(String id) =>
+      '/owner-message/${Uri.encodeComponent(id)}';
+
+  static String publicProfile(String uid) =>
+      '/user/${Uri.encodeComponent(uid)}';
 }

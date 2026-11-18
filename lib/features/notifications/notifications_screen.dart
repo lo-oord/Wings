@@ -65,6 +65,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         ? const <SocialNotification>[]
         : (ref.watch(socialNotificationsProvider(uid)).value ??
               const <SocialNotification>[]);
+    // Administrative notices share the same persistent list as replies but get
+    // their own section, because they are official and never a conversation.
+    final admin = replies.where((item) => item.isAdmin).toList(growable: false);
+    final threadReplies = replies
+        .where((item) => !item.isAdmin)
+        .toList(growable: false);
     final isEmpty = local.isEmpty && replies.isEmpty;
 
     return Scaffold(
@@ -87,7 +93,33 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           : ListView(
               padding: const EdgeInsets.only(top: Space.sm, bottom: Space.xxxl),
               children: <Widget>[
-                if (replies.isNotEmpty) ...<Widget>[
+                if (admin.isNotEmpty) ...<Widget>[
+                  _SectionLabel(
+                    label: Tr.of(
+                      context,
+                      ar: 'من إدارة Wings',
+                      en: 'From Wings',
+                    ),
+                    color: palette.textMuted,
+                  ),
+                  for (final item in admin)
+                    _AdminTile(
+                      notification: item,
+                      onTap: () async {
+                        if (uid != null) {
+                          try {
+                            await ref
+                                .read(notificationRepositoryProvider)
+                                .markRead(uid, <String>[item.id]);
+                          } on Object {
+                            // The tile clears on the next visit.
+                          }
+                        }
+                        if (context.mounted) context.push(item.route);
+                      },
+                    ),
+                ],
+                if (threadReplies.isNotEmpty) ...<Widget>[
                   _SectionLabel(
                     label: Tr.of(
                       context,
@@ -96,7 +128,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     ),
                     color: palette.textMuted,
                   ),
-                  for (final reply in replies)
+                  for (final reply in threadReplies)
                     _ReplyTile(
                       notification: reply,
                       onTap: () => context.push(reply.route),
@@ -260,6 +292,116 @@ class _ReplyTile extends StatelessWidget {
                 size: 16,
                 color: palette.textMuted,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One official notice: warning, restriction, suspension, ban, restore,
+/// Owner message or a report/appeal update.
+class _AdminTile extends StatelessWidget {
+  const _AdminTile({required this.notification, required this.onTap});
+
+  final SocialNotification notification;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final palette = context.palette;
+    final gold = palette.isDark
+        ? const Color(0xFFD4AF37)
+        : const Color(0xFFB8912B);
+    final official = notification.kind == 'ownerMessage';
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.lg,
+          vertical: Space.md,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: (official ? gold : palette.primary).withValues(
+                  alpha: 0.14,
+                ),
+              ),
+              child: Icon(
+                official ? Icons.mail_outline_rounded : Icons.shield_outlined,
+                size: 17,
+                color: official ? gold : palette.primary,
+              ),
+            ),
+            const SizedBox(width: Space.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          notification.title.isEmpty
+                              ? Tr.of(
+                                  context,
+                                  ar: 'إشعار إداري',
+                                  en: 'Administrative notice',
+                                )
+                              : notification.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.titleSmall?.copyWith(
+                            color: official ? gold : null,
+                          ),
+                        ),
+                      ),
+                      if (!notification.read)
+                        Container(
+                          width: 7,
+                          height: 7,
+                          margin: const EdgeInsetsDirectional.only(start: 6),
+                          decoration: BoxDecoration(
+                            color: official ? gold : palette.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    notification.body,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.text.bodySmall?.copyWith(
+                      color: palette.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    relativeTime(notification.createdAt, l10n),
+                    style: context.text.labelSmall?.copyWith(
+                      color: palette.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              context.isRtl
+                  ? Icons.chevron_left_rounded
+                  : Icons.chevron_right_rounded,
+              size: 18,
+              color: palette.textMuted,
             ),
           ],
         ),
