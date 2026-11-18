@@ -124,10 +124,14 @@ Official marks live in **`badges/{uid}`**, a document with exactly two fields:
 * Because the app reads `badges/{uid}` live, granting or removing a mark shows
   up on every device — the owner's handle, their profile frame and every
   existing comment — without reinstalling or signing out.
-* To revoke a mark, set its field to `false` (do not delete the document while
-  the other mark is still on, and do not leave the field out): the two flags are
-  independent, so `{"verified": true, "developer": false}` is a verified
-  account only.
+* To revoke a mark, set its field to `false`; the two flags are independent, so
+  `{"verified": true, "developer": false}` is a verified account only. Deleting
+  the document revokes **both** marks, and the app treats a missing document as
+  “no badges” instead of falling back to the stale copies, so a revocation can
+  never switch itself back on.
+* The rules let an owner write badges that are **off** (never on), so the client
+  can copy a revocation into its own documents instead of being rejected and
+  keeping the old `true`. Publish the current `firestore.rules` for this.
 
 **How the marks look**
 
@@ -363,7 +367,7 @@ Feature map:
 | Screen | What changed |
 | --- | --- |
 | Player | Action bar redesigned: one segmented like/dislike pill plus spaced pills for share, download, save and comments, with a divider before the comments block. Episode views sit under the episode number. The episode list has dividers between entries. |
-| Comments | The player shows the **three newest** comments and one “all comments” action. The full page (`/episode/{id}/comments`) streams the newest page, loads older pages as you scroll and keeps a composer pinned at the bottom. |
+| Comments | The player shows the **three newest** comments and one “all comments” action. The full page (`/episode/{id}/comments`) streams the newest page, loads older pages as you scroll and keeps a composer pinned at the bottom. The 🥇🥈🥉 medals belong to the **first three commenters** (read oldest-first); a new comment never takes the gold medal from them. |
 | Views | `ViewsRepository` records one viewer document per account and per episode/title after 15 seconds of playback; the count is a `count()` over those documents. Numbers are cached for 5 minutes. Episode count shows under the episode, title total on the details screen — only real app views, never the catalogue's estimated figure. |
 | Settings | The account banner is now a proper card: real avatar, name, handle, email, one chevron, matching the settings groups. |
 | Profile | Cover banner (`users/{uid}/private/cover`) with change/remove actions, separate from the avatar. Public profiles show the same banner. |
@@ -451,7 +455,8 @@ Feature map:
 | Search | Merged results are ranked by relevance (exact title, then prefix, then contains, then all words, then genre) instead of source order, with rating only breaking ties. |
 | Similar titles | The rail now mixes the source's own links with titles that share genres, ranked by overlap; it is no longer empty or random. |
 | Categories | Opening a category always renders a real screen: header, sort chips, count and grid, with a name-search fallback when a source has no category page (the blank grey screen is gone). |
-| Floating player | Leaving a playing episode now really detaches the session, which is what makes the mini player appear over the next screen (the previous code read the provider during `dispose`, so the detach was skipped and only the audio continued). |
+| Floating player | Leaving a playing episode now really detaches the session, which is what makes the mini player appear over the next screen (the previous code read the provider during `dispose`, so the detach was skipped and only the audio continued). The mini player is a direct child of the overlay `Stack`: wrapping its `Positioned` in an animation put a render object in between, which Flutter rejects — the overlay never laid out and every screen stayed grey until the app was restarted. |
+| Account deletion | The deletion runs behind a blocking window («جارٍ حذف الحساب…»), then shows a green check and «تم الحذف» and dissolves to the sign-in screen the router redirect has already placed underneath. |
 | Permissions | The manifest declares notifications, boot-completed and foreground-service permissions; `wings/permissions` exposes notification status and the system settings page. |
 
 Manual steps:

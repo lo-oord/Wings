@@ -753,6 +753,14 @@ final publicProfileProvider = StreamProvider.autoDispose
       (ref, uid) => ref.watch(userRepositoryProvider).watchPublic(uid),
     );
 
+/// Medal (1–3) per comment id, resolved oldest-first so the first commenters
+/// keep their medals when the list is read newest-first.
+final topCommentRanksProvider = StreamProvider.autoDispose
+    .family<Map<String, int>, String>(
+      (ref, episodeId) =>
+          ref.watch(socialRepositoryProvider).watchTopRanks(episodeId),
+    );
+
 class AuthController extends Notifier<AuthUser?> {
   /// Account whose library has already been linked during this app session.
   String? _syncedUid;
@@ -760,7 +768,7 @@ class AuthController extends Notifier<AuthUser?> {
 
   /// Watches the administrator-managed badge document of the signed-in
   /// account, so a grant appears without relaunching the app.
-  StreamSubscription<ProfileBadges?>? _badgesSubscription;
+  StreamSubscription<ProfileBadges>? _badgesSubscription;
 
   /// Links (or re-pulls) the cloud copy of the library.
   ///
@@ -851,7 +859,6 @@ class AuthController extends Notifier<AuthUser?> {
         .watchBadges(uid)
         .listen(
           (badges) {
-            if (badges == null) return;
             final current = ref.read(profileProvider);
             if (current == null || current.badges == badges) return;
             final next = current.copyWith(badges: badges);
@@ -903,41 +910,25 @@ class AuthController extends Notifier<AuthUser?> {
   /// Resolves the signature of the account.
   ///
   /// `badges/{uid}` is the single authority: an administrator grants and
-  /// revokes a mark there, and whatever it says — including *off* — is what the
-  /// account gets. The copies stored on the owner and public documents are only
-  /// a fallback for accounts granted before that document existed. Merging the
-  /// copies instead (the previous behaviour) meant a revoked mark was put back
-  /// by the stale copy on the next read, so developer mode switched itself on
-  /// again after the administrator turned it off.
+  /// revokes a mark there, and whatever it says — including *off*, or a missing
+  /// document — is what the account gets. The copies stored on the owner and
+  /// public documents are never merged in: that union is what switched a
+  /// revoked mark back on the next time the app read the profile. The copies are
+  /// only used while the badge document cannot be read (offline, or rules that
+  /// predate it).
   Future<UserProfile> _withPublicBadges(UserProfile profile) async {
+    final repository = ref.read(userRepositoryProvider);
     try {
-      final granted = await ref
-          .read(userRepositoryProvider)
-          .fetchBadges(profile.uid);
-      if (granted != null) {
-        return granted == profile.badges
-            ? profile
-            : profile.copyWith(badges: granted);
-      }
+      final granted = await repository.fetchBadges(profile.uid);
+      final resolved = granted ?? ProfileBadges.none;
+      return resolved == profile.badges
+          ? profile
+          : profile.copyWith(badges: resolved);
     } on Object {
-      // Offline: keep what the profile already carries until the next read.
+      // Offline or old rules: keep what the profile already carries until the
+      // next read instead of guessing.
+      return profile;
     }
-    try {
-      // Legacy path only: no badge document, so the stored copies are all we
-      // have and a union keeps a grant that only one of them received.
-      final public = await ref
-          .read(userRepositoryProvider)
-          .fetchPublic(profile.uid);
-      if (public != null) {
-        final badges = profile.badges.merge(public.badges);
-        if (badges != profile.badges) {
-          return profile.copyWith(badges: badges);
-        }
-      }
-    } on Object {
-      // Public mirror unavailable: keep the owner document's badges.
-    }
-    return profile;
   }
 
   /// Applies data that the account sync pulled while signing in.

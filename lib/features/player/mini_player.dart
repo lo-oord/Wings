@@ -56,18 +56,15 @@ class _MiniPlayerHostState extends ConsumerState<MiniPlayerHost> {
     return Stack(
       children: <Widget>[
         widget.child,
+        // [_MiniPlayer] builds a `Positioned`, so it must be a direct child of
+        // the Stack. Wrapping it in TweenAnimationBuilder/Transform (as it used
+        // to be) put a render object between the two, which Flutter rejects as
+        // invalid parent data: the Stack never laid out again and the whole app
+        // turned into a grey screen until it was restarted.
         if (visible)
-          TweenAnimationBuilder<double>(
+          _MiniPlayer(
             key: ValueKey<String>(session.episodeId),
-            tween: Tween<double>(begin: 0.85, end: 1),
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            builder: (context, value, child) => Transform.scale(
-              scale: value,
-              alignment: AlignmentDirectional.bottomEnd,
-              child: Opacity(opacity: value.clamp(0, 1), child: child),
-            ),
-            child: _MiniPlayer(session: session),
+            session: session,
           ),
       ],
     );
@@ -75,7 +72,7 @@ class _MiniPlayerHostState extends ConsumerState<MiniPlayerHost> {
 }
 
 class _MiniPlayer extends ConsumerStatefulWidget {
-  const _MiniPlayer({required this.session});
+  const _MiniPlayer({super.key, required this.session});
 
   final PlaybackSession session;
 
@@ -126,118 +123,128 @@ class _MiniPlayerState extends ConsumerState<_MiniPlayer> {
     return Positioned(
       left: offset.dx.clamp(0, (media.width - _width).clamp(0, media.width)),
       top: offset.dy.clamp(0, (media.height - _height).clamp(0, media.height)),
-      child: GestureDetector(
-        onPanStart: (_) => setState(() => _dragDy = 0),
-        onPanUpdate: (details) {
-          setState(() {
-            _dragDy += details.delta.dy;
-            _offset = Offset(
-              (offset.dx + details.delta.dx).clamp(
-                0,
-                (media.width - _width).clamp(0, media.width),
-              ),
-              (offset.dy + details.delta.dy).clamp(
-                0,
-                (media.height - _height).clamp(0, media.height),
-              ),
-            );
-          });
-        },
-        // YouTube's gestures: swipe up to go full screen, swipe down to dismiss
-        // the window while keeping the session's position for later.
-        onPanEnd: (details) async {
-          final dy = _dragDy;
-          setState(() => _dragDy = 0);
-          if (dy < -70) {
-            await AppFeedback.tap();
-            if (mounted) _expand();
-          } else if (dy > 70) {
-            await AppFeedback.tap();
-            if (mounted) await _close();
-          }
-        },
-        onTap: _expand,
-        child: Material(
-          elevation: 12,
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(Radii.md),
-          clipBehavior: Clip.antiAlias,
-          child: SizedBox(
-            width: _width,
-            height: _height,
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                Video(
-                  key: ValueKey<String>(
-                    '${widget.session.episodeId}:${widget.session.surfaceEpoch}',
-                  ),
-                  controller: widget.session.controller,
-                  controls: NoVideoControls,
-                  fit: BoxFit.cover,
-                  fill: Colors.black,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.85, end: 1),
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) => Transform.scale(
+          scale: value,
+          alignment: AlignmentDirectional.bottomEnd,
+          child: Opacity(opacity: value.clamp(0, 1), child: child),
+        ),
+        child: GestureDetector(
+          onPanStart: (_) => setState(() => _dragDy = 0),
+          onPanUpdate: (details) {
+            setState(() {
+              _dragDy += details.delta.dy;
+              _offset = Offset(
+                (offset.dx + details.delta.dx).clamp(
+                  0,
+                  (media.width - _width).clamp(0, media.width),
                 ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        Colors.black.withValues(alpha: 0.45),
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.6),
-                      ],
+                (offset.dy + details.delta.dy).clamp(
+                  0,
+                  (media.height - _height).clamp(0, media.height),
+                ),
+              );
+            });
+          },
+          // YouTube's gestures: swipe up to go full screen, swipe down to dismiss
+          // the window while keeping the session's position for later.
+          onPanEnd: (details) async {
+            final dy = _dragDy;
+            setState(() => _dragDy = 0);
+            if (dy < -70) {
+              await AppFeedback.tap();
+              if (mounted) _expand();
+            } else if (dy > 70) {
+              await AppFeedback.tap();
+              if (mounted) await _close();
+            }
+          },
+          onTap: _expand,
+          child: Material(
+            elevation: 12,
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(Radii.md),
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(
+              width: _width,
+              height: _height,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  Video(
+                    key: ValueKey<String>(
+                      '${widget.session.episodeId}:${widget.session.surfaceEpoch}',
+                    ),
+                    controller: widget.session.controller,
+                    controls: NoVideoControls,
+                    fit: BoxFit.cover,
+                    fill: Colors.black,
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.45),
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.6),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                PositionedDirectional(
-                  top: 2,
-                  end: 2,
-                  child: _MiniButton(
-                    icon: Icons.close_rounded,
-                    tooltip: Tr.of(context, ar: 'إلغاء', en: 'Close'),
-                    onTap: _close,
-                  ),
-                ),
-                PositionedDirectional(
-                  bottom: 2,
-                  start: 2,
-                  child: _MiniButton(
-                    icon: Icons.open_in_full_rounded,
-                    tooltip: Tr.of(context, ar: 'توسيع', en: 'Expand'),
-                    onTap: _expand,
-                  ),
-                ),
-                PositionedDirectional(
-                  bottom: 2,
-                  end: 2,
-                  child: _MiniButton(
-                    icon: Icons.play_arrow_rounded,
-                    tooltip: Tr.of(context, ar: 'تشغيل', en: 'Play'),
-                    player: widget.session.player,
-                    onTap: _toggle,
-                  ),
-                ),
-                PositionedDirectional(
-                  start: Space.sm,
-                  bottom: Space.sm + 24,
-                  end: Space.sm,
-                  child: Text(
-                    widget.session.episodeLabel.isEmpty
-                        ? widget.session.animeTitle
-                        : widget.session.episodeLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.text.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      shadows: <Shadow>[
-                        Shadow(color: palette.overlay, blurRadius: 4),
-                      ],
+                  PositionedDirectional(
+                    top: 2,
+                    end: 2,
+                    child: _MiniButton(
+                      icon: Icons.close_rounded,
+                      tooltip: Tr.of(context, ar: 'إلغاء', en: 'Close'),
+                      onTap: _close,
                     ),
                   ),
-                ),
-              ],
+                  PositionedDirectional(
+                    bottom: 2,
+                    start: 2,
+                    child: _MiniButton(
+                      icon: Icons.open_in_full_rounded,
+                      tooltip: Tr.of(context, ar: 'توسيع', en: 'Expand'),
+                      onTap: _expand,
+                    ),
+                  ),
+                  PositionedDirectional(
+                    bottom: 2,
+                    end: 2,
+                    child: _MiniButton(
+                      icon: Icons.play_arrow_rounded,
+                      tooltip: Tr.of(context, ar: 'تشغيل', en: 'Play'),
+                      player: widget.session.player,
+                      onTap: _toggle,
+                    ),
+                  ),
+                  PositionedDirectional(
+                    start: Space.sm,
+                    bottom: Space.sm + 24,
+                    end: Space.sm,
+                    child: Text(
+                      widget.session.episodeLabel.isEmpty
+                          ? widget.session.animeTitle
+                          : widget.session.episodeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.labelSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        shadows: <Shadow>[
+                          Shadow(color: palette.overlay, blurRadius: 4),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

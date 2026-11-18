@@ -63,6 +63,12 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
     super.dispose();
   }
 
+  /// Medal ranks by comment id; medals belong to the first commenters, not to
+  /// the newest comment in the list.
+  Map<String, int> get _ranks =>
+      ref.watch(topCommentRanksProvider(widget.episodeId)).asData?.value ??
+      const <String, int>{};
+
   Future<void> _loadCounts() async {
     try {
       final counts = await ref
@@ -215,6 +221,7 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
+                final ranks = _ranks;
                 return ListView.builder(
                   controller: _scroll,
                   padding: const EdgeInsets.only(bottom: Space.lg),
@@ -266,7 +273,7 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
                       children: <Widget>[
                         CommentTile(
                           comment: comment,
-                          rank: index,
+                          rank: ranks[comment.id],
                           onReply: (text) => _send(text, parentId: comment.id),
                         ),
                         if (index != merged.length)

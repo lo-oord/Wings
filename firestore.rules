@@ -64,6 +64,14 @@ service cloud.firestore {
         && value.developer == badgeData(uid).get('developer', false);
     }
 
+    // An owner may always clear a mark, never grant one. Without this, a
+    // revocation made in the console left `true` stuck on the profile
+    // documents: the client copied the cleared value, the write was denied,
+    // and the stale copy kept the badge on.
+    function badgesCleared(value) {
+      return value.verified == false && value.developer == false;
+    }
+
     function validUsername(value) {
       return value is string
         && value.size() >= 3
@@ -187,6 +195,7 @@ service cloud.firestore {
             && (
               request.resource.data.badges == resource.data.badges
               || badgeOverrideMatches(uid, request.resource.data.badges)
+              || badgesCleared(request.resource.data.badges)
               || (
                 exists(/databases/$(database)/documents/profiles/$(uid))
                 && request.resource.data.badges
@@ -381,6 +390,7 @@ service cloud.firestore {
           isAdmin()
           || request.resource.data.badges == resource.data.badges
           || badgeOverrideMatches(uid, request.resource.data.badges)
+          || badgesCleared(request.resource.data.badges)
           // The mirror may copy the badges the owner document already holds,
           // which is how a grant made only in the console reaches the mirror.
           || (

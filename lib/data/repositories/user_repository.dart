@@ -44,29 +44,44 @@ class UserRepository {
     final snapshot = await _user(uid).get();
     final data = snapshot.data();
     if (!snapshot.exists || data == null) return null;
-    final profile = UserProfile.fromMap(uid, data);
-    final badges = await fetchBadges(uid);
-    return badges == null ? profile : profile.copyWith(badges: badges);
+    return _applyBadges(UserProfile.fromMap(uid, data));
   }
 
   /// The authoritative badge document, or null when no administrator has
-  /// granted anything yet.
+  /// granted anything.
+  ///
+  /// A missing document means **no badges**: that is how an administrator
+  /// revokes a mark. It throws when the document cannot be read at all
+  /// (offline, or rules that predate `badges/{uid}`), so callers can tell a
+  /// revocation from an unknown state instead of reviving a stale copy.
   Future<ProfileBadges?> fetchBadges(String uid) async {
+    final snapshot = await _badges(uid).get();
+    final data = snapshot.data();
+    if (!snapshot.exists || data == null) return null;
+    return ProfileBadges.fromMap(data);
+  }
+
+  /// Overrides the badges copied on a profile document with the administrator
+  /// document. The copies are only a fallback for when that read fails.
+  Future<UserProfile> _applyBadges(UserProfile profile) async {
     try {
-      final snapshot = await _badges(uid).get();
-      final data = snapshot.data();
-      if (!snapshot.exists || data == null) return null;
-      return ProfileBadges.fromMap(data);
+      final badges = await fetchBadges(profile.uid);
+      final resolved = badges ?? ProfileBadges.none;
+      return resolved == profile.badges
+          ? profile
+          : profile.copyWith(badges: resolved);
     } on Object {
-      // Rules not published yet or offline: fall back to the profile copies.
-      return null;
+      // Rules not published yet or offline: keep the stored copy for now.
+      return profile;
     }
   }
 
-  Stream<ProfileBadges?> watchBadges(String uid) =>
+  /// Live official badges. Missing means revoked, so the stream emits "none"
+  /// instead of leaving a handle marked after the grant was removed.
+  Stream<ProfileBadges> watchBadges(String uid) =>
       _badges(uid).snapshots().map((snapshot) {
         final data = snapshot.data();
-        if (!snapshot.exists || data == null) return null;
+        if (!snapshot.exists || data == null) return ProfileBadges.none;
         return ProfileBadges.fromMap(data);
       });
 
@@ -106,9 +121,11 @@ class UserRepository {
       badgeSub = _badges(uid).snapshots().listen((snapshot) {
         hasBadges = true;
         final data = snapshot.data();
+        // Missing document = the marks were revoked; the stale copies on the
+        // profile documents must not bring them back.
         badges = snapshot.exists && data != null
             ? ProfileBadges.fromMap(data)
-            : null;
+            : ProfileBadges.none;
         emit();
       }, onError: (Object _) {});
     };
@@ -125,9 +142,7 @@ class UserRepository {
     final snapshot = await _public(uid).get();
     final data = snapshot.data();
     if (!snapshot.exists || data == null) return null;
-    final profile = UserProfile.fromPublicMap(uid, data);
-    final badges = await fetchBadges(uid);
-    return badges == null ? profile : profile.copyWith(badges: badges);
+    return _applyBadges(UserProfile.fromPublicMap(uid, data));
   }
 
   /// Creates the owner document, its public mirror and the stats document.

@@ -167,6 +167,27 @@ class SocialRepository {
             .toList(growable: false),
       );
 
+  /// Medals of the first three commenters on an episode.
+  ///
+  /// A medal marks *who commented first*, so it has to be read oldest-first.
+  /// Ranking by position in the newest-first list (the previous behaviour)
+  /// handed the gold medal to every new comment and pushed the earlier
+  /// commenters down to silver and bronze. Deleted placeholders are skipped so
+  /// a removed comment does not hold a medal forever.
+  Stream<Map<String, int>> watchTopRanks(String episodeId) =>
+      _comments(episodeId).orderBy('createdAt').limit(12).snapshots().map((
+        snapshot,
+      ) {
+        final ranks = <String, int>{};
+        for (final doc in snapshot.docs) {
+          final comment = EpisodeComment.fromDoc(episodeId, doc.id, doc.data());
+          if (comment.isDeleted) continue;
+          ranks[comment.id] = ranks.length + 1;
+          if (ranks.length == 3) break;
+        }
+        return ranks;
+      });
+
   /// Cursor pagination for older comments.
   Future<CommentPage> page(
     String episodeId, {

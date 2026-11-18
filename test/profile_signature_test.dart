@@ -60,13 +60,15 @@ void main() {
   });
 
   group('official badges', () {
-    test('merging never drops a granted mark', () {
-      const stored = ProfileBadges(developer: true);
-      const granted = ProfileBadges(verified: true);
-      expect(
-        stored.merge(granted),
-        const ProfileBadges(verified: true, developer: true),
-      );
+    test('a badge document wins outright, including when it clears', () {
+      // The administrator document is authoritative: an empty map revokes both
+      // marks instead of merging a stale copy back in.
+      final cleared = ProfileBadges.fromMap(<String, dynamic>{
+        'verified': false,
+        'developer': false,
+      });
+      expect(cleared.any, isFalse);
+      expect(ProfileBadges.fromMap(null), ProfileBadges.none);
       expect(const ProfileBadges(verified: true).both, isFalse);
       expect(const ProfileBadges(verified: true, developer: true).both, isTrue);
     });

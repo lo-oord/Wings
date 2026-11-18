@@ -19,6 +19,7 @@ import '../../data/models/user_profile.dart';
 import '../auth/auth_screens.dart' show kCountries;
 import '../auth/username_field.dart';
 import '../social/username_text.dart';
+import 'account_deletion_overlay.dart';
 import 'avatar_view.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -926,13 +927,16 @@ class ProfileScreen extends ConsumerWidget {
       if (!proceed || !context.mounted) return;
     }
 
-    try {
-      await ref.read(authProvider.notifier).deleteAccount(password: password);
-      if (!context.mounted) return;
-      context.go(RoutePaths.settings);
-      context.showSnack(l10n.profileDeleteDone);
-    } on Object catch (error) {
-      if (!context.mounted) return;
+    // The deletion runs behind a blocking window that reports progress, then
+    // shows the green check and «تم الحذف» before fading into the sign-in
+    // screen the router redirect has already placed underneath.
+    if (!context.mounted) return;
+    final error = await showAccountDeletionOverlay(
+      context,
+      () => ref.read(authProvider.notifier).deleteAccount(password: password),
+    );
+    if (!context.mounted) return;
+    if (error != null) {
       context.showSnack(authErrorText(context, error), isError: true);
     }
   }

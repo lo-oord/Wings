@@ -497,6 +497,10 @@ class _CommentPreview extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
+    final ranks =
+        ref.watch(topCommentRanksProvider(episodeId)).asData?.value ??
+        const <String, int>{};
+
     return StreamBuilder<List<EpisodeComment>>(
       stream: ref
           .read(socialRepositoryProvider)
@@ -575,7 +579,7 @@ class _CommentPreview extends ConsumerWidget {
               for (var index = 0; index < comments.length; index++) ...<Widget>[
                 CommentTile(
                   comment: comments[index],
-                  rank: index + 1,
+                  rank: ranks[comments[index].id],
                   maxReplyPreview: 1,
                   onReply: (_) => onOpenAll(),
                 ),

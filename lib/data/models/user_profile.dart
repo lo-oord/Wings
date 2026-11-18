@@ -17,16 +17,6 @@ class ProfileBadges {
   /// A handle that carries both marks is drawn with the royal gradient.
   bool get both => verified && developer;
 
-  /// Union of two stored copies.
-  ///
-  /// Only for accounts granted before `badges/{uid}` existed: when that
-  /// document is present it wins outright, because a union would resurrect a
-  /// mark an administrator just revoked.
-  ProfileBadges merge(ProfileBadges other) => ProfileBadges(
-    verified: verified || other.verified,
-    developer: developer || other.developer,
-  );
-
   factory ProfileBadges.fromMap(Object? raw) {
     if (raw is! Map) return none;
     return ProfileBadges(
