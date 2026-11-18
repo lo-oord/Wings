@@ -32,34 +32,36 @@ class PublicProfileScreen extends ConsumerWidget {
       appBar: WingsAppBar(showBack: true, title: Text(l10n.profileTitle)),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(Space.lg),
-            child: Text(
-              Tr.of(
-                context,
-                ar: 'تعذر تحميل الملف الشخصي.',
-                en: 'Could not load this profile.',
-              ),
-              style: context.text.bodyMedium?.copyWith(
-                color: palette.textSecondary,
-              ),
-            ),
+        error: (error, stack) => _Notice(
+          icon: Icons.cloud_off_rounded,
+          title: Tr.of(
+            context,
+            ar: 'تعذر تحميل الملف الشخصي',
+            en: 'Could not load this profile',
+          ),
+          body: Tr.of(
+            context,
+            ar: 'تحقق من اتصالك ثم حاول مرة أخرى.',
+            en: 'Check your connection and try again.',
           ),
         ),
         data: (value) => value == null
-            ? Center(
-                child: Text(
-                  Tr.of(
-                    context,
-                    ar: 'هذا الملف غير موجود أو خاص.',
-                    en: 'This profile does not exist or is private.',
-                  ),
-                  style: context.text.bodyMedium,
+            ? _Notice(
+                icon: Icons.person_off_outlined,
+                title: Tr.of(
+                  context,
+                  ar: 'الحساب غير متاح',
+                  en: 'Account unavailable',
+                ),
+                body: Tr.of(
+                  context,
+                  ar: 'هذا الملف لم يعد موجودًا أو أنه خاص.',
+                  en: 'This profile no longer exists or is private.',
                 ),
               )
             : _Body(profile: value),
       ),
+      backgroundColor: palette.background,
     );
   }
 }
@@ -71,161 +73,210 @@ class _Body extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
-    final stats = profile.stats;
-
     return ListView(
-      padding: const EdgeInsets.only(bottom: Space.xxl),
+      padding: const EdgeInsets.only(bottom: Space.huge),
       children: <Widget>[
-        // Cover — the same banner the owner set in their profile.
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.md),
-          child: UserCover(
-            uid: profile.uid,
-            coverVersion: profile.coverVersion,
-            height: 150,
-          ),
+        _Hero(profile: profile),
+        const SizedBox(height: Space.xl),
+        if (profile.profileHidden)
+          const _PrivateCard()
+        else ...<Widget>[
+          if (profile.bio.isNotEmpty) ...<Widget>[
+            _Panel(
+              icon: Icons.format_quote_rounded,
+              title: Tr.of(context, ar: 'نبذة', en: 'About'),
+              child: Text(
+                profile.bio,
+                style: context.text.bodySmall?.copyWith(
+                  color: context.palette.textSecondary,
+                  height: 1.75,
+                ),
+              ),
+            ),
+            const SizedBox(height: Space.lg),
+          ],
+          _StatsCard(profile: profile),
+          if (profile.favorites.isNotEmpty) ...<Widget>[
+            const SizedBox(height: Space.xl),
+            _FavoritesSection(favorites: profile.favorites),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+/// Cover, avatar, handle, name and the marks that make this account official.
+class _Hero extends StatelessWidget {
+  const _Hero({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final name = profile.displayName.isEmpty
+        ? profile.username
+        : profile.displayName;
+    final meta = <Widget>[
+      if (!profile.profileHidden && profile.country.isNotEmpty)
+        _Pill(icon: Icons.public_rounded, label: profile.country),
+      if (!profile.profileHidden && profile.ageGroup.isNotEmpty)
+        _Pill(icon: Icons.cake_outlined, label: profile.ageGroup),
+      if (profile.badges.verified)
+        _Pill(
+          icon: Icons.verified_rounded,
+          label: Tr.of(context, ar: 'موثّق', en: 'Verified'),
+          color: BrandColors.gold,
         ),
-        Transform.translate(
-          offset: const Offset(0, -34),
-          child: Column(
+      if (profile.badges.developer)
+        _Pill(
+          icon: Icons.terminal_rounded,
+          label: Tr.of(context, ar: 'مطوّر', en: 'Developer'),
+          color: BrandColors.developerBlue,
+        ),
+    ];
+
+    return Column(
+      children: <Widget>[
+        SizedBox(
+          height: 214,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.topCenter,
             children: <Widget>[
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: palette.background, width: 3),
-                ),
-                child: ProfileAvatarFrame(
-                  badges: profile.badges,
-                  padding: 3,
-                  child: UserAvatar(
-                    uid: profile.uid,
-                    photoVersion: profile.photoVersion,
-                    name: profile.displayName,
-                    size: 84,
-                  ),
-                ),
-              ),
-              const SizedBox(height: Space.sm),
-              UsernameText(
-                username: profile.username,
-                badges: profile.badges,
-                style: context.text.labelMedium,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                profile.displayName.isEmpty
-                    ? profile.username
-                    : profile.displayName,
-                style: context.text.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              if (profile.profileHidden)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.xl,
-                    Space.sm,
-                    Space.xl,
-                    0,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Space.md),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(Radii.lg),
+                  child: Stack(
                     children: <Widget>[
-                      Icon(
-                        Icons.lock_outline_rounded,
-                        size: 14,
-                        color: palette.textMuted,
+                      UserCover(
+                        uid: profile.uid,
+                        coverVersion: profile.coverVersion,
+                        height: 186,
                       ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          Tr.of(
-                            context,
-                            ar: 'هذا المستخدم لا يشارك ملفه الشخصي.',
-                            en: 'This user does not share their profile.',
-                          ),
-                          style: context.text.labelSmall?.copyWith(
-                            color: palette.textMuted,
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: <Color>[
+                                Colors.transparent,
+                                palette.background.withValues(alpha: 0.55),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              if (!profile.profileHidden && profile.bio.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.xl,
-                    Space.xs,
-                    Space.xl,
-                    0,
+              ),
+              Positioned(
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: palette.background,
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: palette.overlay.withValues(alpha: 0.35),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  child: Text(
-                    profile.bio,
-                    textAlign: TextAlign.center,
-                    style: context.text.bodySmall?.copyWith(
-                      color: palette.textSecondary,
-                      height: 1.6,
+                  child: ProfileAvatarFrame(
+                    badges: profile.badges,
+                    padding: 3,
+                    child: UserAvatar(
+                      uid: profile.uid,
+                      photoVersion: profile.photoVersion,
+                      name: name,
+                      size: 96,
                     ),
                   ),
                 ),
-              if (!profile.profileHidden) ...<Widget>[
-                const SizedBox(height: Space.md),
-                Wrap(
-                  spacing: Space.sm,
-                  runSpacing: Space.xs,
-                  alignment: WrapAlignment.center,
-                  children: <Widget>[
-                    if (profile.country.isNotEmpty)
-                      _Pill(icon: Icons.public_rounded, label: profile.country),
-                    if (profile.ageGroup.isNotEmpty)
-                      _Pill(icon: Icons.cake_outlined, label: profile.ageGroup),
-                  ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: Space.xl),
+        Text(
+          name,
+          textAlign: TextAlign.center,
+          style: context.text.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: palette.textPrimary,
+          ),
+        ),
+        const SizedBox(height: Space.xxs),
+        UsernameText(
+          username: profile.username,
+          badges: profile.badges,
+          style: context.text.labelMedium,
+        ),
+        if (meta.isNotEmpty) ...<Widget>[
+          const SizedBox(height: Space.md),
+          Wrap(
+            spacing: Space.sm,
+            runSpacing: Space.sm,
+            alignment: WrapAlignment.center,
+            children: meta,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Counters the owner agreed to publish, in one card instead of loose numbers.
+class _StatsCard extends StatelessWidget {
+  const _StatsCard({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final stats = profile.stats;
+    final tiles = <Widget>[
+      if (stats.animeWatched > 0)
+        _StatTile(
+          icon: Icons.local_movies_outlined,
+          value: '${stats.animeWatched}',
+          label: Tr.of(context, ar: 'أنمي مشاهَد', en: 'Anime watched'),
+        ),
+      if (stats.episodesWatched > 0)
+        _StatTile(
+          icon: Icons.play_circle_outline_rounded,
+          value: '${stats.episodesWatched}',
+          label: Tr.of(context, ar: 'حلقات مشاهدة', en: 'Episodes watched'),
+        ),
+      if (profile.privacy.favorites && stats.favorites > 0)
+        _StatTile(
+          icon: Icons.favorite_border_rounded,
+          value: '${stats.favorites}',
+          label: Tr.of(context, ar: 'مفضلة', en: 'Favourites'),
+        ),
+    ];
+
+    return _Panel(
+      icon: Icons.insights_rounded,
+      title: Tr.of(context, ar: 'الإحصائيات', en: 'Statistics'),
+      child: tiles.isEmpty
+          ? Row(
+              children: <Widget>[
+                Icon(
+                  Icons.visibility_off_outlined,
+                  size: 14,
+                  color: palette.textMuted,
                 ),
-              ],
-              const SizedBox(height: Space.lg),
-              if (profile.profileHidden)
-                const SizedBox.shrink()
-              else if (profile.favorites.isNotEmpty) ...<Widget>[
-                _FavoritesRow(favorites: profile.favorites),
-                const SizedBox(height: Space.lg),
-              ],
-              if (profile.profileHidden)
-                const SizedBox.shrink()
-              else if (stats.animeWatched > 0 ||
-                  stats.episodesWatched > 0 ||
-                  stats.favorites > 0)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-                  child: Row(
-                    children: <Widget>[
-                      _Stat(
-                        label: Tr.of(
-                          context,
-                          ar: 'أنمي مشاهَد',
-                          en: 'Anime watched',
-                        ),
-                        value: '${stats.animeWatched}',
-                      ),
-                      _Stat(
-                        label: Tr.of(
-                          context,
-                          ar: 'حلقات مشاهدة',
-                          en: 'Episodes watched',
-                        ),
-                        value: '${stats.episodesWatched}',
-                      ),
-                      if (profile.privacy.favorites)
-                        _Stat(
-                          label: Tr.of(context, ar: 'مفضلة', en: 'Favorites'),
-                          value: '${stats.favorites}',
-                        ),
-                    ],
-                  ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+                const SizedBox(width: 6),
+                Expanded(
                   child: Text(
                     Tr.of(
                       context,
@@ -237,18 +288,25 @@ class _Body extends StatelessWidget {
                     ),
                   ),
                 ),
-            ],
-          ),
-        ),
-      ],
+              ],
+            )
+          : Row(
+              children: <Widget>[
+                for (var i = 0; i < tiles.length; i++) ...<Widget>[
+                  if (i > 0)
+                    Container(width: 1, height: 38, color: palette.border),
+                  Expanded(child: tiles[i]),
+                ],
+              ],
+            ),
     );
   }
 }
 
 /// Favourite titles the owner chose to publish. Only the title and artwork are
 /// shared; progress, history and the rest of the library stay private.
-class _FavoritesRow extends StatelessWidget {
-  const _FavoritesRow({required this.favorites});
+class _FavoritesSection extends StatelessWidget {
+  const _FavoritesSection({required this.favorites});
 
   final List<ProfileFavorite> favorites;
 
@@ -261,45 +319,64 @@ class _FavoritesRow extends StatelessWidget {
         Padding(
           padding: const EdgeInsetsDirectional.only(
             start: Space.lg,
-            bottom: Space.sm,
+            end: Space.lg,
+            bottom: Space.md,
           ),
-          child: Text(
-            Tr.of(context, ar: 'المفضلة', en: 'Favourites'),
-            style: context.text.labelMedium?.copyWith(
-              color: palette.textSecondary,
-            ),
+          child: Row(
+            children: <Widget>[
+              Icon(
+                Icons.bookmark_border_rounded,
+                size: 17,
+                color: palette.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                Tr.of(context, ar: 'المفضلة', en: 'Favourites'),
+                style: context.text.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '${favorites.length}',
+                style: context.text.labelSmall?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
+            ],
           ),
         ),
         SizedBox(
-          height: 158,
+          height: 196,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: Space.lg),
             itemCount: favorites.length,
             separatorBuilder: (context, index) =>
-                const SizedBox(width: Space.sm),
+                const SizedBox(width: Space.md),
             itemBuilder: (context, index) {
               final item = favorites[index];
               return SizedBox(
-                width: 100,
+                width: 112,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    WingsImage(
-                      url: item.imageUrl,
-                      width: 100,
-                      height: 138,
-                      borderRadius: BorderRadius.circular(Radii.sm),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      child: WingsImage(
+                        url: item.imageUrl,
+                        width: 112,
+                        height: 152,
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Flexible(
-                      child: Text(
-                        item.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.text.labelSmall?.copyWith(
-                          color: palette.textSecondary,
-                        ),
+                    const SizedBox(height: Space.sm),
+                    Text(
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.labelSmall?.copyWith(
+                        color: palette.textSecondary,
+                        height: 1.4,
                       ),
                     ),
                   ],
@@ -313,34 +390,142 @@ class _FavoritesRow extends StatelessWidget {
   }
 }
 
-class _Pill extends StatelessWidget {
-  const _Pill({required this.icon, required this.label});
+/// A titled card: the building block of the page.
+class _Panel extends StatelessWidget {
+  const _Panel({required this.icon, required this.title, required this.child});
 
   final IconData icon;
-  final String label;
+  final String title;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.sm + 2,
-        vertical: 4,
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: Space.lg),
+      padding: const EdgeInsets.all(Space.lg),
       decoration: BoxDecoration(
-        color: palette.surfaceAlt,
-        borderRadius: BorderRadius.circular(Radii.pill),
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(Radii.md),
         border: Border.all(color: palette.border),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, size: 12, color: palette.textSecondary),
-          const SizedBox(width: 4),
+          Row(
+            children: <Widget>[
+              Icon(icon, size: 16, color: palette.primary),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: context.text.labelMedium?.copyWith(
+                  color: palette.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: Space.md),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Column(
+      children: <Widget>[
+        Icon(icon, size: 16, color: palette.textMuted),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: context.text.titleLarge?.copyWith(
+            color: palette.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: context.text.labelSmall?.copyWith(
+            color: palette.textMuted,
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PrivateCard extends StatelessWidget {
+  const _PrivateCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: Space.lg),
+      padding: const EdgeInsets.all(Space.xl),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        children: <Widget>[
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: palette.surfaceAlt,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.lock_outline_rounded,
+              size: 20,
+              color: palette.textMuted,
+            ),
+          ),
+          const SizedBox(height: Space.md),
           Text(
-            label,
-            style: context.text.labelSmall?.copyWith(
+            Tr.of(
+              context,
+              ar: 'هذا المستخدم لا يشارك ملفه',
+              en: 'This user keeps their profile private',
+            ),
+            textAlign: TextAlign.center,
+            style: context.text.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            Tr.of(
+              context,
+              ar: 'يظهر اسم المستخدم وشاراته فقط، ويمكنك رؤية تعليقاته في الحلقات.',
+              en: 'Only the handle and its marks are visible; their comments stay readable on episodes.',
+            ),
+            textAlign: TextAlign.center,
+            style: context.text.bodySmall?.copyWith(
               color: palette.textSecondary,
+              height: 1.6,
             ),
           ),
         ],
@@ -349,41 +534,88 @@ class _Pill extends StatelessWidget {
   }
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value});
+/// Full-page message for a missing or unreadable profile.
+class _Notice extends StatelessWidget {
+  const _Notice({required this.icon, required this.title, required this.body});
 
-  final String label;
-  final String value;
+  final IconData icon;
+  final String title;
+  final String body;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: Space.sm),
-        decoration: BoxDecoration(
-          color: palette.surface,
-          borderRadius: BorderRadius.circular(Radii.sm),
-          border: Border.all(color: palette.border),
-        ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.xxl),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            Icon(icon, size: 34, color: palette.textMuted),
+            const SizedBox(height: Space.md),
             Text(
-              value,
-              style: context.text.titleMedium?.copyWith(color: palette.primary),
+              title,
+              textAlign: TextAlign.center,
+              style: context.text.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
+            const SizedBox(height: Space.xs),
             Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.text.labelSmall?.copyWith(
-                color: palette.textMuted,
-                fontSize: 10,
+              body,
+              textAlign: TextAlign.center,
+              style: context.text.bodySmall?.copyWith(
+                color: palette.textSecondary,
+                height: 1.6,
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.icon, required this.label, this.color});
+
+  final IconData icon;
+  final String label;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final tint = color ?? palette.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.sm + 2,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: color == null
+            ? palette.surfaceAlt
+            : color!.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(Radii.pill),
+        border: Border.all(
+          color: color == null
+              ? palette.border
+              : color!.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 12, color: tint),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: context.text.labelSmall?.copyWith(
+              color: tint,
+              fontWeight: color == null ? FontWeight.w500 : FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

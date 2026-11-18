@@ -482,11 +482,49 @@ Manual steps:
 | Link Google (email account) | `linkWithCredential` on the Google provider. A Google account already attached to another Wings user is refused (`credential-already-in-use`), so one Google email can never reach two profiles. |
 | Link an email (Google account) | The email must be unregistered. `verifyBeforeUpdateEmail` sends the link; the password is kept in memory only, and `linkWithCredential(EmailAuthProvider)` runs after the address is verified. When the address is the Google one, Google already verified it and the password links immediately. |
 
-No Firestore rule change is needed for this revision: linking happens entirely in
-Firebase Authentication, and a Google account completing its profile uses the
-same `users/{uid}`, `profiles/{uid}` and `usernames/{handle}` writes as an email
-sign-up. Publish the current `firestore.rules` anyway so the badge-clear rule from
-the previous revision is live.
+Linking happens entirely in Firebase Authentication, and a Google account
+completing its profile uses the same `users/{uid}`, `profiles/{uid}` and
+`usernames/{handle}` writes as an email sign-up. Publish the current
+`firestore.rules`: besides the badge rules it now lets an account delete its own
+`badges/{uid}` record while deleting itself.
+
+## 14. Deleting an account (complete, resumable)
+
+`AccountDeletionService` runs on the client (no Cloud Functions on the free
+plan) and re-authenticates first, so a wrong password leaves everything as it
+was. Then, in order:
+
+1. Marks the profile `pendingDeletion` so a half-finished run is visible.
+2. Reads `users/{uid}/activity` and deletes every referenced comment **and
+   reply**, deepest path first. Reactions (`episodes/{id}/reactions/{uid}`) are
+   deliberately kept: the counters other people see are not part of the request.
+3. Sweeps `collectionGroup('comments').where('authorUid', '==', uid)` in pages of
+   100 up to 2,000 documents, so comments written before the activity index
+   existed (or by a run that failed halfway) are still removed from every
+   episode. This uses the automatic single-field index — no console index is
+   required.
+4. Deletes the owned subcollections (`library`, `history`, `settings`, `meta`,
+   `notifications`), the avatar and cover documents.
+5. Releases `usernames/{handle}` so the handle becomes claimable by anyone.
+6. Deletes `profiles/{uid}`, `badges/{uid}` and finally `users/{uid}` — the last
+   readable trace of the account.
+7. Clears the local cache/settings and deletes the Firebase Authentication user.
+
+Anything the rules refuse is collected and reported in the log instead of
+aborting: the account itself is always removed. Because step 6 is last, retrying
+a failed run only cleans up leftovers — no comment ever stays visible on a
+deleted account.
+
+Publish `firestore.rules` for this revision: the badge block gained
+`allow delete: if isSelf(uid)`, and the comment deletion rules already allow an
+author to remove their own documents.
+
+---
+
+Sound cues live in the app, not in Firebase: `assets/sounds/{like,dislike,
+comment,undo}.wav` are played through one pooled low-latency player in
+`AppFeedback`, alongside the light haptic. Like, dislike, publish and removal
+each have their own short clip; there is nothing to configure in the console.
 
 Player work in this revision: the portrait player now opens with the poster, the
 resulting header (title, episode, views, stream) and a next-episode action, and

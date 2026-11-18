@@ -72,6 +72,10 @@ class AccountDeletionService {
 
     final blocked = <String>[];
     await _deleteSocialContent(uid, blocked);
+    // The activity index is best effort: older comments and replies may not be
+    // in it, and a comment left behind stays visible to everyone. Sweep the
+    // whole `comments` collection group so nothing of the account survives.
+    await _sweepComments(uid, blocked);
     for (final name in _owned) {
       await _guard(() => _deleteCollection(uid, name), name, blocked);
     }
@@ -92,9 +96,16 @@ class AccountDeletionService {
       }
     }
 
+    // The public mirror and the badge document both describe the account, so
+    // they go with it. Rules allow an owner to delete their own badge record.
     await _guard(
       () => _db.collection('profiles').doc(uid).delete(),
       'profile',
+      blocked,
+    );
+    await _guard(
+      () => _db.collection('badges').doc(uid).delete(),
+      'badges',
       blocked,
     );
 
@@ -137,8 +148,12 @@ class AccountDeletionService {
     }
   }
 
-  /// Comments and reactions are referenced by the account's own activity index,
-  /// so deletion needs no collection-group index or collection scan.
+  /// Comments and replies are referenced by the account's own activity index,
+  /// so the common case needs no collection scan.
+  ///
+  /// Reactions (likes and dislikes) are deliberately **kept**: the request only
+  /// removes what the account wrote, not the counters other people see. Their
+  /// activity entries are dropped with the rest of the index.
   ///
   /// Replies are removed before their parents: deleting a parent first used to
   /// make the reply rule resolve against a document that no longer exists, and
@@ -156,11 +171,47 @@ class AccountDeletionService {
     }
     paths.sort((a, b) => _depth(b).compareTo(_depth(a)));
     for (final path in paths) {
+      if (path.contains('/reactions/')) continue;
       await _guard(() => _db.doc(path).delete(), 'social', blocked);
     }
     for (final doc in activity.docs) {
       await _guard(doc.reference.delete, 'activity', blocked);
     }
+  }
+
+  /// Removes every comment and reply the account ever wrote, even ones the
+  /// activity index never recorded (older builds, a write that failed halfway).
+  ///
+  /// A collection-group query on one field uses the automatic single-field
+  /// index, so no console index is needed. Pages are deleted 100 at a time and
+  /// the sweep stops after [_sweepLimit] documents so a runaway account cannot
+  /// keep the deletion running forever; the remaining ones are reported through
+  /// [blocked] and can be swept by retrying the deletion.
+  Future<void> _sweepComments(String uid, List<String> blocked) async {
+    const int sweepLimit = 2000;
+    var removed = 0;
+    while (removed < sweepLimit) {
+      QuerySnapshot<Map<String, dynamic>> page;
+      try {
+        page = await _db
+            .collectionGroup('comments')
+            .where('authorUid', isEqualTo: uid)
+            .limit(100)
+            .get();
+      } on FirebaseException catch (error) {
+        // A missing collection-group index or a denied read: the index pass has
+        // already removed what the app knew about, so this is not fatal.
+        blocked.add('comments-sweep:${error.code}');
+        return;
+      }
+      if (page.docs.isEmpty) return;
+      for (final doc in page.docs) {
+        await _guard(doc.reference.delete, 'comment', blocked);
+        removed++;
+      }
+      if (page.docs.length < 100) return;
+    }
+    blocked.add('comments-sweep:limit');
   }
 
   int _depth(String path) => path.split('/').length;

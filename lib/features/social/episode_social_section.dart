@@ -106,10 +106,16 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
     final next = previous == type ? null : type;
     // A single soft click and light pulse per change; removing a reaction is
     // deliberately quieter than adding one.
+    // Exactly one cue per tap: the throttle would drop a second one anyway, and
+    // a like, a dislike and a removal each have their own short sound.
     if (next == null) {
       unawaited(AppFeedback.reactionRemoved());
     } else {
-      unawaited(AppFeedback.reaction());
+      unawaited(
+        next == ReactionType.like
+            ? AppFeedback.reaction()
+            : AppFeedback.dislike(),
+      );
     }
     setState(() {
       _reaction = next;

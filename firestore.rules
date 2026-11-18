@@ -582,6 +582,9 @@ service cloud.firestore {
     match /badges/{uid} {
       allow get, list: if signedIn();
       allow write: if isAdmin();
+      // An account that deletes itself takes its own record with it; nobody
+      // else can remove a mark, and no owner can grant one.
+      allow delete: if isSelf(uid);
     }
 
     // ----------------------------------------------------------- reports
