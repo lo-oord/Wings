@@ -131,145 +131,163 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       body: Stack(
         children: <Widget>[
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(Space.xl),
-              child: Column(
-                children: <Widget>[
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: WingsIconButton(
-                      icon: Icons.close_rounded,
-                      tooltip: l10n.commonClose,
-                      onPressed: busy ? null : _close,
-                    ),
+            // The gate must still fit a short phone with large fonts: the
+            // content scrolls only when it has to, and the brand keeps its
+            // breathing room otherwise.
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.all(Space.xl),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - Space.huge,
                   ),
-                  const Spacer(),
-                  // A soft halo behind the mark, with a short entrance so the
-                  // opening screen feels composed instead of snapped in.
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0, end: 1),
-                    duration: Motion.slow,
-                    curve: Motion.enter,
-                    builder: (context, value, child) => Opacity(
-                      opacity: value,
-                      child: Transform.translate(
-                        offset: Offset(0, 14 * (1 - value)),
-                        child: child,
-                      ),
-                    ),
+                  child: IntrinsicHeight(
                     child: Column(
                       children: <Widget>[
-                        SizedBox(
-                          width: 164,
-                          height: 144,
-                          child: Stack(
-                            alignment: Alignment.center,
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: WingsIconButton(
+                            icon: Icons.close_rounded,
+                            tooltip: l10n.commonClose,
+                            onPressed: busy ? null : _close,
+                          ),
+                        ),
+                        const Spacer(),
+                        // A soft halo behind the mark, with a short entrance so the
+                        // opening screen feels composed instead of snapped in.
+                        TweenAnimationBuilder<double>(
+                          tween: Tween<double>(begin: 0, end: 1),
+                          duration: Motion.slow,
+                          curve: Motion.enter,
+                          builder: (context, value, child) => Opacity(
+                            opacity: value,
+                            child: Transform.translate(
+                              offset: Offset(0, 14 * (1 - value)),
+                              child: child,
+                            ),
+                          ),
+                          child: Column(
                             children: <Widget>[
-                              Container(
-                                width: 150,
-                                height: 150,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: RadialGradient(
-                                    colors: <Color>[
-                                      palette.primary.withValues(alpha: 0.22),
-                                      palette.primary.withValues(alpha: 0),
-                                    ],
-                                  ),
+                              SizedBox(
+                                width: 164,
+                                height: 144,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: <Widget>[
+                                    Container(
+                                      width: 150,
+                                      height: 150,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: RadialGradient(
+                                          colors: <Color>[
+                                            palette.primary.withValues(
+                                              alpha: 0.22,
+                                            ),
+                                            palette.primary.withValues(
+                                              alpha: 0,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const WingsMark(size: 108),
+                                  ],
                                 ),
                               ),
-                              const WingsMark(size: 108),
+                              const SizedBox(height: Space.lg),
+                              Text(
+                                l10n.authWelcomeTitle,
+                                textAlign: TextAlign.center,
+                                style: context.text.headlineMedium,
+                              ),
+                              const SizedBox(height: Space.sm),
+                              Text(
+                                l10n.authWelcomeBody,
+                                textAlign: TextAlign.center,
+                                style: context.text.bodyMedium?.copyWith(
+                                  color: palette.textSecondary,
+                                  height: 1.7,
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: Space.lg),
+                        const Spacer(),
+                        GoogleSignInButton(
+                          loading: _googleLoading,
+                          onPressed: busy ? null : _google,
+                          label: Tr.of(
+                            context,
+                            ar: 'إنشاء حساب أو الدخول باستخدام Google',
+                            en: 'Create an account or sign in with Google',
+                          ),
+                        ),
+                        const SizedBox(height: 6),
                         Text(
-                          l10n.authWelcomeTitle,
+                          Tr.of(
+                            context,
+                            ar: 'حساب جديد؟ يُنشأ تلقائيًا. لديك حساب؟ يُسجّل الدخول مباشرة.',
+                            en: 'New here? An account is created. Already a member? You are signed in.',
+                          ),
                           textAlign: TextAlign.center,
-                          style: context.text.headlineMedium,
+                          style: context.text.labelSmall?.copyWith(
+                            color: palette.textMuted,
+                          ),
                         ),
                         const SizedBox(height: Space.sm),
-                        Text(
-                          l10n.authWelcomeBody,
-                          textAlign: TextAlign.center,
-                          style: context.text.bodyMedium?.copyWith(
-                            color: palette.textSecondary,
-                            height: 1.7,
+                        WingsButton(
+                          label: l10n.authRegister,
+                          expand: true,
+                          icon: Icons.person_add_alt_1_rounded,
+                          onPressed: busy
+                              ? null
+                              : () => context.push(RoutePaths.register),
+                        ),
+                        const SizedBox(height: Space.sm),
+                        WingsButton(
+                          label: l10n.authLogin,
+                          variant: WingsButtonVariant.outline,
+                          expand: true,
+                          // Navigation never shows a spinner; only the guest action
+                          // below does, and only while it is actually running.
+                          onPressed: busy
+                              ? null
+                              : () => context.push(RoutePaths.login),
+                        ),
+                        const SizedBox(height: Space.sm),
+                        TextButton(
+                          onPressed: busy ? null : _continueAsGuest,
+                          child: _guestLoading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(l10n.authContinueGuest),
+                        ),
+                        TextButton(
+                          onPressed: busy
+                              ? null
+                              : () => context.push(RoutePaths.legal('terms')),
+                          child: Text(
+                            Tr.of(
+                              context,
+                              ar: 'بالمتابعة أنت توافق على الشروط وسياسة الخصوصية',
+                              en: 'By continuing you agree to the terms and privacy policy',
+                            ),
+                            textAlign: TextAlign.center,
+                            style: context.text.labelSmall?.copyWith(
+                              color: palette.textMuted,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const Spacer(),
-                  GoogleSignInButton(
-                    loading: _googleLoading,
-                    onPressed: busy ? null : _google,
-                    label: Tr.of(
-                      context,
-                      ar: 'إنشاء حساب أو الدخول باستخدام Google',
-                      en: 'Create an account or sign in with Google',
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    Tr.of(
-                      context,
-                      ar: 'حساب جديد؟ يُنشأ تلقائيًا. لديك حساب؟ يُسجّل الدخول مباشرة.',
-                      en: 'New here? An account is created. Already a member? You are signed in.',
-                    ),
-                    textAlign: TextAlign.center,
-                    style: context.text.labelSmall?.copyWith(
-                      color: palette.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: Space.sm),
-                  WingsButton(
-                    label: l10n.authRegister,
-                    expand: true,
-                    icon: Icons.person_add_alt_1_rounded,
-                    onPressed: busy
-                        ? null
-                        : () => context.push(RoutePaths.register),
-                  ),
-                  const SizedBox(height: Space.sm),
-                  WingsButton(
-                    label: l10n.authLogin,
-                    variant: WingsButtonVariant.outline,
-                    expand: true,
-                    // Navigation never shows a spinner; only the guest action
-                    // below does, and only while it is actually running.
-                    onPressed: busy
-                        ? null
-                        : () => context.push(RoutePaths.login),
-                  ),
-                  const SizedBox(height: Space.sm),
-                  TextButton(
-                    onPressed: busy ? null : _continueAsGuest,
-                    child: _guestLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(l10n.authContinueGuest),
-                  ),
-                  TextButton(
-                    onPressed: busy
-                        ? null
-                        : () => context.push(RoutePaths.legal('terms')),
-                    child: Text(
-                      Tr.of(
-                        context,
-                        ar: 'بالمتابعة أنت توافق على الشروط وسياسة الخصوصية',
-                        en: 'By continuing you agree to the terms and privacy policy',
-                      ),
-                      textAlign: TextAlign.center,
-                      style: context.text.labelSmall?.copyWith(
-                        color: palette.textMuted,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -639,6 +657,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 Space.xl,
               ),
               children: <Widget>[
+                const WingsMark(size: 56),
+                const SizedBox(height: Space.lg),
                 Text(l10n.authRegister, style: context.text.headlineSmall),
                 const SizedBox(height: Space.sm),
                 Text(

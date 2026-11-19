@@ -42,18 +42,23 @@ class DownloadService {
   }
 
   Future<void> initialize() async {
+    final interrupted = <DownloadTask>[];
     for (final task
         in _store
             .valuesAsJson(LocalStore.downloadsBox)
             .map(DownloadTask.fromJson)) {
       // Interrupted transfers return as paused so they can be resumed safely.
-      _tasks[task.id] =
+      final restored =
           task.status == DownloadStatus.downloading ||
               task.status == DownloadStatus.queued
           ? task.copyWith(status: DownloadStatus.paused)
           : task;
+      _tasks[task.id] = restored;
+      if (!identical(restored, task)) interrupted.add(restored);
     }
-    for (final task in _tasks.values) {
+    // Only the transfers whose state actually changed need a write; rewriting
+    // the whole queue used to add a disk round-trip per download to start-up.
+    for (final task in interrupted) {
       await _persist(task);
     }
     _emit();

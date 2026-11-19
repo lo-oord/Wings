@@ -20,9 +20,14 @@ Future<bool> initializeFirebase() async {
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
     );
+    // The persisted session arrives through the auth stream and is applied as
+    // soon as it lands. Waiting for that first event only prevents the router
+    // from briefly flashing the sign-in gate, so the wait is bounded to a
+    // fraction of a second instead of the three seconds this used to cost on
+    // every launch.
     try {
       await FirebaseAuth.instance.authStateChanges().first.timeout(
-        const Duration(seconds: 3),
+        const Duration(milliseconds: 900),
       );
     } on Object {
       // A slow restore must not block start-up; the auth stream still updates

@@ -40,8 +40,11 @@ class _WingsAppState extends ConsumerState<WingsApp>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(notificationsProvider.notifier).refresh();
       await _applyTrayActions();
-      await _askForNotificationsOnce();
       await _showReplyAlerts();
+      // The permission prompt is a system dialog: let the first screen paint
+      // and settle behind it instead of throwing it over a loading interface.
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await _askForNotificationsOnce();
     });
   }
 

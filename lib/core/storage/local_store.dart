@@ -26,8 +26,9 @@ class LocalStore {
     } else {
       Hive.init(directory);
     }
-    final boxes = <String, Box<String>>{};
-    for (final name in const <String>[
+    // The boxes are independent, so they open together instead of one after
+    // another; the store is the first thing the launch waits for.
+    const names = <String>[
       settingsBox,
       libraryBox,
       historyBox,
@@ -36,9 +37,14 @@ class LocalStore {
       searchBox,
       notificationsBox,
       myEpisodesBox,
-    ]) {
-      boxes[name] = await Hive.openBox<String>(name);
-    }
+    ];
+    final opened = await Future.wait(
+      names.map((name) => Hive.openBox<String>(name)),
+    );
+    final boxes = <String, Box<String>>{
+      for (var index = 0; index < names.length; index++)
+        names[index]: opened[index],
+    };
     return LocalStore._(boxes);
   }
 
