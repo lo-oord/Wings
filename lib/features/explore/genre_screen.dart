@@ -160,13 +160,7 @@ class _GenreScreenState extends ConsumerState<GenreScreen> {
                             Space.xxl,
                           ),
                           sliver: SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                                  maxCrossAxisExtent: 160,
-                                  mainAxisSpacing: Space.lg,
-                                  crossAxisSpacing: Space.md,
-                                  childAspectRatio: 0.53,
-                                ),
+                            gridDelegate: AnimeGrid.delegate(context),
                             delegate: SliverChildBuilderDelegate((
                               context,
                               index,
@@ -213,12 +207,7 @@ class _GenreSkeleton extends StatelessWidget {
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 160,
-        mainAxisSpacing: Space.lg,
-        crossAxisSpacing: Space.md,
-        childAspectRatio: 0.53,
-      ),
+      gridDelegate: AnimeGrid.delegate(context),
       itemCount: 9,
       itemBuilder: (_, _) => const WingsPosterSkeleton(),
     );

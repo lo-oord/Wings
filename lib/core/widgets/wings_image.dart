@@ -46,7 +46,8 @@ class WingsImage extends StatelessWidget {
         height: height,
         alignment: alignment,
         memCacheWidth: cacheWidth,
-        fadeInDuration: const Duration(milliseconds: 240),
+        fadeInDuration: Motion.imageFade,
+        fadeOutDuration: Duration.zero,
         placeholder: (context, _) => WingsSkeleton(
           width: width,
           height: height,
@@ -84,7 +85,12 @@ class WingsMark extends StatelessWidget {
         'assets/branding/icon_foreground.png',
         width: size,
         height: size,
+        // The mark ships with transparent padding; contain keeps its aspect
+        // ratio and never clips or stretches it inside a circular badge.
+        fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
+        gaplessPlayback: true,
+        excludeFromSemantics: true,
         errorBuilder: (context, _, _) => Icon(
           Icons.flutter_dash_rounded,
           size: size * 0.8,

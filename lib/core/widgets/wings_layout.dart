@@ -281,38 +281,42 @@ class WingsBottomNav extends StatelessWidget {
       ),
     ];
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.sm),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: palette.surface,
-          borderRadius: BorderRadius.circular(Radii.pill),
-          border: Border.all(color: palette.border),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withValues(
-                alpha: palette.isDark ? 0.4 : 0.08,
-              ),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(Space.xs + 2),
-          child: Row(
-            children: <Widget>[
-              for (var index = 0; index < destinations.length; index++)
-                Expanded(
-                  child: _NavItem(
-                    icon: destinations[index].$1,
-                    activeIcon: destinations[index].$2,
-                    label: destinations[index].$3,
-                    selected: index == currentIndex,
-                    onTap: () => onSelect(index),
-                  ),
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.only(bottom: Space.sm),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, 0),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: palette.surface,
+            borderRadius: BorderRadius.circular(Radii.pill),
+            border: Border.all(color: palette.border),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: palette.isDark ? 0.4 : 0.08,
                 ),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
             ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(Space.xs + 2),
+            child: Row(
+              children: <Widget>[
+                for (var index = 0; index < destinations.length; index++)
+                  Expanded(
+                    child: _NavItem(
+                      icon: destinations[index].$1,
+                      activeIcon: destinations[index].$2,
+                      label: destinations[index].$3,
+                      selected: index == currentIndex,
+                      onTap: () => onSelect(index),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -432,57 +436,80 @@ class WingsSettingsTile extends StatelessWidget {
     final palette = context.palette;
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.lg,
-          vertical: Space.md,
-        ),
-        child: Row(
-          children: <Widget>[
-            if (icon != null) ...<Widget>[
-              Icon(
-                icon,
-                size: 19,
-                color: destructive ? palette.danger : palette.textSecondary,
-              ),
-              const SizedBox(width: Space.md),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    title,
-                    style: context.text.bodyLarge?.copyWith(
-                      fontSize: 14,
-                      color: destructive ? palette.danger : palette.textPrimary,
-                    ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: Sizes.settingsRow),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.lg,
+            vertical: Space.sm + 2,
+          ),
+          child: Row(
+            children: <Widget>[
+              if (icon != null) ...<Widget>[
+                // A fixed 24 px box keeps every label aligned even when the
+                // glyphs have different intrinsic widths.
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: destructive ? palette.danger : palette.textSecondary,
                   ),
-                  if (subtitle != null) ...<Widget>[
-                    const SizedBox(height: 2),
+                ),
+                const SizedBox(width: Space.md),
+              ],
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
                     Text(
-                      subtitle!,
-                      style: context.text.bodySmall?.copyWith(
-                        color: palette.textMuted,
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.bodyLarge?.copyWith(
+                        fontSize: 14,
+                        height: 1.35,
+                        color: destructive
+                            ? palette.danger
+                            : palette.textPrimary,
                       ),
                     ),
+                    if (subtitle != null) ...<Widget>[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.bodySmall?.copyWith(
+                          color: palette.textMuted,
+                          fontSize: 11.5,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
-              ),
-            ),
-            ?trailing,
-            if (showChevron)
-              Padding(
-                padding: const EdgeInsets.only(left: Space.xs),
-                child: Icon(
-                  context.isRtl
-                      ? Icons.chevron_left_rounded
-                      : Icons.chevron_right_rounded,
-                  size: 18,
-                  color: palette.textMuted,
                 ),
               ),
-          ],
+              if (trailing != null)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(start: Space.sm),
+                  child: trailing!,
+                ),
+              if (showChevron)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(start: Space.xs),
+                  child: Icon(
+                    context.isRtl
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                    size: 18,
+                    color: palette.textMuted,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -511,16 +538,16 @@ class WingsSettingsGroup extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.only(
+            padding: const EdgeInsetsDirectional.only(
               bottom: Space.sm,
-              right: Space.xs,
-              left: Space.xs,
+              start: Space.xs,
+              end: Space.xs,
             ),
             child: Text(
               title,
-              style: context.text.labelSmall?.copyWith(
-                color: palette.textMuted,
-                letterSpacing: 0.6,
+              style: context.text.labelMedium?.copyWith(
+                color: palette.textSecondary,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -581,13 +608,20 @@ abstract final class WingsSheet {
     bool scrollable = false,
   }) {
     final palette = context.palette;
+    // A sheet taller than the viewport used to clip its own close button on
+    // short phones and with the keyboard open.
+    final maxHeight = (MediaQuery.sizeOf(context).height * 0.8).clamp(
+      280.0,
+      560.0,
+    );
     return showDialog<T>(
       context: context,
+      useSafeArea: true,
       barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (dialogContext) {
         return Dialog(
           insetPadding: const EdgeInsets.symmetric(
-            horizontal: Space.xxl,
+            horizontal: Space.xl,
             vertical: Space.xxl,
           ),
           backgroundColor: palette.surface,
@@ -597,7 +631,7 @@ abstract final class WingsSheet {
             side: BorderSide(color: palette.border),
           ),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 460),
+            constraints: BoxConstraints(maxWidth: 420, maxHeight: maxHeight),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -658,15 +692,22 @@ abstract final class WingsDialog {
     final localizations = AppLocalizations.of(context);
     final result = await showDialog<bool>(
       context: context,
+      useSafeArea: true,
       builder: (dialogContext) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: Space.xl,
+          vertical: Space.xxl,
+        ),
+        scrollable: true,
         title: Text(title),
         content: Text(message),
         actionsPadding: const EdgeInsets.fromLTRB(
-          Space.md,
+          Space.lg,
           0,
+          Space.lg,
           Space.md,
-          Space.sm,
         ),
+        actionsOverflowButtonSpacing: Space.sm,
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),

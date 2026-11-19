@@ -80,7 +80,21 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         actions: <Widget>[
           if (!isEmpty)
             TextButton(
-              onPressed: () => _clearAll(uid),
+              onPressed: () async {
+                final confirmed = await WingsDialog.confirm(
+                  context,
+                  title: l10n.commonClear,
+                  message: Tr.of(
+                    context,
+                    ar: 'ستُحذف كل الإشعارات من هذا الجهاز وحسابك.',
+                    en: 'All notifications will be removed from this device and your account.',
+                  ),
+                  confirmLabel: l10n.commonClear,
+                  destructive: true,
+                );
+                if (!confirmed || !context.mounted) return;
+                await _clearAll(uid);
+              },
               child: Text(l10n.commonClear),
             ),
         ],

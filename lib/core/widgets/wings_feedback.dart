@@ -156,7 +156,7 @@ class WingsPosterSkeleton extends StatelessWidget {
         children: <Widget>[
           AspectRatio(
             aspectRatio: Ratios.poster,
-            child: WingsSkeleton(borderRadius: BorderRadius.circular(Radii.md)),
+            child: WingsSkeleton(borderRadius: BorderRadius.circular(Radii.sm)),
           ),
           const SizedBox(height: Space.sm),
           const WingsSkeleton(

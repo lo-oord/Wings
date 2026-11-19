@@ -120,7 +120,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _attachStreams() {
     _subscriptions.add(
       _player.stream.playing.listen((value) {
-        if (mounted) setState(() => _playing = value);
+        if (!mounted) return;
+        setState(() {
+          _playing = value;
+          // Pausing is a deliberate stop: the controls stay on screen until
+          // the viewer resumes or hides them.
+          if (!value) _controlsVisible = true;
+        });
+        if (value) {
+          _scheduleHide();
+        } else {
+          _hideTimer?.cancel();
+        }
       }),
     );
     _subscriptions.add(
@@ -135,7 +146,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
     _subscriptions.add(
       _player.stream.buffering.listen((value) {
-        if (mounted) setState(() => _buffering = value);
+        if (!mounted) return;
+        setState(() {
+          _buffering = value;
+          if (value) _controlsVisible = true;
+        });
+        if (value) {
+          _hideTimer?.cancel();
+        } else {
+          _scheduleHide();
+        }
       }),
     );
     _subscriptions.add(
@@ -278,6 +298,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
       if (!mounted) return;
       setState(() => _loading = false);
+      _scheduleHide();
       if (!_viewRegistered) {
         // A view is only counted for a signed-in account and only after the
         // stream has been running for a moment, so opening and closing an
@@ -410,7 +431,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _onCompleted() {
     if (_completed) return;
-    _completed = true;
+    setState(() {
+      _completed = true;
+      _controlsVisible = true;
+    });
+    _hideTimer?.cancel();
     unawaited(_saveProgress(force: true));
     final settings = ref.read(settingsProvider);
     final next = _nextEpisode;
@@ -459,30 +484,70 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         .saveProgress(entry, completed: _completed);
   }
 
+  static const Duration _hideDelay = Duration(seconds: 4);
+
+  /// Set while a menu or the timeline is being used. The auto-hide timer is
+  /// suspended for the whole interaction instead of racing it.
+  bool _controlsLocked = false;
+
+  /// One source of truth for "the controls may not disappear now".
+  bool get _controlsShouldStayVisible =>
+      _controlsLocked ||
+      _seeking ||
+      !_playing ||
+      _loading ||
+      _buffering ||
+      _playbackError != null ||
+      _error != null ||
+      _completed;
+
   void _scheduleHide() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (!mounted) return;
-      if (_playing) setState(() => _controlsVisible = false);
+    if (!mounted || _controlsShouldStayVisible) return;
+    _hideTimer = Timer(_hideDelay, () {
+      if (!mounted || _controlsShouldStayVisible) return;
+      setState(() => _controlsVisible = false);
     });
   }
 
+  void _showControls({bool restartTimer = true}) {
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    if (restartTimer) _scheduleHide();
+  }
+
   void _toggleControls() {
-    setState(() => _controlsVisible = !_controlsVisible);
-    if (_controlsVisible) _scheduleHide();
+    if (_controlsVisible) {
+      _hideTimer?.cancel();
+      setState(() => _controlsVisible = false);
+      return;
+    }
+    _showControls();
+  }
+
+  /// Pins the controls while a sheet is open, then resumes auto-hide.
+  void _lockControls(bool locked) {
+    _controlsLocked = locked;
+    if (locked) {
+      _hideTimer?.cancel();
+      _showControls(restartTimer: false);
+    } else {
+      _scheduleHide();
+    }
   }
 
   Future<void> _togglePlay() async {
+    _showControls(restartTimer: false);
     if (_playing) {
       await _player.pause();
       unawaited(_saveProgress(force: true));
     } else {
       await _player.play();
+      _scheduleHide();
     }
-    _scheduleHide();
   }
 
   Future<void> _seekBy(int seconds) async {
+    _showControls(restartTimer: false);
     final target = _position + Duration(seconds: seconds);
     final clamped = target < Duration.zero
         ? Duration.zero
@@ -491,6 +556,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               : target);
     await _player.seek(clamped);
     if (mounted) setState(() => _position = clamped);
+    _scheduleHide();
+  }
+
+  Future<void> _replay() async {
+    _completed = false;
+    await _player.seek(Duration.zero);
+    await _player.play();
+    if (mounted) setState(() => _controlsVisible = true);
     _scheduleHide();
   }
 
@@ -567,7 +640,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(settingsProvider);
     final surface = _PlayerSurface(
       videoController: _videoController,
       playing: _playing,
@@ -592,35 +664,50 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       onSeekBack: () => _seekBy(-10),
       onSeekForward: () => _seekBy(10),
       onSeekStart: (value) {
+        _hideTimer?.cancel();
         setState(() {
           _seeking = true;
           _seekValue = value;
+          _controlsVisible = true;
         });
       },
       onSeekChanged: (value) => setState(() => _seekValue = value),
       onSeekEnd: (value) async {
-        setState(() => _seeking = false);
         await _player.seek(Duration(milliseconds: value.round()));
+        if (!mounted) return;
+        setState(() {
+          _seeking = false;
+          _position = Duration(milliseconds: value.round());
+        });
+        _scheduleHide();
       },
       onToggleFullscreen: _toggleFullscreen,
       onRetry: _bootstrap,
-      onBack: () => Navigator.of(context).maybePop(),
+      // In fullscreen the first back press leaves fullscreen instead of
+      // dropping the viewer out of the episode entirely.
+      onBack: () {
+        if (_fullscreen) {
+          unawaited(_toggleFullscreen());
+          return;
+        }
+        final router = GoRouter.maybeOf(context);
+        if (router != null && router.canPop()) {
+          router.pop();
+          return;
+        }
+        Navigator.of(context).maybePop();
+      },
       onComments: _openComments,
       onQuality: _showQualitySheet,
       onSpeed: _showSpeedSheet,
-      onDownload: _episode == null
-          ? null
-          : () => _showDownloadSheet(_anime!, _episode!),
+      onMore: _showMoreSheet,
       onPrevious: _previousEpisode == null
           ? null
           : () => _loadEpisode(_previousEpisode!),
       onNext: _nextEpisode == null ? null : () => _loadEpisode(_nextEpisode!),
-      onAutoplay: () => ref
-          .read(settingsProvider.notifier)
-          .update(
-            (current) => current.copyWith(autoplayNext: !current.autoplayNext),
-          ),
-      autoplay: settings.autoplayNext,
+      onReplay: _replay,
+      speed: _speed,
+      completed: _completed,
       activeQuality: _activeQuality,
     );
 
@@ -656,15 +743,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
 
     if (_fullscreen) {
+      // System back exits fullscreen first; a second back leaves the episode.
       return PopScope(
-        canPop: true,
+        canPop: false,
         onPopInvokedWithResult: (didPop, _) {
-          if (didPop) {
-            SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-            SystemChrome.setPreferredOrientations(<DeviceOrientation>[
-              DeviceOrientation.portraitUp,
-            ]);
-          }
+          if (didPop) return;
+          unawaited(_toggleFullscreen());
         },
         child: Scaffold(backgroundColor: Colors.black, body: draggable),
       );
@@ -775,22 +859,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   ],
                 ),
               ),
-              Column(
-                children: <Widget>[
-                  WingsIconButton(
-                    icon: _fullscreen
-                        ? Icons.fullscreen_exit_rounded
-                        : Icons.fullscreen_rounded,
-                    color: palette.textSecondary,
-                    onPressed: _toggleFullscreen,
-                  ),
-                  if (episode != null)
-                    WingsIconButton(
-                      icon: Icons.download_rounded,
-                      color: palette.textSecondary,
-                      onPressed: () => _showDownloadSheet(anime, episode),
-                    ),
-                ],
+              // Downloading lives once, in the action bar under the episode;
+              // the header only keeps the fullscreen control.
+              WingsIconButton(
+                icon: Icons.fullscreen_rounded,
+                tooltip: Tr.of(context, ar: 'ملء الشاشة', en: 'Full screen'),
+                color: palette.textSecondary,
+                onPressed: _toggleFullscreen,
               ),
             ],
           ),
@@ -886,6 +961,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         .where((server) => !server.requiresBrowser)
         .toList(growable: false);
 
+    _lockControls(true);
     await WingsSheet.show<void>(
       context,
       title: l10n.detailsDownloadSheetTitle,
@@ -941,17 +1017,74 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         );
       },
     );
+    _lockControls(false);
+  }
+
+  /// One contextual menu for the actions that do not need a permanent button
+  /// on the player: autoplay and downloading the current episode.
+  Future<void> _showMoreSheet() async {
+    final l10n = AppLocalizations.of(context);
+    _lockControls(true);
+    await WingsSheet.show<void>(
+      context,
+      title: Tr.of(context, ar: 'خيارات التشغيل', en: 'Playback options'),
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          WingsSettingsTile(
+            icon: Icons.playlist_play_rounded,
+            title: l10n.playerAutoNext,
+            subtitle: Tr.of(
+              context,
+              ar: 'تشغيل الحلقة التالية تلقائيًا',
+              en: 'Start the next episode automatically',
+            ),
+            trailing: Switch(
+              value: ref.read(settingsProvider).autoplayNext,
+              onChanged: (value) {
+                ref
+                    .read(settingsProvider.notifier)
+                    .update((current) => current.copyWith(autoplayNext: value));
+                Navigator.of(sheetContext).pop();
+              },
+            ),
+            onTap: () {
+              ref
+                  .read(settingsProvider.notifier)
+                  .update(
+                    (current) =>
+                        current.copyWith(autoplayNext: !current.autoplayNext),
+                  );
+              Navigator.of(sheetContext).pop();
+            },
+          ),
+          if (_episode != null)
+            WingsSettingsTile(
+              icon: Icons.download_rounded,
+              title: l10n.commonDownload,
+              subtitle: AppLocalizations.of(context)
+                  .commonEpisodeNumber(_episode!.number),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                unawaited(_showDownloadSheet(_anime!, _episode!));
+              },
+            ),
+        ],
+      ),
+    );
+    _lockControls(false);
   }
 
   Future<void> _showSpeedSheet() async {
     final l10n = AppLocalizations.of(context);
+    _lockControls(true);
     await WingsSheet.show<void>(
       context,
       title: l10n.playerSpeed,
       builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          for (final speed in const <double>[0.5, 0.75, 1, 1.25, 1.5, 2])
+          for (final speed in PlaybackOptions.speeds)
             WingsSettingsTile(
               title: speed == 1 ? '1.0×' : '$speed×',
               trailing: _speed == speed
@@ -975,6 +1108,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ],
       ),
     );
+    _lockControls(false);
   }
 
   String _streamLabel(AppLocalizations l10n) {
@@ -998,6 +1132,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Future<void> _showQualitySheet() async {
     final l10n = AppLocalizations.of(context);
+    _lockControls(true);
     await WingsSheet.show<void>(
       context,
       title: l10n.playerSelectServer,
@@ -1054,6 +1189,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         );
       },
     );
+    _lockControls(false);
   }
 }
 
@@ -1098,11 +1234,12 @@ class _PlayerSurface extends StatelessWidget {
     required this.onComments,
     required this.onQuality,
     required this.onSpeed,
-    required this.onDownload,
+    required this.onMore,
     required this.onPrevious,
     required this.onNext,
-    required this.onAutoplay,
-    required this.autoplay,
+    required this.onReplay,
+    required this.speed,
+    required this.completed,
     required this.activeQuality,
   });
 
@@ -1133,11 +1270,12 @@ class _PlayerSurface extends StatelessWidget {
   final VoidCallback onComments;
   final VoidCallback onQuality;
   final VoidCallback onSpeed;
-  final VoidCallback? onDownload;
+  final VoidCallback onMore;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
-  final VoidCallback onAutoplay;
-  final bool autoplay;
+  final VoidCallback onReplay;
+  final double speed;
+  final bool completed;
   final String? activeQuality;
 
   @override
@@ -1286,52 +1424,57 @@ class _PlayerSurface extends StatelessWidget {
                       ],
                     ),
                     const Spacer(),
-                    if (!compact)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          Space.md,
-                          0,
-                          Space.md,
-                          Space.xs,
-                        ),
-                        child: Row(
-                          children: <Widget>[
-                            Text(
-                              formatDuration(position),
-                              style: context.text.labelSmall?.copyWith(
-                                color: Colors.white,
-                              ),
-                            ),
-                            Expanded(
-                              child: SliderTheme(
-                                data: SliderThemeData(
-                                  trackHeight: 2.5,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 6,
-                                  ),
-                                  overlayShape: SliderComponentShape.noOverlay,
-                                  activeTrackColor: context.palette.primary,
-                                  inactiveTrackColor: Colors.white24,
-                                  thumbColor: context.palette.primary,
-                                ),
-                                child: Slider(
-                                  value: (progress.clamp(0.0, 1.0)) * maxMs,
-                                  max: maxMs <= 0 ? 1 : maxMs,
-                                  onChangeStart: onSeekStart,
-                                  onChanged: onSeekChanged,
-                                  onChangeEnd: onSeekEnd,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              formatDuration(duration),
-                              style: context.text.labelSmall?.copyWith(
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
+                    // The timeline belongs to every layout: in portrait it sits
+                    // directly under the picture instead of disappearing.
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        compact ? Space.sm : Space.md,
+                        0,
+                        compact ? Space.sm : Space.md,
+                        compact ? Space.xs : 0,
                       ),
+                      child: Row(
+                        children: <Widget>[
+                          Text(
+                            formatDuration(position),
+                            style: context.text.labelSmall?.copyWith(
+                              color: Colors.white,
+                              fontSize: compact ? 10 : 11,
+                            ),
+                          ),
+                          Expanded(
+                            child: SliderTheme(
+                              data: SliderThemeData(
+                                trackHeight: compact ? 2 : 3,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 6,
+                                ),
+                                overlayShape: const RoundSliderOverlayShape(
+                                  overlayRadius: 18,
+                                ),
+                                activeTrackColor: context.palette.primary,
+                                inactiveTrackColor: Colors.white24,
+                                thumbColor: context.palette.primary,
+                              ),
+                              child: Slider(
+                                value: (progress.clamp(0.0, 1.0)) * maxMs,
+                                max: maxMs <= 0 ? 1 : maxMs,
+                                onChangeStart: onSeekStart,
+                                onChanged: onSeekChanged,
+                                onChangeEnd: onSeekEnd,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            formatDuration(duration),
+                            style: context.text.labelSmall?.copyWith(
+                              color: Colors.white,
+                              fontSize: compact ? 10 : 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     if (!compact)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(
@@ -1344,42 +1487,46 @@ class _PlayerSurface extends StatelessWidget {
                           children: <Widget>[
                             WingsIconButton(
                               icon: Icons.skip_previous_rounded,
+                              tooltip: Tr.of(
+                                context,
+                                ar: 'الحلقة السابقة',
+                                en: 'Previous episode',
+                              ),
                               color: Colors.white,
                               onPressed: onPrevious,
                             ),
                             WingsIconButton(
-                              icon: Icons.speed_rounded,
-                              color: Colors.white,
-                              tooltip: l10n.playerSpeed,
-                              onPressed: onSpeed,
-                            ),
-                            WingsIconButton(
-                              icon: Icons.hd_outlined,
-                              color: Colors.white,
-                              tooltip: l10n.playerQuality,
-                              onPressed: onQuality,
-                            ),
-                            WingsIconButton(
-                              icon: Icons.download_rounded,
-                              color: Colors.white,
-                              tooltip: l10n.commonDownload,
-                              onPressed: onDownload,
-                            ),
-                            WingsIconButton(
-                              icon: autoplay
-                                  ? Icons.playlist_play_rounded
-                                  : Icons.playlist_remove_rounded,
-                              color: autoplay
-                                  ? context.palette.primary
-                                  : Colors.white,
-                              tooltip: l10n.playerAutoNext,
-                              onPressed: onAutoplay,
-                            ),
-                            const Spacer(),
-                            WingsIconButton(
                               icon: Icons.skip_next_rounded,
+                              tooltip: Tr.of(
+                                context,
+                                ar: 'الحلقة التالية',
+                                en: 'Next episode',
+                              ),
                               color: Colors.white,
                               onPressed: onNext,
+                            ),
+                            const Spacer(),
+                            _OverlayChip(
+                              icon: Icons.hd_outlined,
+                              label: activeQuality ?? l10n.playerQuality,
+                              onTap: onQuality,
+                            ),
+                            const SizedBox(width: Space.xs),
+                            _OverlayChip(
+                              icon: Icons.speed_rounded,
+                              label:
+                                  '${speed % 1 == 0 ? speed.toInt() : speed}×',
+                              onTap: onSpeed,
+                            ),
+                            WingsIconButton(
+                              icon: Icons.tune_rounded,
+                              tooltip: Tr.of(
+                                context,
+                                ar: 'خيارات التشغيل',
+                                en: 'Playback options',
+                              ),
+                              color: Colors.white,
+                              onPressed: onMore,
                             ),
                             WingsIconButton(
                               icon: fullscreen
@@ -1397,10 +1544,10 @@ class _PlayerSurface extends StatelessWidget {
             ),
           ),
           AnimatedOpacity(
-            opacity: showToggle ? 1 : 0,
+            opacity: showToggle && !completed ? 1 : 0,
             duration: Motion.fast,
             child: IgnorePointer(
-              ignoring: !showToggle,
+              ignoring: !showToggle || completed,
               child: Center(
                 child: _RoundControl(
                   icon: playing
@@ -1413,6 +1560,21 @@ class _PlayerSurface extends StatelessWidget {
               ),
             ),
           ),
+          if (completed && !loading && error == null)
+            IgnorePointer(
+              ignoring: !controlsVisible,
+              child: AnimatedOpacity(
+                opacity: controlsVisible ? 1 : 0,
+                duration: Motion.fast,
+                child: Center(
+                  child: _CompletionPanel(
+                    hasNext: onNext != null,
+                    onNext: onNext,
+                    onReplay: onReplay,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1423,6 +1585,117 @@ class _PlayerSurface extends StatelessWidget {
     if (error is _NoEpisodes) return l10n.detailsNoEpisodes;
     if (error is _NoPlayableServer) return l10n.playerNoServers;
     return l10n.playerPlaybackErrorBody;
+  }
+}
+
+/// Compact secondary control used for quality and speed in fullscreen.
+class _OverlayChip extends StatelessWidget {
+  const _OverlayChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.pill),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 32),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.sm + 2,
+            vertical: 5,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.black38,
+            borderRadius: BorderRadius.circular(Radii.pill),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 14, color: Colors.white70),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.text.labelSmall?.copyWith(
+                  color: Colors.white,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The end-of-episode state: continue to the next episode or watch again.
+class _CompletionPanel extends StatelessWidget {
+  const _CompletionPanel({
+    required this.hasNext,
+    required this.onNext,
+    required this.onReplay,
+  });
+
+  final bool hasNext;
+  final VoidCallback? onNext;
+  final VoidCallback onReplay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      margin: const EdgeInsets.all(Space.lg),
+      padding: const EdgeInsets.all(Space.lg),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            Tr.of(context, ar: 'انتهت الحلقة', en: 'Episode finished'),
+            textAlign: TextAlign.center,
+            style: context.text.titleSmall?.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: Space.md),
+          WingsButton(
+            label: hasNext
+                ? Tr.of(context, ar: 'الحلقة التالية', en: 'Next episode')
+                : Tr.of(context, ar: 'إعادة المشاهدة', en: 'Watch again'),
+            icon: hasNext ? Icons.skip_next_rounded : Icons.replay_rounded,
+            height: Sizes.buttonCompact,
+            expand: true,
+            onPressed: hasNext ? onNext : onReplay,
+          ),
+          if (hasNext) ...<Widget>[
+            const SizedBox(height: Space.xs),
+            TextButton.icon(
+              onPressed: onReplay,
+              icon: const Icon(Icons.replay_rounded, size: 16),
+              label: Text(
+                Tr.of(context, ar: 'إعادة المشاهدة', en: 'Watch again'),
+                style: context.text.labelSmall?.copyWith(color: Colors.white),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

@@ -74,6 +74,17 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     if (mounted) context.go(RoutePaths.latest);
   }
 
+  /// Closing the gate goes back when there is something underneath; otherwise
+  /// it continues as a guest, which used to be the close button's only action.
+  void _close() {
+    final router = GoRouter.maybeOf(context);
+    if (router != null && router.canPop()) {
+      router.pop();
+      return;
+    }
+    _continueAsGuest();
+  }
+
   /// One Google tap: sign in when the account exists, create it otherwise.
   ///
   /// The old button could only sign in, so a first-time visitor was told their
@@ -128,9 +139,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                     alignment: AlignmentDirectional.centerStart,
                     child: WingsIconButton(
                       icon: Icons.close_rounded,
-                      // Closing the sign-in gate continues as a guest: simply
-                      // going home would bounce straight back to this screen.
-                      onPressed: busy ? null : _continueAsGuest,
+                      tooltip: l10n.commonClose,
+                      onPressed: busy ? null : _close,
                     ),
                   ),
                   const Spacer(),
@@ -226,7 +236,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                     label: l10n.authLogin,
                     variant: WingsButtonVariant.outline,
                     expand: true,
-                    loading: _guestLoading,
+                    // Navigation never shows a spinner; only the guest action
+                    // below does, and only while it is actually running.
                     onPressed: busy
                         ? null
                         : () => context.push(RoutePaths.login),
@@ -234,7 +245,13 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                   const SizedBox(height: Space.sm),
                   TextButton(
                     onPressed: busy ? null : _continueAsGuest,
-                    child: Text(l10n.authContinueGuest),
+                    child: _guestLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(l10n.authContinueGuest),
                   ),
                   TextButton(
                     onPressed: busy
@@ -279,7 +296,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   bool _loading = false;
-  bool _remember = true;
   String? _error;
 
   @override
@@ -391,19 +407,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
           const SizedBox(height: Space.sm),
-          Row(
-            children: <Widget>[
-              Checkbox(
-                value: _remember,
-                onChanged: (value) => setState(() => _remember = value ?? true),
-              ),
-              Text(l10n.authRemember, style: context.text.bodySmall),
-              const Spacer(),
-              TextButton(
-                onPressed: () => context.push(RoutePaths.forgot),
-                child: Text(l10n.authForgot),
-              ),
-            ],
+          // The old “remember me” checkbox was never read: Firebase already
+          // keeps the session on this device. Only the real action remains.
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton(
+              onPressed: () => context.push(RoutePaths.forgot),
+              child: Text(l10n.authForgot),
+            ),
           ),
           const SizedBox(height: Space.sm),
           AnimatedSize(
@@ -1019,18 +1030,20 @@ class _ProfileStep extends StatelessWidget {
           },
         ),
         const SizedBox(height: Space.lg),
-        InkWell(
-          onTap: () => onTerms(!acceptedTerms),
-          borderRadius: BorderRadius.circular(Radii.sm),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: Space.xs),
-            child: Row(
-              children: <Widget>[
-                Checkbox(
-                  value: acceptedTerms,
-                  onChanged: (value) => onTerms(value ?? false),
-                ),
-                Expanded(
+        Row(
+          children: <Widget>[
+            Checkbox(
+              value: acceptedTerms,
+              onChanged: (value) => onTerms(value ?? false),
+            ),
+            Expanded(
+              // Tapping the label toggles once; wrapping the checkbox in an
+              // InkWell used to toggle it twice on some platforms.
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onTerms(!acceptedTerms),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Space.sm),
                   child: Text(
                     l10n.authAcceptTerms,
                     style: context.text.bodySmall?.copyWith(
@@ -1040,9 +1053,9 @@ class _ProfileStep extends StatelessWidget {
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );

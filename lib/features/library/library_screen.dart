@@ -17,18 +17,45 @@ import '../../core/widgets/wings_layout.dart';
 import '../../data/models/library.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
-  const LibraryScreen({super.key});
+  const LibraryScreen({super.key, this.initialTab = 0});
+
+  /// Lets a shortcut open a specific section instead of duplicating it.
+  final int initialTab;
 
   @override
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+class _LibraryScreenState extends ConsumerState<LibraryScreen>
+    with SingleTickerProviderStateMixin {
+  static const int _tabCount = 9;
+
   final TextEditingController _search = TextEditingController();
+  late final TabController _tabs = TabController(
+    length: _tabCount,
+    vsync: this,
+    initialIndex: widget.initialTab.clamp(0, _tabCount - 1),
+  );
   bool _sortByTitle = false;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // A link such as /library?tab=6 selects the section it names.
+    final requested = int.tryParse(
+      GoRouterState.of(context).uri.queryParameters['tab'] ?? '',
+    );
+    if (requested != null &&
+        requested >= 0 &&
+        requested < _tabCount &&
+        requested != _tabs.index) {
+      _tabs.animateTo(requested);
+    }
+  }
+
+  @override
   void dispose() {
+    _tabs.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -85,187 +112,184 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         .where((task) => task.status == DownloadStatus.completed)
         .toList();
 
-    return DefaultTabController(
-      length: 9,
-      child: Scaffold(
-        body: SafeArea(
-          bottom: false,
-          child: Column(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Space.lg,
-                  Space.md,
-                  Space.lg,
-                  Space.sm,
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Text(l10n.libraryTitle, style: context.text.headlineSmall),
-                    const Spacer(),
-                    if (ref.watch(authProvider) != null)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(
-                          end: Space.xs,
-                        ),
-                        child: WingsIconButton(
-                          icon: Icons.sync_rounded,
-                          tooltip: Tr.of(
-                            context,
-                            ar: 'مزامنة المكتبة',
-                            en: 'Sync library',
-                          ),
-                          onPressed: () async {
-                            final synced = await ref
-                                .read(authProvider.notifier)
-                                .syncNow(force: true);
-                            if (!context.mounted) return;
-                            context.showSnack(
-                              synced
-                                  ? Tr.of(
-                                      context,
-                                      ar: 'تمت مزامنة مكتبتك.',
-                                      en: 'Your library is synced.',
-                                    )
-                                  : Tr.of(
-                                      context,
-                                      ar: 'تعذرت المزامنة الآن. تحقق من الاتصال وحاول مجددًا.',
-                                      en: 'Sync failed. Check your connection and retry.',
-                                    ),
-                              isError: !synced,
-                            );
-                          },
-                        ),
-                      ),
-                    WingsIconButton(
-                      icon: Icons.download_done_rounded,
-                      tooltip: l10n.downloadsTitle,
-                      onPressed: () => context.push(RoutePaths.downloads),
-                    ),
-                  ],
-                ),
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.lg,
+                Space.md,
+                Space.lg,
+                Space.sm,
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: SizedBox(
-                        height: 40,
-                        child: TextField(
-                          controller: _search,
-                          onChanged: (_) => setState(() {}),
-                          style: context.text.bodyMedium,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            hintText: l10n.librarySearchHint,
-                            prefixIcon: Icon(
-                              Icons.search_rounded,
-                              size: 18,
-                              color: palette.textMuted,
-                            ),
-                            prefixIconConstraints: const BoxConstraints(
-                              minWidth: 38,
-                              minHeight: 38,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: Space.sm,
-                              vertical: Space.sm,
-                            ),
-                          ),
+              child: Row(
+                children: <Widget>[
+                  Text(l10n.libraryTitle, style: context.text.headlineSmall),
+                  const Spacer(),
+                  if (ref.watch(authProvider) != null)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: Space.xs),
+                      child: WingsIconButton(
+                        icon: Icons.sync_rounded,
+                        tooltip: Tr.of(
+                          context,
+                          ar: 'مزامنة المكتبة',
+                          en: 'Sync library',
                         ),
+                        onPressed: () async {
+                          final synced = await ref
+                              .read(authProvider.notifier)
+                              .syncNow(force: true);
+                          if (!context.mounted) return;
+                          context.showSnack(
+                            synced
+                                ? Tr.of(
+                                    context,
+                                    ar: 'تمت مزامنة مكتبتك.',
+                                    en: 'Your library is synced.',
+                                  )
+                                : Tr.of(
+                                    context,
+                                    ar: 'تعذرت المزامنة الآن. تحقق من الاتصال وحاول مجددًا.',
+                                    en: 'Sync failed. Check your connection and retry.',
+                                  ),
+                            isError: !synced,
+                          );
+                        },
                       ),
                     ),
-                    const SizedBox(width: Space.sm),
-                    WingsIconButton(
-                      icon: _sortByTitle
-                          ? Icons.sort_by_alpha_rounded
-                          : Icons.schedule_rounded,
-                      tooltip: _sortByTitle
-                          ? l10n.librarySortTitle
-                          : l10n.librarySortDate,
-                      filled: true,
-                      onPressed: () =>
-                          setState(() => _sortByTitle = !_sortByTitle),
-                    ),
-                  ],
-                ),
-              ),
-              TabBar(
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                padding: const EdgeInsets.symmetric(horizontal: Space.sm),
-                tabs: <Widget>[
-                  Tab(text: l10n.libraryFavorites),
-                  Tab(text: l10n.libraryWatching),
-                  Tab(text: l10n.libraryCompleted),
-                  Tab(text: l10n.libraryPlan),
-                  Tab(text: l10n.libraryOnHold),
-                  Tab(text: l10n.libraryDropped),
-                  Tab(text: l10n.libraryHistory),
-                  Tab(
-                    text: Tr.of(context, ar: 'حلقاتي', en: 'My episodes'),
+                  WingsIconButton(
+                    icon: Icons.download_done_rounded,
+                    tooltip: l10n.downloadsTitle,
+                    onPressed: () => context.push(RoutePaths.downloads),
                   ),
-                  Tab(text: l10n.libraryDownloaded),
                 ],
               ),
-              Expanded(
-                child: TabBarView(
-                  children: <Widget>[
-                    _EntriesTab(
-                      entries: _filterEntries(library.favorites),
-                      emptyTitle: l10n.libraryEmptyFavorites,
-                      onChanged: _refresh,
-                    ),
-                    _EntriesTab(
-                      entries: _filterEntries(
-                        library.byStatus(LibraryStatus.watching),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: SizedBox(
+                      height: 40,
+                      child: TextField(
+                        controller: _search,
+                        onChanged: (_) => setState(() {}),
+                        style: context.text.bodyMedium,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: l10n.librarySearchHint,
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            size: 18,
+                            color: palette.textMuted,
+                          ),
+                          prefixIconConstraints: const BoxConstraints(
+                            minWidth: 38,
+                            minHeight: 38,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: Space.sm,
+                            vertical: Space.sm,
+                          ),
+                        ),
                       ),
-                      emptyTitle: l10n.libraryEmptyGeneric,
-                      onChanged: _refresh,
                     ),
-                    _EntriesTab(
-                      entries: _filterEntries(
-                        library.byStatus(LibraryStatus.completed),
-                      ),
-                      emptyTitle: l10n.libraryEmptyGeneric,
-                      onChanged: _refresh,
-                    ),
-                    _EntriesTab(
-                      entries: _filterEntries(
-                        library.byStatus(LibraryStatus.planToWatch),
-                      ),
-                      emptyTitle: l10n.libraryEmptyGeneric,
-                      onChanged: _refresh,
-                    ),
-                    _EntriesTab(
-                      entries: _filterEntries(
-                        library.byStatus(LibraryStatus.onHold),
-                      ),
-                      emptyTitle: l10n.libraryEmptyGeneric,
-                      onChanged: _refresh,
-                    ),
-                    _EntriesTab(
-                      entries: _filterEntries(
-                        library.byStatus(LibraryStatus.dropped),
-                      ),
-                      emptyTitle: l10n.libraryEmptyGeneric,
-                      onChanged: _refresh,
-                    ),
-                    _HistoryTab(
-                      entries: _filterHistory(library.history),
-                      onChanged: _refresh,
-                    ),
-                    _MyEpisodesTab(
-                      entries: _filterSavedEpisodes(library.savedEpisodes),
-                      onChanged: _refresh,
-                    ),
-                    _DownloadsTab(tasks: downloads),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  WingsIconButton(
+                    icon: _sortByTitle
+                        ? Icons.sort_by_alpha_rounded
+                        : Icons.schedule_rounded,
+                    tooltip: _sortByTitle
+                        ? l10n.librarySortTitle
+                        : l10n.librarySortDate,
+                    filled: true,
+                    onPressed: () =>
+                        setState(() => _sortByTitle = !_sortByTitle),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            TabBar(
+              controller: _tabs,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+              tabs: <Widget>[
+                Tab(text: l10n.libraryFavorites),
+                Tab(text: l10n.libraryWatching),
+                Tab(text: l10n.libraryCompleted),
+                Tab(text: l10n.libraryPlan),
+                Tab(text: l10n.libraryOnHold),
+                Tab(text: l10n.libraryDropped),
+                Tab(text: l10n.libraryHistory),
+                Tab(
+                  text: Tr.of(context, ar: 'حلقاتي', en: 'My episodes'),
+                ),
+                Tab(text: l10n.libraryDownloaded),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabs,
+                children: <Widget>[
+                  _EntriesTab(
+                    entries: _filterEntries(library.favorites),
+                    emptyTitle: l10n.libraryEmptyFavorites,
+                    onChanged: _refresh,
+                  ),
+                  _EntriesTab(
+                    entries: _filterEntries(
+                      library.byStatus(LibraryStatus.watching),
+                    ),
+                    emptyTitle: l10n.libraryEmptyGeneric,
+                    onChanged: _refresh,
+                  ),
+                  _EntriesTab(
+                    entries: _filterEntries(
+                      library.byStatus(LibraryStatus.completed),
+                    ),
+                    emptyTitle: l10n.libraryEmptyGeneric,
+                    onChanged: _refresh,
+                  ),
+                  _EntriesTab(
+                    entries: _filterEntries(
+                      library.byStatus(LibraryStatus.planToWatch),
+                    ),
+                    emptyTitle: l10n.libraryEmptyGeneric,
+                    onChanged: _refresh,
+                  ),
+                  _EntriesTab(
+                    entries: _filterEntries(
+                      library.byStatus(LibraryStatus.onHold),
+                    ),
+                    emptyTitle: l10n.libraryEmptyGeneric,
+                    onChanged: _refresh,
+                  ),
+                  _EntriesTab(
+                    entries: _filterEntries(
+                      library.byStatus(LibraryStatus.dropped),
+                    ),
+                    emptyTitle: l10n.libraryEmptyGeneric,
+                    onChanged: _refresh,
+                  ),
+                  _HistoryTab(
+                    entries: _filterHistory(library.history),
+                    onChanged: _refresh,
+                  ),
+                  _MyEpisodesTab(
+                    entries: _filterSavedEpisodes(library.savedEpisodes),
+                    onChanged: _refresh,
+                  ),
+                  _DownloadsTab(tasks: downloads),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

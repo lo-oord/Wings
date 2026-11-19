@@ -198,12 +198,7 @@ class _AnimeBrowseGridState extends ConsumerState<AnimeBrowseGrid> {
                 Space.lg,
               ),
               sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 160,
-                  mainAxisSpacing: Space.lg,
-                  crossAxisSpacing: Space.md,
-                  childAspectRatio: 0.53,
-                ),
+                gridDelegate: AnimeGrid.delegate(context),
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final anime = _items[index];
                   return WingsPosterCard(
@@ -248,12 +243,7 @@ class _GridSkeleton extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 160,
-        mainAxisSpacing: Space.lg,
-        crossAxisSpacing: Space.md,
-        childAspectRatio: 0.53,
-      ),
+      gridDelegate: AnimeGrid.delegate(context),
       itemCount: 9,
       itemBuilder: (_, _) => const WingsPosterSkeleton(),
     );

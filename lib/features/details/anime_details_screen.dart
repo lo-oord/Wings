@@ -104,6 +104,12 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
         ? bundle.episodes
         : bundle.episodes.reversed.toList(growable: false);
     final lastWatched = library.lastFor(anime.id);
+    // Hero height follows the screen instead of a single 300 px block that was
+    // too tall on small phones and too short on tablets.
+    final heroHeight = (MediaQuery.sizeOf(context).width * 0.8).clamp(
+      220.0,
+      340.0,
+    );
 
     final info = <(String, String)>[
       if (anime.releaseDate != null)
@@ -124,7 +130,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
     return CustomScrollView(
       slivers: <Widget>[
         SliverAppBar(
-          expandedHeight: 300,
+          expandedHeight: heroHeight,
           pinned: true,
           stretch: false,
           backgroundColor: palette.background,
@@ -137,8 +143,20 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
               icon: context.isRtl
                   ? Icons.arrow_forward_rounded
                   : Icons.arrow_back_rounded,
+              tooltip: l10n.commonBack,
               filled: true,
-              onPressed: () => Navigator.of(context).maybePop(),
+              onPressed: () {
+                final router = GoRouter.maybeOf(context);
+                if (router == null) {
+                  Navigator.of(context).maybePop();
+                  return;
+                }
+                if (router.canPop()) {
+                  router.pop();
+                } else {
+                  router.go(RoutePaths.latest);
+                }
+              },
             ),
           ),
           actions: <Widget>[
@@ -216,7 +234,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                 WingsImage(
                   url: anime.posterUrl,
                   width: 104,
-                  height: 152,
+                  height: 156,
                   borderRadius: BorderRadius.circular(Radii.sm),
                 ),
                 const SizedBox(width: Space.md),
@@ -315,42 +333,21 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
             ),
           ),
         ),
+        // One library action opens the status sheet, which already contains
+        // «مكتمل». A second, separate completed button duplicated that option.
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: Space.lg,
-              vertical: Space.sm,
-            ),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: WingsButton(
-                    label: entry != null
-                        ? l10n.detailsInLibrary
-                        : l10n.detailsAddToLibrary,
-                    icon: entry != null
-                        ? Icons.bookmark_rounded
-                        : Icons.bookmark_border_rounded,
-                    variant: WingsButtonVariant.tonal,
-                    onPressed: () => _showStatusSheet(anime, entry),
-                  ),
-                ),
-                const SizedBox(width: Space.sm),
-                WingsButton(
-                  label: l10n.detailsCompleted,
-                  icon: Icons.check_circle_outline_rounded,
-                  variant: entry?.status == LibraryStatus.completed
-                      ? WingsButtonVariant.primary
-                      : WingsButtonVariant.outline,
-                  onPressed: () async {
-                    await ref
-                        .read(libraryProvider.notifier)
-                        .setStatus(anime, LibraryStatus.completed);
-                    if (!context.mounted) return;
-                    context.showSnack(l10n.detailsAdded);
-                  },
-                ),
-              ],
+            padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.xs),
+            child: WingsButton(
+              label: entry != null
+                  ? l10n.detailsInLibrary
+                  : l10n.detailsAddToLibrary,
+              icon: entry != null
+                  ? Icons.bookmark_rounded
+                  : Icons.bookmark_border_rounded,
+              variant: WingsButtonVariant.tonal,
+              expand: true,
+              onPressed: () => _showStatusSheet(anime, entry),
             ),
           ),
         ),
@@ -508,7 +505,8 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
           ),
           SliverToBoxAdapter(
             child: SizedBox(
-              height: 214,
+              // Tall enough for a full two-line title under the 2:3 poster.
+              height: WingsPosterCard.railHeightFor(context),
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: Space.lg),

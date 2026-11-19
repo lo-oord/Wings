@@ -58,7 +58,11 @@ class DownloadsScreen extends ConsumerWidget {
           ],
         ),
         actions: <Widget>[
-          if (tasks.any((task) => task.status == DownloadStatus.downloading))
+          if (tasks.any(
+            (task) =>
+                task.status == DownloadStatus.downloading ||
+                task.status == DownloadStatus.queued,
+          ))
             IconButton(
               tooltip: Tr.of(context, ar: 'إيقاف الكل', en: 'Pause all'),
               onPressed: () => ref.read(downloadServiceProvider).pauseAll(),

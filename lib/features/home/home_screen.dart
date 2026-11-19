@@ -289,7 +289,7 @@ class _PosterRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 268,
+      height: WingsPosterCard.railHeightFor(context),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: Space.lg),
@@ -332,7 +332,7 @@ class _LatestEpisodeRow extends StatelessWidget {
                 WingsImage(
                   url: item.episode.thumbnailUrl ?? item.anime.imageUrl,
                   width: 116,
-                  height: 66,
+                  height: 116 * 9 / 16,
                   borderRadius: BorderRadius.circular(Radii.xs),
                 ),
                 PositionedDirectional(
@@ -409,13 +409,14 @@ class _HomeSkeleton extends StatelessWidget {
           const WingsSkeleton(height: 16, width: 140),
           const SizedBox(height: Space.md),
           SizedBox(
-            height: 220,
+            height: WingsPosterCard.railHeightFor(context),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: 3,
               separatorBuilder: (_, _) => const SizedBox(width: Space.md),
-              itemBuilder: (_, _) => const WingsPosterSkeleton(width: 144),
+              itemBuilder: (_, _) =>
+                  const WingsPosterSkeleton(width: PosterCardMetrics.width),
             ),
           ),
         ],

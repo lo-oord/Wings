@@ -191,7 +191,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: <RouteBase>[
               GoRoute(
                 path: RoutePaths.library,
-                builder: (context, state) => const LibraryScreen(),
+                builder: (context, state) => LibraryScreen(
+                  initialTab:
+                      int.tryParse(state.uri.queryParameters['tab'] ?? '') ?? 0,
+                ),
               ),
             ],
           ),

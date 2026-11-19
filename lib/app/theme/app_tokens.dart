@@ -37,6 +37,7 @@ abstract final class Motion {
   static const Duration normal = Duration(milliseconds: 240);
   static const Duration slow = Duration(milliseconds: 420);
   static const Duration page = Duration(milliseconds: 300);
+  static const Duration imageFade = Duration(milliseconds: 220);
 
   static const Curve standard = Curves.easeOutCubic;
   static const Curve emphasized = Curves.easeOutQuint;
@@ -74,6 +75,84 @@ abstract final class BrandColors {
 
   /// The red of a live broadcast pill.
   static const Color live = Color(0xFFE5372B);
+}
+
+/// Shared control sizes. A tap target is never smaller than [minTouch].
+abstract final class Sizes {
+  /// Smallest comfortable Android/iOS target.
+  static const double minTouch = 44;
+
+  /// Height of an icon button in a toolbar or a card.
+  static const double iconButton = 40;
+
+  /// Height of a standard one-line settings row (before the InkWell padding).
+  static const double settingsRow = 56;
+
+  /// Height of a primary/secondary button. Compact actions use [buttonCompact].
+  static const double button = 46;
+  static const double buttonCompact = 38;
+
+  /// Minimum height of a menu/sheet row.
+  static const double sheetRow = 52;
+}
+
+/// Poster-card geometry, derived from the artwork ratio so a rail can never
+/// clip its titles and a grid cell can never be shorter than its content.
+abstract final class PosterCardMetrics {
+  /// Width used in every horizontal rail in the app.
+  static const double width = 144;
+
+  /// Widest a poster card is allowed to grow inside a grid cell.
+  static const double maxWidth = 160;
+
+  /// Gap between the poster and its title.
+  static const double imageGap = Space.sm;
+
+  /// Distance between the title and the metadata line.
+  static const double titleGap = 3;
+
+  /// Two title lines at the shared `titleSmall` size (13 px, height 1.4).
+  static const double titleHeight = 2 * 13 * 1.4;
+
+  /// One metadata line at 11 px.
+  static const double metaHeight = 14;
+
+  /// Everything below the poster at the default text scale.
+  static const double chrome = imageGap + titleHeight + titleGap + metaHeight;
+
+  /// Space that the title and metadata need at [textScale].
+  static double chromeFor(double textScale) =>
+      imageGap + (titleHeight + titleGap + metaHeight) * textScale;
+
+  /// Exact card height for a given width — poster is 2:3.
+  static double heightFor(double cardWidth, {double textScale = 1}) =>
+      cardWidth / Ratios.poster + chromeFor(textScale);
+
+  /// Height of a rail holding [width]-wide cards. Rounded up so the two-line
+  /// title and metadata always fit without clipping.
+  static double get railHeight => heightFor(width).ceilToDouble() + 2;
+
+  /// Rail height for the reader's current text scale.
+  static double railHeightFor(BuildContext context) {
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    return heightFor(width, textScale: scale).ceilToDouble() + 2;
+  }
+}
+
+/// Playback choices shared by the settings screen and the player menus, so the
+/// two lists can never drift apart.
+abstract final class PlaybackOptions {
+  static const List<double> speeds = <double>[0.5, 0.75, 1, 1.25, 1.5, 2];
+  static const List<String> qualities = <String>[
+    '1080p',
+    '720p',
+    '480p',
+    '360p',
+  ];
+
+  /// `1×` for whole values and `1.25×` for fractions.
+  static String speedLabel(double speed) =>
+      '${speed % 1 == 0 ? speed.toInt() : speed}×';
 }
 
 /// Layout breakpoints for responsive lists.

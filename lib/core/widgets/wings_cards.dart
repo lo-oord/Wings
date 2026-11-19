@@ -34,41 +34,35 @@ class AnimeCardMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final parts = <Widget>[];
-    if (anime.rating != null) {
-      parts.add(
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(Icons.star_rounded, size: 11, color: palette.warning),
-            const SizedBox(width: 2),
-            Text(anime.rating!.toStringAsFixed(1), style: _style(context)),
-          ],
-        ),
-      );
-    }
     final label = status == null ? null : animeStatusLabel(context, status!);
-    if (label != null) {
-      parts.add(
-        Text(
-          label,
-          style: _style(
-            context,
-            color: status == LibraryStatus.completed
-                ? palette.primary
-                : palette.textSecondary,
+    final type = animeTypeLabel(context, anime.type);
+    final bits = <String>[
+      if (anime.rating != null) anime.rating!.toStringAsFixed(1),
+      ?label,
+      if (type.isNotEmpty) type,
+    ];
+    if (bits.isEmpty) return const SizedBox.shrink();
+    // One line only: a poster card is narrow, so a second metadata line used to
+    // grow the card past its rail and clip the title on small phones.
+    return Row(
+      mainAxisSize: MainAxisSize.max,
+      children: <Widget>[
+        if (anime.rating != null) ...<Widget>[
+          Icon(Icons.star_rounded, size: 11, color: palette.warning),
+          const SizedBox(width: 2),
+        ],
+        Flexible(
+          child: Text(
+            bits.join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _style(
+              context,
+              color: status == LibraryStatus.completed ? palette.primary : null,
+            ),
           ),
         ),
-      );
-    }
-    final type = animeTypeLabel(context, anime.type);
-    if (type.isNotEmpty) parts.add(Text(type, style: _style(context)));
-    if (parts.isEmpty) return const SizedBox.shrink();
-    return Wrap(
-      spacing: Space.xs + 2,
-      runSpacing: 2,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: parts,
+      ],
     );
   }
 
@@ -107,17 +101,53 @@ String animeStatusLabel(BuildContext context, LibraryStatus status) {
   };
 }
 
+/// Shared responsive poster grid.
+///
+/// The cell height is derived from the real column width and the reader's text
+/// scale, so a title can never overflow its cell and the column count adapts to
+/// the screen instead of using one fixed aspect ratio everywhere.
+abstract final class AnimeGrid {
+  static int columnsFor(double availableWidth) {
+    if (availableWidth <= 0) return 2;
+    final columns = (availableWidth / (PosterCardMetrics.maxWidth + Space.md))
+        .ceil();
+    return columns.clamp(2, 8);
+  }
+
+  static SliverGridDelegate delegate(BuildContext context) {
+    final media = MediaQuery.sizeOf(context);
+    final available = media.width - Space.lg * 2;
+    final columns = columnsFor(available);
+    final cell = (available - (columns - 1) * Space.md) / columns;
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: columns,
+      mainAxisSpacing: Space.lg,
+      crossAxisSpacing: Space.md,
+      mainAxisExtent: cell <= 0
+          ? null
+          : PosterCardMetrics.heightFor(
+              cell,
+              textScale: MediaQuery.textScalerOf(context).scale(1),
+            ),
+    );
+  }
+}
+
 /// Portrait poster card used in horizontal rails and grids.
 class WingsPosterCard extends ConsumerWidget {
   const WingsPosterCard({
     super.key,
     required this.anime,
     this.onTap,
-    this.width = 144,
+    this.width = PosterCardMetrics.width,
     this.showTitle = true,
     this.badge,
     this.rank,
   });
+
+  /// Height a rail needs so these cards never clip their own titles.
+  static double railHeightFor(BuildContext context) =>
+      PosterCardMetrics.railHeightFor(context);
 
   final Anime anime;
   final VoidCallback? onTap;
@@ -534,26 +564,30 @@ class _WingsEpisodeCardState extends State<WingsEpisodeCard> {
                     0,
                   ),
                   child: AspectRatio(
-                    aspectRatio: 16 / 9,
+                    aspectRatio: Ratios.episodeThumb,
                     child: Stack(
                       fit: StackFit.expand,
                       children: <Widget>[
                         WingsImage(
                           url: imageUrl,
-                          borderRadius: BorderRadius.circular(Radii.md),
+                          borderRadius: BorderRadius.circular(Radii.sm),
                         ),
                         Positioned.fill(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: palette.overlay.withValues(alpha: 0.24),
-                              borderRadius: BorderRadius.circular(Radii.md),
-                            ),
-                            child: Icon(
-                              watched
-                                  ? Icons.replay_rounded
-                                  : Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 34,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: widget.onPlay,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: palette.overlay.withValues(alpha: 0.24),
+                                borderRadius: BorderRadius.circular(Radii.sm),
+                              ),
+                              child: Icon(
+                                watched
+                                    ? Icons.replay_rounded
+                                    : Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 34,
+                              ),
                             ),
                           ),
                         ),
@@ -574,7 +608,7 @@ class _WingsEpisodeCardState extends State<WingsEpisodeCard> {
                           WingsImage(
                             url: imageUrl,
                             width: 104,
-                            height: 60,
+                            height: 104 * 9 / 16,
                             borderRadius: BorderRadius.circular(Radii.xs),
                           ),
                           Positioned.fill(
@@ -658,12 +692,14 @@ class _WingsEpisodeCardState extends State<WingsEpisodeCard> {
                       WingsIconButton(
                         icon: Icons.download_rounded,
                         size: 36,
+                        tooltip: l10n.commonDownload,
                         onPressed: widget.onDownload,
                         color: palette.textSecondary,
                       ),
                     WingsIconButton(
                       icon: Icons.play_circle_fill_rounded,
                       size: 36,
+                      tooltip: l10n.detailsWatch,
                       onPressed: widget.onPlay,
                       color: palette.primary,
                     ),
@@ -682,39 +718,6 @@ class _WingsEpisodeCardState extends State<WingsEpisodeCard> {
                   ],
                 ),
               ),
-              if (_expanded)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.lg,
-                    0,
-                    Space.lg,
-                    Space.sm,
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: widget.onPlay,
-                          icon: Icon(
-                            watched
-                                ? Icons.replay_rounded
-                                : Icons.play_arrow_rounded,
-                            size: 18,
-                          ),
-                          label: Text(l10n.detailsWatch),
-                        ),
-                      ),
-                      if (widget.onDownload != null) ...<Widget>[
-                        const SizedBox(width: Space.sm),
-                        OutlinedButton.icon(
-                          onPressed: widget.onDownload,
-                          icon: const Icon(Icons.download_rounded, size: 18),
-                          label: Text(l10n.commonDownload),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
             ],
           ),
         ),

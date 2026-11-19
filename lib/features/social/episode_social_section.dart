@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
+import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/services/app_feedback.dart';
@@ -188,7 +189,7 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
         ),
         Divider(height: 1, color: palette.border),
         if (user == null)
-          _SignInPrompt(onSignIn: () => context.push('/login'))
+          _SignInPrompt(onSignIn: () => context.push(RoutePaths.login))
         else if (!canComment)
           _RestrictedNotice()
         else ...<Widget>[

@@ -36,6 +36,9 @@ class SettingsScreen extends ConsumerWidget {
     final profile = ref.watch(profileProvider);
     final info = ref.watch(appInfoProvider).value;
     final storage = ref.watch(storageUsedProvider);
+    final hasPausedDownloads = ref
+        .watch(downloadTasksProvider)
+        .any((task) => task.status == DownloadStatus.paused);
     final isStaff = ref.watch(isAdminRoleProvider);
     final ownerUnread = ref.watch(ownerUnreadProvider);
     final accountStatus = ref.watch(myAccountStatusProvider).value;
@@ -145,24 +148,14 @@ class SettingsScreen extends ConsumerWidget {
                             ar: 'متصل بالبريد الإلكتروني',
                             en: 'Email',
                           ),
-                    showChevron: true,
-                    onTap: () => context.push(RoutePaths.profile),
+                    // Informational only: the account card above already opens
+                    // the profile, so this row must not repeat that navigation.
                   ),
                   WingsSettingsTile(
                     icon: Icons.logout_rounded,
                     title: l10n.settingsSignOut,
                     destructive: true,
-                    onTap: () async {
-                      await ref.read(authProvider.notifier).signOut();
-                      if (!context.mounted) return;
-                      context.showSnack(
-                        Tr.of(
-                          context,
-                          ar: 'تم تسجيل الخروج.',
-                          en: 'Signed out.',
-                        ),
-                      );
-                    },
+                    onTap: () => _signOut(context, ref),
                   ),
                 ],
               ],
@@ -357,25 +350,46 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             WingsSettingsGroup(
-              title: l10n.settingsDownloads,
+              title: Tr.of(
+                context,
+                ar: 'التنزيلات والمساحة',
+                en: 'Downloads & storage',
+              ),
               children: <Widget>[
                 WingsSettingsTile(
                   icon: Icons.folder_outlined,
-                  title: l10n.settingsDownloads,
+                  title: Tr.of(
+                    context,
+                    ar: 'المساحة المستخدمة',
+                    en: 'Storage used',
+                  ),
                   subtitle: formatBytes(storage),
                   showChevron: true,
                   onTap: () => context.push(RoutePaths.downloads),
                 ),
+                // One toggle instead of two opposing rows.
                 WingsSettingsTile(
-                  icon: Icons.pause_circle_outline_rounded,
-                  title: Tr.of(
-                    context,
-                    ar: 'إيقاف كل التنزيلات مؤقتًا',
-                    en: 'Pause all downloads',
-                  ),
-                  showChevron: true,
+                  icon: hasPausedDownloads
+                      ? Icons.play_circle_outline_rounded
+                      : Icons.pause_circle_outline_rounded,
+                  title: hasPausedDownloads
+                      ? Tr.of(
+                          context,
+                          ar: 'استئناف التنزيلات',
+                          en: 'Resume downloads',
+                        )
+                      : Tr.of(
+                          context,
+                          ar: 'إيقاف كل التنزيلات مؤقتًا',
+                          en: 'Pause all downloads',
+                        ),
                   onTap: () async {
-                    await ref.read(downloadServiceProvider).pauseAll();
+                    final downloads = ref.read(downloadServiceProvider);
+                    if (hasPausedDownloads) {
+                      await downloads.resumeAll();
+                      return;
+                    }
+                    await downloads.pauseAll();
                     if (context.mounted) {
                       context.showSnack(
                         Tr.of(
@@ -388,23 +402,12 @@ class SettingsScreen extends ConsumerWidget {
                   },
                 ),
                 WingsSettingsTile(
-                  icon: Icons.play_circle_outline_rounded,
-                  title: Tr.of(
-                    context,
-                    ar: 'استئناف التنزيلات',
-                    en: 'Resume downloads',
-                  ),
-                  showChevron: true,
-                  onTap: () => ref.read(downloadServiceProvider).resumeAll(),
-                ),
-                WingsSettingsTile(
                   icon: Icons.replay_rounded,
                   title: Tr.of(
                     context,
                     ar: 'إعادة محاولة التنزيلات الفاشلة',
                     en: 'Retry failed downloads',
                   ),
-                  showChevron: true,
                   onTap: () => ref.read(downloadServiceProvider).retryAll(),
                 ),
               ],
@@ -469,7 +472,11 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             WingsSettingsGroup(
-              title: l10n.settingsPrivacy,
+              title: Tr.of(
+                context,
+                ar: 'الخصوصية والبيانات',
+                en: 'Privacy & data',
+              ),
               children: <Widget>[
                 WingsSettingsTile(
                   icon: Icons.cleaning_services_outlined,
@@ -533,28 +540,6 @@ class SettingsScreen extends ConsumerWidget {
                         subject: 'Wings',
                       ),
                 ),
-                if (user != null)
-                  WingsSettingsTile(
-                    icon: Icons.logout_rounded,
-                    title: l10n.settingsSignOut,
-                    destructive: true,
-                    onTap: () async {
-                      final confirmed = await WingsDialog.confirm(
-                        context,
-                        title: l10n.settingsSignOut,
-                        message: Tr.of(
-                          context,
-                          ar: 'سيتم تسجيل الخروج من هذا الجهاز. مكتبتك وإعداداتك المزامنة تبقى محفوظة.',
-                          en: 'You will be signed out of this device. Your synced library and settings stay safe.',
-                        ),
-                        confirmLabel: l10n.settingsSignOut,
-                        destructive: true,
-                      );
-                      if (!confirmed) return;
-                      await ref.read(authProvider.notifier).signOut();
-                      if (context.mounted) context.go(RoutePaths.welcome);
-                    },
-                  ),
               ],
             ),
             Padding(
@@ -583,6 +568,27 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Single, confirmed sign-out used by the account group. It used to exist
+  /// twice on this screen, once without a confirmation.
+  Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await WingsDialog.confirm(
+      context,
+      title: l10n.settingsSignOut,
+      message: Tr.of(
+        context,
+        ar: 'سيتم تسجيل الخروج من هذا الجهاز. مكتبتك وإعداداتك المزامنة تبقى محفوظة.',
+        en: 'You will be signed out of this device. Your synced library and settings stay safe.',
+      ),
+      confirmLabel: l10n.settingsSignOut,
+      destructive: true,
+    );
+    if (!confirmed || !context.mounted) return;
+    await ref.read(authProvider.notifier).signOut();
+    if (!context.mounted) return;
+    context.go(RoutePaths.welcome);
   }
 
   String _themeLabel(BuildContext context, ThemeMode mode) {
@@ -714,9 +720,9 @@ class SettingsScreen extends ConsumerWidget {
       builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          for (final speed in const <double>[0.75, 1, 1.25, 1.5, 2])
+          for (final speed in PlaybackOptions.speeds)
             WingsSettingsTile(
-              title: '$speed×',
+              title: PlaybackOptions.speedLabel(speed),
               trailing: current == speed
                   ? Icon(
                       Icons.check_rounded,
@@ -750,7 +756,7 @@ class SettingsScreen extends ConsumerWidget {
       builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          for (final quality in const <String>['1080p', '720p', '480p', '360p'])
+          for (final quality in PlaybackOptions.qualities)
             WingsSettingsTile(
               title: quality,
               trailing: current == quality

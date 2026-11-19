@@ -190,19 +190,36 @@ class ProfileScreen extends ConsumerWidget {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-            child: Row(
-              children: <Widget>[
-                _StatCard(label: l10n.profileFavorites, value: '$favorites'),
-                const SizedBox(width: Space.sm),
-                _StatCard(label: l10n.profileWatching, value: '$watching'),
-                const SizedBox(width: Space.sm),
-                _StatCard(label: l10n.profileCompleted, value: '$completed'),
-                const SizedBox(width: Space.sm),
-                _StatCard(
-                  label: l10n.profileDownloads,
-                  value: '$completedDownloads',
-                ),
-              ],
+            // Four cards in one row squeezed their labels on small phones, so
+            // narrow screens get two balanced rows instead.
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final stats = <Widget>[
+                  _StatCard(label: l10n.profileFavorites, value: '$favorites'),
+                  _StatCard(label: l10n.profileWatching, value: '$watching'),
+                  _StatCard(label: l10n.profileCompleted, value: '$completed'),
+                  _StatCard(
+                    label: l10n.profileDownloads,
+                    value: '$completedDownloads',
+                  ),
+                ];
+                Row pair(Iterable<Widget> items) => Row(
+                  children: <Widget>[
+                    for (final (index, item) in items.indexed) ...<Widget>[
+                      if (index > 0) const SizedBox(width: Space.sm),
+                      item,
+                    ],
+                  ],
+                );
+                if (constraints.maxWidth >= 380) return pair(stats);
+                return Column(
+                  children: <Widget>[
+                    pair(stats.take(2)),
+                    const SizedBox(height: Space.sm),
+                    pair(stats.skip(2)),
+                  ],
+                );
+              },
             ),
           ),
           const SizedBox(height: Space.lg),
@@ -308,8 +325,21 @@ class ProfileScreen extends ConsumerWidget {
                   title: l10n.settingsSignOut,
                   destructive: true,
                   onTap: () async {
+                    final confirmed = await WingsDialog.confirm(
+                      context,
+                      title: l10n.settingsSignOut,
+                      message: Tr.of(
+                        context,
+                        ar: 'سيتم تسجيل الخروج من هذا الجهاز. مكتبتك وإعداداتك المزامنة تبقى محفوظة.',
+                        en: 'You will be signed out of this device. Your synced library and settings stay safe.',
+                      ),
+                      confirmLabel: l10n.settingsSignOut,
+                      destructive: true,
+                    );
+                    if (!confirmed || !context.mounted) return;
                     await ref.read(authProvider.notifier).signOut();
-                    if (context.mounted) context.pop();
+                    if (!context.mounted) return;
+                    if (context.canPop()) context.pop();
                   },
                 ),
                 WingsSettingsTile(
@@ -353,17 +383,29 @@ class ProfileScreen extends ConsumerWidget {
           ),
           if (history.isNotEmpty) ...<Widget>[
             WingsSectionHeader(title: l10n.homeContinueWatching),
-            for (final entry in history.take(4))
-              WingsContinueCard(
-                entry: entry,
-                width: double.infinity,
-                onTap: () => context.push(
-                  RoutePaths.watch(
-                    animeId: entry.animeId,
-                    episodeId: entry.episodeId,
-                  ),
-                ),
+            // A full-width 16:9 card made one episode taller than the phone's
+            // header; the profile uses the same compact rail as the home feed.
+            SizedBox(
+              height: 176,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+                itemCount: history.take(6).length,
+                separatorBuilder: (_, _) => const SizedBox(width: Space.md),
+                itemBuilder: (context, index) {
+                  final entry = history[index];
+                  return WingsContinueCard(
+                    entry: entry,
+                    onTap: () => context.push(
+                      RoutePaths.watch(
+                        animeId: entry.animeId,
+                        episodeId: entry.episodeId,
+                      ),
+                    ),
+                  );
+                },
               ),
+            ),
           ],
         ],
       ),
