@@ -15,7 +15,9 @@ import '../../core/widgets/wings_feedback.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
+import '../../data/models/chat.dart';
 import '../../data/models/library.dart';
+import '../chat/share_to_chat_sheet.dart';
 import '../community/anime_community_section.dart';
 import 'details_providers.dart';
 
@@ -164,7 +166,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
             WingsIconButton(
               icon: Icons.share_outlined,
               filled: true,
-              onPressed: () => ref.read(shareServiceProvider).shareAnime(anime),
+              onPressed: () => _shareAnime(anime),
             ),
             const SizedBox(width: Space.sm),
             Padding(
@@ -497,6 +499,24 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                 onPlay: () =>
                     _watch(anime, episode: episode, episodes: bundle.episodes),
                 onDownload: () => _openDownloadSheet(anime, episode),
+                onShare: () => shareToChats(
+                  context,
+                  ref,
+                  ChatShare(
+                    kind: ChatShareKind.episode,
+                    id: episode.id,
+                    title: anime.title,
+                    subtitle:
+                        'الحلقة ${episode.number}'
+                        '${(episode.title?.trim().isNotEmpty ?? false) ? ' · ${episode.title}' : ''}',
+                    imageUrl: episode.thumbnailUrl ?? anime.posterUrl ?? '',
+                    route: RoutePaths.watch(
+                      animeId: anime.id,
+                      episodeId: episode.id,
+                    ),
+                    extraId: anime.id,
+                  ),
+                ),
               );
             },
           ),
@@ -528,6 +548,50 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
         ],
         const SliverToBoxAdapter(child: SizedBox(height: Space.xxxl)),
       ],
+    );
+  }
+
+  Future<void> _shareAnime(Anime anime) async {
+    final shareContext = context;
+    final card = ChatShare(
+      kind: ChatShareKind.anime,
+      id: anime.id,
+      title: anime.title,
+      subtitle: <String>[
+        if (anime.type != null) anime.type!,
+        if (anime.year != null) '${anime.year}',
+      ].join(' · '),
+      imageUrl: anime.posterUrl ?? '',
+      route: RoutePaths.anime(anime.id),
+    );
+    await showModalBottomSheet<void>(
+      context: shareContext,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline_rounded),
+              title: Text(
+                Tr.of(sheetContext, ar: 'إرسال إلى محادثة', en: 'Send to chat'),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                shareToChats(shareContext, ref, card);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.ios_share_rounded),
+              title: Text(Tr.of(sheetContext, ar: 'مشاركة', en: 'Share')),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                ref.read(shareServiceProvider).shareAnime(anime);
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 

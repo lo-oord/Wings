@@ -27,9 +27,11 @@ import {
 } from './firebase.js';
 import { presignUrl } from './sigv4.js';
 import {
+  MAX_AUDIO_BYTES,
   MAX_DELETE_KEYS,
   MAX_DOWNLOAD_KEYS,
   MAX_FILES,
+  MAX_FILE_BYTES,
   MAX_IMAGE_BYTES,
   MAX_VIDEO_BYTES,
   MediaError,
@@ -186,6 +188,8 @@ async function handleHealth(env) {
     limits: {
       maxImageBytes: MAX_IMAGE_BYTES,
       maxVideoBytes: MAX_VIDEO_BYTES,
+      maxAudioBytes: MAX_AUDIO_BYTES,
+      maxFileBytes: MAX_FILE_BYTES,
       maxFiles: MAX_FILES,
       maxDownloadKeys: MAX_DOWNLOAD_KEYS,
       maxDeleteKeys: MAX_DELETE_KEYS,
@@ -197,13 +201,14 @@ async function handleUploads(request, env, user) {
   const settings = config(env);
   if (settings.error) return failure(500, settings.error);
   const body = await readJson(request);
-  const { purpose, postId, files } = normalizeUploadRequest(body);
+  const { purpose, postId, chatId, files } = normalizeUploadRequest(body);
   const objects = [];
   for (const file of files) {
     const key = buildObjectKey({
       uid: user.uid,
       purpose,
       postId,
+      chatId,
       contentType: file.contentType,
     });
     const uploadUrl = await sign({

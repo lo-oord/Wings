@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/localization/app_localizations.dart';
 import '../../app/providers.dart';
+import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/services/app_feedback.dart';
@@ -21,6 +22,8 @@ import '../../core/widgets/wings_cards.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
+import '../../data/models/chat.dart';
+import '../chat/share_to_chat_sheet.dart';
 import '../../data/models/library.dart';
 import '../social/episode_social_section.dart';
 import 'playback_session.dart';
@@ -883,6 +886,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             savedToLibrary: library.isEpisodeSaved(anime.id, episode.id),
             onDownload: () => _showDownloadSheet(anime, episode),
             onToggleSave: () => _toggleSavedEpisode(anime, episode),
+            shareCard: ChatShare(
+              kind: ChatShareKind.episode,
+              id: episode.id,
+              title: anime.title,
+              subtitle:
+                  'الحلقة ${episode.number}'
+                  '${(episode.title?.trim().isNotEmpty ?? false) ? ' · ${episode.title}' : ''}',
+              imageUrl: episode.thumbnailUrl ?? anime.posterUrl ?? '',
+              route: RoutePaths.watch(animeId: anime.id, episodeId: episode.id),
+              extraId: anime.id,
+            ),
           ),
           Divider(height: 1, color: palette.border),
         ],
@@ -906,6 +920,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               watched: watched.contains(_episodes[index].id),
               onPlay: () => _loadEpisode(_episodes[index]),
               onDownload: () => _showDownloadSheet(anime, _episodes[index]),
+              onShare: () => shareToChats(
+                context,
+                ref,
+                ChatShare(
+                  kind: ChatShareKind.episode,
+                  id: _episodes[index].id,
+                  title: anime.title,
+                  subtitle: 'الحلقة ${_episodes[index].number}',
+                  imageUrl:
+                      _episodes[index].thumbnailUrl ?? anime.posterUrl ?? '',
+                  route: RoutePaths.watch(
+                    animeId: anime.id,
+                    episodeId: _episodes[index].id,
+                  ),
+                  extraId: anime.id,
+                ),
+              ),
             ),
           ),
           if (index != _episodes.length - 1)

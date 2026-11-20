@@ -13,8 +13,10 @@ import '../../core/widgets/wings_feedback.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/tr.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/library.dart';
+import '../chat/chat_providers.dart';
 import '../live/live_widgets.dart';
 import 'home_providers.dart';
 
@@ -214,6 +216,7 @@ class _HomeHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final unread = ref.watch(unreadEverythingProvider);
+    final unreadChats = ref.watch(unreadMessagesProvider);
     final palette = context.palette;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -226,6 +229,54 @@ class _HomeHeader extends ConsumerWidget {
         children: <Widget>[
           const WingsLockup(size: 38),
           const Spacer(),
+          Semantics(
+            button: true,
+            label: Tr.of(context, ar: 'المحادثات', en: 'Chats'),
+            child: InkResponse(
+              onTap: () => context.push(RoutePaths.chats),
+              radius: 24,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: <Widget>[
+                    Icon(
+                      unreadChats > 0
+                          ? Icons.forum_rounded
+                          : Icons.forum_outlined,
+                      size: 23,
+                      color: palette.textPrimary,
+                    ),
+                    if (unreadChats > 0)
+                      PositionedDirectional(
+                        top: 6,
+                        end: 4,
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 17),
+                          height: 17,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: palette.primary,
+                            borderRadius: BorderRadius.circular(Radii.pill),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            unreadChats > 9 ? '9+' : '$unreadChats',
+                            style: context.text.labelSmall?.copyWith(
+                              color: palette.onPrimary,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           Semantics(
             button: true,
             label: AppLocalizations.of(context).notificationsTitle,

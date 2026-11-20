@@ -46,6 +46,8 @@ class CommunityMediaService {
   /// Short vertical clips stay small enough to upload on mobile data and to
   /// start playing quickly, and the Worker enforces the same ceiling.
   static const int maxVideoBytes = 50 * 1024 * 1024;
+  static const int maxAudioBytes = 12 * 1024 * 1024;
+  static const int maxFileBytes = 20 * 1024 * 1024;
   static const int maxVideoSeconds = 60;
 
   static const int maxUploadsPerRequest = 4;
@@ -57,13 +59,27 @@ class CommunityMediaService {
     'video/mp4',
     'video/quicktime',
     'video/webm',
+    'audio/mp4',
+    'audio/mpeg',
+    'audio/ogg',
+    'audio/wav',
+    'application/pdf',
+    'application/zip',
+    'text/plain',
   };
 
   static bool isVideoType(String contentType) =>
       contentType.startsWith('video/');
 
-  static int limitFor(String contentType) =>
-      isVideoType(contentType) ? maxVideoBytes : maxImageBytes;
+  static bool isAudioType(String contentType) =>
+      contentType.startsWith('audio/');
+
+  static int limitFor(String contentType) {
+    if (isVideoType(contentType)) return maxVideoBytes;
+    if (isAudioType(contentType)) return maxAudioBytes;
+    if (!contentType.startsWith('image/')) return maxFileBytes;
+    return maxImageBytes;
+  }
 
   bool get available => _baseUrl.isNotEmpty;
 
@@ -87,6 +103,7 @@ class CommunityMediaService {
   /// then, so the existing calls keep their shape.
   Future<List<MediaUpload>> createUploads({
     String? postId,
+    String? chatId,
     MediaPurpose purpose = MediaPurpose.post,
     required List<MediaFile> files,
   }) async {
@@ -94,6 +111,11 @@ class CommunityMediaService {
     if (purpose == MediaPurpose.post &&
         (postId == null || !RegExp(r'^[A-Za-z0-9]{1,64}$').hasMatch(postId))) {
       throw const MediaRejectedException('bad-post-id');
+    }
+    if (purpose == MediaPurpose.chat &&
+        (chatId == null ||
+            !RegExp(r'^[A-Za-z0-9_-]{3,140}$').hasMatch(chatId))) {
+      throw const MediaRejectedException('bad-chat-id');
     }
     if (files.isEmpty) return const <MediaUpload>[];
     if (files.length > maxUploadsPerRequest) {
@@ -112,6 +134,7 @@ class CommunityMediaService {
       data: <String, dynamic>{
         'purpose': purpose.wire,
         if (purpose == MediaPurpose.post) 'postId': postId,
+        if (purpose == MediaPurpose.chat) 'chatId': chatId,
         'files': <Map<String, dynamic>>[
           for (final file in files)
             <String, dynamic>{
@@ -170,6 +193,25 @@ class CommunityMediaService {
         validateStatus: (status) => status != null && status < 300,
       ),
     );
+  }
+
+  /// Uploads one chat attachment and returns its object key.
+  ///
+  /// The key stays under `users/{uid}/chats/{chatId}/...`; the Worker only
+  /// accepts it for a signed-in upload, and signed-in members resolve it for
+  /// display through a short-lived download URL.
+  Future<String> uploadChatFile({
+    required String chatId,
+    required MediaFile file,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final uploads = await createUploads(
+      purpose: MediaPurpose.chat,
+      chatId: chatId,
+      files: <MediaFile>[file],
+    );
+    await upload(uploads.first, file.bytes, onProgress: onProgress);
+    return uploads.first.key;
   }
 
   /// Uploads one profile picture or banner and returns its object key.
@@ -269,7 +311,8 @@ class CommunityMediaService {
 enum MediaPurpose {
   post('post'),
   avatar('avatar'),
-  cover('cover');
+  cover('cover'),
+  chat('chat');
 
   const MediaPurpose(this.wire);
 

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../core/network/http_client.dart';
+import '../core/services/chat_local_store.dart';
 import '../core/services/connectivity_service.dart';
 import '../core/services/download_service.dart';
 import '../core/services/in_app_notifications.dart';
@@ -1314,6 +1315,7 @@ class AuthController extends Notifier<AuthUser?> {
   }
 
   Future<void> signOut() async {
+    final signedOutUid = state?.id;
     _syncedUid = null;
     _lastSync = null;
     ref.read(profileResolvedProvider.notifier).update(false);
@@ -1324,6 +1326,10 @@ class AuthController extends Notifier<AuthUser?> {
       await service.signOut();
     } else {
       await ref.read(authRepositoryProvider).signOut();
+    }
+    if (signedOutUid != null) {
+      await ChatLocalStore(ref.read(localStoreProvider))
+          .clearAccount(signedOutUid);
     }
     ref.read(profileProvider.notifier).apply(null);
     state = null;
@@ -1338,6 +1344,7 @@ class AuthController extends Notifier<AuthUser?> {
     } else {
       await ref.read(authRepositoryProvider).deleteCurrentUser();
     }
+    await ChatLocalStore(ref.read(localStoreProvider)).clearAccount(current.id);
     ref.read(profileProvider.notifier).apply(null);
     ref.read(profileResolvedProvider.notifier).update(false);
     state = null;

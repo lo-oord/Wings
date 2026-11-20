@@ -19,6 +19,7 @@ class LocalStore {
   static const String searchBox = 'search';
   static const String notificationsBox = 'notifications';
   static const String myEpisodesBox = 'my_episodes';
+  static const String chatsBox = 'chats';
 
   static Future<LocalStore> open({String? directory}) async {
     if (directory == null) {
@@ -37,6 +38,7 @@ class LocalStore {
       searchBox,
       notificationsBox,
       myEpisodesBox,
+      chatsBox,
     ];
     final opened = await Future.wait(
       names.map((name) => Hive.openBox<String>(name)),
@@ -59,6 +61,10 @@ class LocalStore {
   Future<void> delete(String box, String key) => _box(box).delete(key);
 
   Future<void> clear(String box) => _box(box).clear();
+
+  /// Every key in one box. Used by the chat cache to remove exactly one
+  /// account's data when the session ends.
+  List<String> keys(String box) => _box(box).keys.map((key) => '$key').toList();
 
   Object? getJson(String box, String key) {
     final raw = _box(box).get(key);

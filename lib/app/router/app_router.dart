@@ -22,6 +22,10 @@ import '../../features/community/people_screen.dart';
 import '../../features/community/post_composer_screen.dart';
 import '../../features/community/reel_composer_screen.dart';
 import '../../features/community/post_detail_screen.dart';
+import '../../features/chat/chat_privacy_screen.dart';
+import '../../features/chat/chat_screen.dart';
+import '../../features/chat/chats_screen.dart';
+import '../../features/chat/new_chat_screen.dart';
 import '../../features/community/reels_screen.dart';
 import '../../features/community/saved_posts_screen.dart';
 import '../../features/details/anime_details_screen.dart';
@@ -347,6 +351,31 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.communityReelCompose,
         pageBuilder: (context, state) =>
             _wingsPage(context, state, const ReelComposerScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.chats,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const ChatsScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.chatNew,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const NewChatScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.chatPrivacy,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const ChatPrivacyScreen()),
+      ),
+      GoRoute(
+        path: '/chats/:chatId',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          ChatScreen(
+            chatId: Uri.decodeComponent(state.pathParameters['chatId'] ?? ''),
+          ),
+        ),
       ),
       GoRoute(
         path: RoutePaths.communityReels,

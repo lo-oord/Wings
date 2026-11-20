@@ -16,7 +16,9 @@ import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/community.dart';
 import '../../data/models/admin_models.dart' show StaffRole;
+import '../../data/models/chat.dart';
 import '../admin/admin_providers.dart';
+import '../chat/share_to_chat_sheet.dart';
 import '../profile/avatar_view.dart';
 import '../social/user_handle.dart';
 import 'community_providers.dart';
@@ -337,13 +339,37 @@ class _PostCardState extends ConsumerState<PostCard> {
 
   Future<void> _share() async {
     final link = postShareLink(post.id);
+    final shareContext = context;
+    final sharePayload = ChatShare(
+      kind: post.isReel ? ChatShareKind.reel : ChatShareKind.post,
+      id: post.id,
+      title: post.authorName.isNotEmpty
+          ? post.authorName
+          : '@${post.authorUsername}',
+      subtitle: post.text.trim(),
+      imageKey: post.imageKeys.isNotEmpty
+          ? post.imageKeys.first
+          : (post.videoThumbnailKey ?? ''),
+      route: RoutePaths.communityPost(post.id),
+      extraId: post.authorUid,
+    );
     await showModalBottomSheet<void>(
-      context: context,
+      context: shareContext,
       showDragHandle: true,
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline_rounded),
+              title: Text(
+                Tr.of(sheetContext, ar: 'إرسال إلى محادثة', en: 'Send to chat'),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                unawaited(shareToChats(shareContext, ref, sharePayload));
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.link_rounded),
               title: Text(Tr.of(context, ar: 'نسخ الرابط', en: 'Copy link')),

@@ -72,4 +72,11 @@ abstract final class RoutePaths {
 
   static String communityPost(String postId) =>
       '/community/post/${Uri.encodeComponent(postId)}';
+
+  // One-to-one messaging.
+  static const String chats = '/chats';
+  static const String chatNew = '/chats/new';
+  static const String chatPrivacy = '/chats/privacy';
+
+  static String chat(String chatId) => '/chats/${Uri.encodeComponent(chatId)}';
 }

@@ -21,6 +21,7 @@ class SocialNotification {
     required this.commentId,
     required this.createdAt,
     this.postId = '',
+    this.chatId = '',
     this.read = false,
     this.badges = ProfileBadges.none,
     this.photoVersion = 0,
@@ -47,6 +48,9 @@ class SocialNotification {
   /// notices). The same notification collection serves both, so the app keeps
   /// one bell, one unread count and one list.
   final String postId;
+
+  /// Conversation a direct-message alert points at ('' for social alerts).
+  final String chatId;
   final String? episodeNumber;
   final String? animeTitle;
 
@@ -66,6 +70,7 @@ class SocialNotification {
 
   String get route {
     if (isAdmin) return targetRoute.isEmpty ? '/account-status' : targetRoute;
+    if (type == 'message' && chatId.isNotEmpty) return '/chats/$chatId';
     if (postId.isNotEmpty) return '/community/post/$postId';
     return '/episode/$episodeId/comments';
   }
@@ -83,6 +88,7 @@ class SocialNotification {
     episodeId: episodeId,
     commentId: commentId,
     postId: postId,
+    chatId: chatId,
     episodeNumber: episodeNumber,
     animeTitle: animeTitle,
     createdAt: createdAt,
@@ -107,6 +113,7 @@ class SocialNotification {
       episodeId: data['episodeId'] as String? ?? '',
       commentId: data['commentId'] as String? ?? '',
       postId: data['postId'] as String? ?? '',
+      chatId: data['chatId'] as String? ?? '',
       episodeNumber: data['episodeNumber'] as String?,
       animeTitle: data['animeTitle'] as String?,
       createdAt: created is Timestamp

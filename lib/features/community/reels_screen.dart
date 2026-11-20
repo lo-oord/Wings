@@ -14,8 +14,10 @@ import '../../app/theme/context_ext.dart';
 import '../../core/errors/user_facing_error.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
+import '../../data/models/chat.dart';
 import '../../data/models/community.dart';
 import '../auth/sign_in_prompt.dart';
+import '../chat/share_to_chat_sheet.dart';
 import '../profile/avatar_view.dart';
 import '../social/user_handle.dart';
 import 'community_providers.dart';
@@ -771,13 +773,35 @@ class _ReelPageState extends ConsumerState<ReelPage> {
 
   Future<void> _share() async {
     final link = postShareLink(post.id);
+    final shareContext = context;
+    final payload = ChatShare(
+      kind: ChatShareKind.reel,
+      id: post.id,
+      title: post.authorName.isNotEmpty
+          ? post.authorName
+          : '@${post.authorUsername}',
+      subtitle: post.text.trim(),
+      imageKey: post.videoThumbnailKey ?? '',
+      route: RoutePaths.communityPost(post.id),
+      extraId: post.authorUid,
+    );
     await showModalBottomSheet<void>(
-      context: context,
+      context: shareContext,
       showDragHandle: true,
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline_rounded),
+              title: Text(
+                Tr.of(sheetContext, ar: 'إرسال إلى محادثة', en: 'Send to chat'),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                unawaited(shareToChats(shareContext, ref, payload));
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.link_rounded),
               title: Text(Tr.of(context, ar: 'نسخ الرابط', en: 'Copy link')),

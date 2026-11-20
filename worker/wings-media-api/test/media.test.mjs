@@ -148,3 +148,55 @@ test('the image and video ceilings match the Flutter service', () => {
   assert.equal(limitFor('image/jpeg'), 5 * 1024 * 1024);
   assert.equal(limitFor('video/mp4'), 50 * 1024 * 1024);
 });
+
+test('chat keys are namespaced by conversation and stay readable by their owner', () => {
+  const key = buildObjectKey({
+    uid,
+    purpose: 'chat',
+    chatId: 'abc_DEF-1',
+    contentType: 'audio/mp4',
+    id: '11111111-2222-3333-4444-555555555555',
+  });
+  assert.equal(
+    key,
+    'users/Ab3_x-9/chats/abc_DEF-1/11111111-2222-3333-4444-555555555555.m4a',
+  );
+  assert.equal(keyOwner(key), uid);
+  assert.ok(isOwnKey(uid, key));
+  assert.ok(!isOwnKey('someone-else', key));
+  assert.ok(isReadableKey(key));
+});
+
+test('a chat upload without a valid conversation id is rejected', () => {
+  const file = { contentType: 'image/jpeg', size: 1000 };
+  assert.throws(
+    () => normalizeUploadRequest({ purpose: 'chat', files: [file] }),
+    /bad-chat-id/,
+  );
+  assert.throws(
+    () =>
+      normalizeUploadRequest({
+        purpose: 'chat',
+        chatId: '../escape',
+        files: [file],
+      }),
+    /bad-chat-id/,
+  );
+});
+
+test('chat audio and document ceilings match the Flutter service', () => {
+  assert.equal(limitFor('audio/mp4'), 12 * 1024 * 1024);
+  assert.equal(limitFor('application/pdf'), 20 * 1024 * 1024);
+  const normalized = normalizeUploadRequest({
+    purpose: 'chat',
+    chatId: 'a_b',
+    files: [
+      { contentType: 'audio/mp4', size: 12 * 1024 * 1024 },
+      { contentType: 'application/pdf', size: 20 * 1024 * 1024 },
+    ],
+  });
+  assert.equal(normalized.purpose, 'chat');
+  assert.equal(normalized.chatId, 'a_b');
+  assert.equal(normalized.postId, null);
+  assert.equal(normalized.files.length, 2);
+});

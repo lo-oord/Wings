@@ -13,9 +13,11 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../data/models/admin_models.dart';
+import '../../data/models/chat.dart';
 import '../../data/models/social.dart';
 import '../admin/admin_providers.dart';
 import '../auth/sign_in_prompt.dart';
+import '../chat/share_to_chat_sheet.dart';
 import 'comment_tile.dart';
 
 /// YouTube-inspired interaction area under the player.
@@ -33,6 +35,7 @@ class EpisodeSocialSection extends ConsumerStatefulWidget {
     this.savedToLibrary = false,
     this.onDownload,
     this.onToggleSave,
+    this.shareCard,
   });
 
   final String episodeId;
@@ -46,6 +49,9 @@ class EpisodeSocialSection extends ConsumerStatefulWidget {
   final bool savedToLibrary;
   final VoidCallback? onDownload;
   final VoidCallback? onToggleSave;
+
+  /// When set, the share action also offers sending the episode to a chat.
+  final ChatShare? shareCard;
 
   @override
   ConsumerState<EpisodeSocialSection> createState() =>
@@ -151,9 +157,47 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
       ar: 'شاهد ${widget.episodeTitle} على Wings',
       en: 'Watch ${widget.episodeTitle} on Wings',
     );
-    await ref
-        .read(shareServiceProvider)
-        .shareText(text, subject: widget.episodeTitle);
+    final card = widget.shareCard;
+    if (card == null) {
+      await ref
+          .read(shareServiceProvider)
+          .shareText(text, subject: widget.episodeTitle);
+      return;
+    }
+    final shareContext = context;
+    await showModalBottomSheet<void>(
+      context: shareContext,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline_rounded),
+              title: Text(
+                Tr.of(sheetContext, ar: 'إرسال إلى محادثة', en: 'Send to chat'),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                unawaited(shareToChats(shareContext, ref, card));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.ios_share_rounded),
+              title: Text(Tr.of(sheetContext, ar: 'مشاركة', en: 'Share')),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                unawaited(
+                  ref
+                      .read(shareServiceProvider)
+                      .shareText(text, subject: widget.episodeTitle),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _openComments() {

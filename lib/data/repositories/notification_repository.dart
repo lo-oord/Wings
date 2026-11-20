@@ -90,6 +90,7 @@ class NotificationRepository {
     required String id,
     String postId = '',
     String commentId = '',
+    String chatId = '',
     String text = '',
   }) async {
     if (toUid.isEmpty || toUid == actor.uid) return;
@@ -99,6 +100,7 @@ class NotificationRepository {
       'reply',
       'follow',
       'mention',
+      'message',
     }.contains(type)) {
       throw ArgumentError('unknown alert type');
     }
@@ -116,6 +118,7 @@ class NotificationRepository {
     };
     if (postId.isNotEmpty) payload['postId'] = postId;
     if (commentId.isNotEmpty) payload['commentId'] = commentId;
+    if (chatId.isNotEmpty) payload['chatId'] = chatId;
     try {
       await _mine(toUid).doc(id).set(payload);
     } on FirebaseException catch (error) {

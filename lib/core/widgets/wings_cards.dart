@@ -504,6 +504,7 @@ class WingsEpisodeCard extends StatefulWidget {
     this.watched = false,
     this.onPlay,
     this.onDownload,
+    this.onShare,
     this.fallbackImageUrl,
     this.showThumbnail = true,
   });
@@ -512,6 +513,7 @@ class WingsEpisodeCard extends StatefulWidget {
   final bool watched;
   final VoidCallback? onPlay;
   final VoidCallback? onDownload;
+  final VoidCallback? onShare;
 
   /// Shown when the episode has no artwork of its own.
   final String? fallbackImageUrl;
@@ -686,10 +688,18 @@ class _WingsEpisodeCardState extends State<WingsEpisodeCard> {
                         ],
                       ),
                     ),
+                    if (widget.onShare != null)
+                      WingsIconButton(
+                        icon: Icons.chat_bubble_outline_rounded,
+                        size: 34,
+                        tooltip: l10n.detailsShare,
+                        onPressed: widget.onShare,
+                        color: palette.textSecondary,
+                      ),
                     if (widget.onDownload != null)
                       WingsIconButton(
                         icon: Icons.download_rounded,
-                        size: 36,
+                        size: 34,
                         tooltip: l10n.commonDownload,
                         onPressed: widget.onDownload,
                         color: palette.textSecondary,
