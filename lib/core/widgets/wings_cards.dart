@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -818,39 +816,10 @@ class WingsFeaturedBanner extends StatefulWidget {
 
 class _WingsFeaturedBannerState extends State<WingsFeaturedBanner> {
   final PageController _controller = PageController(viewportFraction: 0.92);
-  Timer? _timer;
   int _index = 0;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _restartTimer());
-  }
-
-  @override
-  void didUpdateWidget(covariant WingsFeaturedBanner oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.items.length != widget.items.length) _restartTimer();
-  }
-
-  void _restartTimer() {
-    _timer?.cancel();
-    if (widget.items.length < 2) return;
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return;
-    _timer = Timer.periodic(const Duration(seconds: 6), (_) {
-      if (!mounted || !_controller.hasClients) return;
-      final next = (_index + 1) % widget.items.length;
-      _controller.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 620),
-        curve: Curves.easeInOutCubic,
-      );
-    });
-  }
-
-  @override
   void dispose() {
-    _timer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -872,7 +841,6 @@ class _WingsFeaturedBannerState extends State<WingsFeaturedBanner> {
             itemCount: widget.items.length,
             onPageChanged: (index) {
               setState(() => _index = index);
-              _restartTimer();
             },
             itemBuilder: (context, index) {
               final anime = widget.items[index];
