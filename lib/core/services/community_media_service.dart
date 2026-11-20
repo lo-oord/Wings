@@ -11,16 +11,25 @@ import 'package:firebase_auth/firebase_auth.dart';
 /// object key in Firestore. Downloads are the same idea in reverse, which is
 /// why the private bucket never needs a public URL.
 ///
-/// The base URL is supplied at build time:
+/// The deployed Worker is the default, and a build can still point elsewhere:
 /// `--dart-define=WINGS_MEDIA_API=https://wings-media-api.<account>.workers.dev`.
-/// When it is missing, image upload shows a clear, non-technical message
+/// When neither is available, image upload shows a clear, non-technical message
 /// instead of silently failing.
 class CommunityMediaService {
   CommunityMediaService(this._dio, {String? baseUrl, FirebaseAuth? auth})
-    : _baseUrl = (baseUrl ?? const String.fromEnvironment('WINGS_MEDIA_API'))
-          .trim()
-          .replaceAll(RegExp(r'/+$'), ''),
+    : _baseUrl =
+          (baseUrl ??
+                  const String.fromEnvironment(
+                    'WINGS_MEDIA_API',
+                    defaultValue: defaultBaseUrl,
+                  ))
+              .trim()
+              .replaceAll(RegExp(r'/+$'), ''),
       _auth = auth ?? FirebaseAuth.instance;
+
+  /// The production Worker that holds the Tigris credentials.
+  static const String defaultBaseUrl =
+      'https://wings-media-api.loooooooooooooooooooord.workers.dev';
 
   final Dio _dio;
   final String _baseUrl;
@@ -70,12 +79,20 @@ class CommunityMediaService {
     'Authorization': 'Bearer ${await _token()}',
   };
 
-  /// Asks for signed PUT URLs for the pictures of one post.
+  /// Asks for signed PUT URLs for one post, or for a profile picture/banner.
+  ///
+  /// `purpose` defaults to [MediaPurpose.post] and `postId` is only required
+  /// then, so the existing calls keep their shape.
   Future<List<MediaUpload>> createUploads({
-    required String postId,
+    String? postId,
+    MediaPurpose purpose = MediaPurpose.post,
     required List<MediaFile> files,
   }) async {
     if (!available) throw const MediaUnavailableException();
+    if (purpose == MediaPurpose.post &&
+        (postId == null || !RegExp(r'^[A-Za-z0-9]{1,64}$').hasMatch(postId))) {
+      throw const MediaRejectedException('bad-post-id');
+    }
     if (files.isEmpty) return const <MediaUpload>[];
     if (files.length > maxUploadsPerRequest) {
       throw const MediaRejectedException('too-many-files');
@@ -91,7 +108,8 @@ class CommunityMediaService {
     final response = await _dio.post<Map<String, dynamic>>(
       '$_baseUrl/v1/uploads',
       data: <String, dynamic>{
-        'postId': postId,
+        'purpose': purpose.wire,
+        if (purpose == MediaPurpose.post) 'postId': postId,
         'files': <Map<String, dynamic>>[
           for (final file in files)
             <String, dynamic>{
@@ -152,6 +170,26 @@ class CommunityMediaService {
     );
   }
 
+  /// Uploads one profile picture or banner and returns its object key.
+  ///
+  /// The key stays under `users/{uid}/profile/...`; only the owner can delete
+  /// it, and every signed-in member can resolve it for display.
+  Future<String> uploadProfileImage({
+    required MediaFile file,
+    required MediaPurpose purpose,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    if (purpose == MediaPurpose.post) {
+      throw const MediaRejectedException('bad-purpose');
+    }
+    final uploads = await createUploads(
+      purpose: purpose,
+      files: <MediaFile>[file],
+    );
+    await upload(uploads.first, file.bytes, onProgress: onProgress);
+    return uploads.first.key;
+  }
+
   /// Short-lived signed GET URLs for a batch of keys.
   Future<Map<String, String>> downloadUrls(List<String> keys) async {
     if (!available || keys.isEmpty) return const <String, String>{};
@@ -203,6 +241,17 @@ class CommunityMediaService {
   }
 
   void forget(String key) => _cache.remove(key);
+}
+
+/// What an upload is for. The Worker validates the matching key namespace.
+enum MediaPurpose {
+  post('post'),
+  avatar('avatar'),
+  cover('cover');
+
+  const MediaPurpose(this.wire);
+
+  final String wire;
 }
 
 class _CachedUrl {

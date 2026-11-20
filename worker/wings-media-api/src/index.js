@@ -9,6 +9,16 @@
 //   6. Flutter stores only the object keys in Firestore.
 //
 // Downloads are the same in reverse. The bucket stays private.
+//
+// Endpoints
+//   GET  /health      service identity, version and a real Tigris probe
+//   POST /v1/uploads  signed PUT URLs for pictures, video, avatar, cover
+//   POST /v1/download signed GET URLs (HTTP Range is answered by Tigris)
+//   POST /v1/delete   deletes objects under the caller's own prefix
+//
+// Because the signed GET only signs `host`, the player's `Range` header is not
+// part of the signature: libmpv/media_kit can seek with 206 responses directly
+// from Tigris, and the Worker never proxies video bytes.
 
 import {
   AuthError,
@@ -16,30 +26,26 @@ import {
   verifyFirebaseToken,
 } from './firebase.js';
 import { presignUrl } from './sigv4.js';
+import {
+  MAX_DELETE_KEYS,
+  MAX_DOWNLOAD_KEYS,
+  MAX_FILES,
+  MAX_IMAGE_BYTES,
+  MAX_VIDEO_BYTES,
+  MediaError,
+  buildObjectKey,
+  isOwnKey,
+  isReadableKey,
+  limitFor,
+  normalizeUploadRequest,
+} from './media.js';
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
-const MAX_FILES = 4;
-const MAX_DOWNLOAD_KEYS = 20;
 const UPLOAD_TTL = 300; // 5 minutes to start the upload
 const DOWNLOAD_TTL = 600;
-const ALLOWED_TYPES = new Map([
-  ['image/jpeg', 'jpg'],
-  ['image/png', 'png'],
-  ['image/webp', 'webp'],
-  ['video/mp4', 'mp4'],
-  ['video/quicktime', 'mov'],
-  ['video/webm', 'webm'],
-]);
+const HEALTH_PROBE_TTL_MS = 60_000;
 
-const KEY_PATTERN =
-  /^users\/([A-Za-z0-9_-]{1,128})\/posts\/([A-Za-z0-9]{1,64})\/([A-Za-z0-9-]{8,64})\.(jpg|png|webp|mp4|mov|webm)$/;
-
-function limitFor(contentType) {
-  return String(contentType).startsWith('video/')
-    ? MAX_VIDEO_BYTES
-    : MAX_IMAGE_BYTES;
-}
+/** A key that is never written: a HEAD on it proves Tigris is reachable. */
+const HEALTH_PROBE_KEY = '_health/ping';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -97,36 +103,109 @@ function sign(options) {
   });
 }
 
+// The probe answer is cached for a minute so a monitoring loop cannot turn a
+// health check into load on the bucket.
+let probeCache = { at: 0, result: null };
+
+/**
+ * Signs a HEAD for a key that does not exist. A 2xx/404 means Tigris accepted
+ * the signature and answered; 403 means the credentials were refused; anything
+ * else (or a network failure) is reported as unreachable. Only the status code
+ * is returned — never a credential or a signed URL.
+ */
+async function storageHealth(settings) {
+  if (probeCache.result && Date.now() - probeCache.at < HEALTH_PROBE_TTL_MS) {
+    return probeCache.result;
+  }
+  const started = Date.now();
+  let result;
+  try {
+    const url = await sign({
+      ...settings,
+      sign: {
+        method: 'HEAD',
+        bucket: settings.bucket,
+        key: HEALTH_PROBE_KEY,
+        expires: 60,
+      },
+    });
+    const response = await fetch(url, { method: 'HEAD' });
+    result = {
+      reachable: true,
+      http: response.status,
+      authorization:
+        response.status === 403 ? 'refused' : response.status < 500 ? 'accepted' : 'unknown',
+    };
+  } catch {
+    result = { reachable: false, authorization: 'unknown' };
+  }
+  result = { ...result, latencyMs: Date.now() - started };
+  probeCache = { at: Date.now(), result };
+  return result;
+}
+
+function versionOf(env) {
+  const metadata = env.CF_VERSION_METADATA;
+  if (metadata && typeof metadata === 'object') {
+    return {
+      id: typeof metadata.id === 'string' ? metadata.id : null,
+      tag: typeof metadata.tag === 'string' ? metadata.tag : null,
+      deployedAt: typeof metadata.timestamp === 'string' ? metadata.timestamp : null,
+    };
+  }
+  return { id: env.WORKER_VERSION ?? 'dev', tag: null, deployedAt: null };
+}
+
+async function handleHealth(env) {
+  const settings = config(env);
+  const version = versionOf(env);
+  if (settings.error) {
+    return json({
+      service: 'wings-media-api',
+      status: 'degraded',
+      configured: false,
+      version,
+      storage: { reachable: false, authorization: 'unknown' },
+      reason: settings.error,
+    });
+  }
+  const storage = await storageHealth(settings);
+  return json({
+    service: 'wings-media-api',
+    status: storage.reachable && storage.authorization === 'accepted' ? 'ok' : 'degraded',
+    configured: true,
+    version,
+    endpoint: settings.endpoint,
+    bucket: settings.bucket,
+    storage,
+    endpoints: {
+      uploads: '/v1/uploads',
+      download: '/v1/download',
+      delete: '/v1/delete',
+    },
+    limits: {
+      maxImageBytes: MAX_IMAGE_BYTES,
+      maxVideoBytes: MAX_VIDEO_BYTES,
+      maxFiles: MAX_FILES,
+      maxDownloadKeys: MAX_DOWNLOAD_KEYS,
+      maxDeleteKeys: MAX_DELETE_KEYS,
+    },
+  });
+}
+
 async function handleUploads(request, env, user) {
   const settings = config(env);
   if (settings.error) return failure(500, settings.error);
   const body = await readJson(request);
-  const postId = body.postId;
-  if (typeof postId !== 'string' || !/^[A-Za-z0-9]{1,64}$/.test(postId)) {
-    return failure(400, 'bad-post-id');
-  }
-  const files = body.files;
-  if (!Array.isArray(files) || files.length === 0 || files.length > MAX_FILES) {
-    return failure(400, 'bad-file-count');
-  }
-  for (const file of files) {
-    if (!file || typeof file !== 'object') return failure(400, 'bad-file');
-    if (!ALLOWED_TYPES.has(file.contentType)) {
-      return failure(415, 'unsupported-type');
-    }
-    if (
-      typeof file.size !== 'number' ||
-      !Number.isFinite(file.size) ||
-      file.size <= 0 ||
-      file.size > limitFor(file.contentType)
-    ) {
-      return failure(413, 'file-too-large');
-    }
-  }
+  const { purpose, postId, files } = normalizeUploadRequest(body);
   const objects = [];
   for (const file of files) {
-    const extension = ALLOWED_TYPES.get(file.contentType);
-    const key = `users/${user.uid}/posts/${postId}/${crypto.randomUUID()}.${extension}`;
+    const key = buildObjectKey({
+      uid: user.uid,
+      purpose,
+      postId,
+      contentType: file.contentType,
+    });
     const uploadUrl = await sign({
       ...settings,
       sign: {
@@ -141,12 +220,13 @@ async function handleUploads(request, env, user) {
       uploadUrl,
       headers: { 'Content-Type': file.contentType },
       expiresIn: UPLOAD_TTL,
+      maxBytes: limitFor(file.contentType),
     });
   }
-  return json({ objects, expiresIn: UPLOAD_TTL });
+  return json({ objects, purpose, expiresIn: UPLOAD_TTL });
 }
 
-async function handleDownload(request, env, user) {
+async function handleDownload(request, env) {
   const settings = config(env);
   if (settings.error) return failure(500, settings.error);
   const body = await readJson(request);
@@ -156,11 +236,9 @@ async function handleDownload(request, env, user) {
   }
   const urls = {};
   for (const key of keys) {
-    if (typeof key !== 'string' || !KEY_PATTERN.test(key)) {
-      return failure(400, 'bad-key');
-    }
-    // Any signed-in member may view community pictures, but a key can never
-    // point outside the posts namespace.
+    // Any signed-in member may view community and profile media, but a key can
+    // never point outside the namespaces this service owns.
+    if (!isReadableKey(key)) return failure(400, 'bad-key');
     urls[key] = await sign({
       ...settings,
       sign: {
@@ -171,7 +249,7 @@ async function handleDownload(request, env, user) {
       },
     });
   }
-  return json({ urls, expiresIn: DOWNLOAD_TTL });
+  return json({ urls, expiresIn: DOWNLOAD_TTL, acceptsRange: true });
 }
 
 async function handleDelete(request, env, user) {
@@ -179,16 +257,13 @@ async function handleDelete(request, env, user) {
   if (settings.error) return failure(500, settings.error);
   const body = await readJson(request);
   const keys = body.keys;
-  if (!Array.isArray(keys) || keys.length === 0 || keys.length > MAX_FILES * 2) {
+  if (!Array.isArray(keys) || keys.length === 0 || keys.length > MAX_DELETE_KEYS) {
     return failure(400, 'bad-key-count');
   }
-  const ownPrefix = `users/${user.uid}/`;
   for (const key of keys) {
     // Ownership is structural: a member can only ever delete under their own
     // prefix, whatever the client sends.
-    if (typeof key !== 'string' || !KEY_PATTERN.test(key) || !key.startsWith(ownPrefix)) {
-      return failure(403, 'not-owner');
-    }
+    if (!isOwnKey(user.uid, key)) return failure(403, 'not-owner');
   }
   const deleted = [];
   for (const key of keys) {
@@ -216,13 +291,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-      return json({
-        service: 'wings-media-api',
-        status: 'ok',
-        uploads: '/v1/uploads',
-        download: '/v1/download',
-        delete: '/v1/delete',
-      });
+      return handleHealth(env);
     }
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -261,6 +330,7 @@ export default {
           return failure(404, 'not-found');
       }
     } catch (error) {
+      if (error instanceof MediaError) return failure(error.status, error.code);
       const message = error instanceof Error ? error.message : 'bad-request';
       if (message === 'body-too-large') return failure(413, message);
       if (message === 'unsupported-media-type' || message === 'bad-body') {
