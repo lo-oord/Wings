@@ -31,13 +31,28 @@ class CommunityMediaService {
   final Map<String, _CachedUrl> _cache = <String, _CachedUrl>{};
 
   static const int maxImageBytes = 5 * 1024 * 1024;
+
+  /// Short vertical clips stay small enough to upload on mobile data and to
+  /// start playing quickly, and the Worker enforces the same ceiling.
+  static const int maxVideoBytes = 50 * 1024 * 1024;
+  static const int maxVideoSeconds = 60;
+
   static const int maxUploadsPerRequest = 4;
 
   static const Set<String> allowedTypes = <String>{
     'image/jpeg',
     'image/png',
     'image/webp',
+    'video/mp4',
+    'video/quicktime',
+    'video/webm',
   };
+
+  static bool isVideoType(String contentType) =>
+      contentType.startsWith('video/');
+
+  static int limitFor(String contentType) =>
+      isVideoType(contentType) ? maxVideoBytes : maxImageBytes;
 
   bool get available => _baseUrl.isNotEmpty;
 
@@ -69,7 +84,7 @@ class CommunityMediaService {
       if (!allowedTypes.contains(file.contentType)) {
         throw const MediaRejectedException('unsupported-type');
       }
-      if (file.size <= 0 || file.size > maxImageBytes) {
+      if (file.size <= 0 || file.size > limitFor(file.contentType)) {
         throw const MediaRejectedException('file-too-large');
       }
     }
@@ -113,10 +128,18 @@ class CommunityMediaService {
   }
 
   /// Uploads the bytes with the signed URL. Nothing passes through the Worker.
-  Future<void> upload(MediaUpload upload, Uint8List bytes) async {
+  ///
+  /// [onProgress] is used by the composer's progress bar; a retry starts a
+  /// fresh PUT to the same key, which is idempotent.
+  Future<void> upload(
+    MediaUpload upload,
+    Uint8List bytes, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
     await _dio.put<void>(
       upload.uploadUrl,
       data: Stream<List<int>>.value(bytes),
+      onSendProgress: onProgress,
       options: Options(
         headers: <String, String>{
           ...upload.headers,
@@ -195,13 +218,18 @@ class MediaFile {
     required this.bytes,
     required this.contentType,
     required this.extension,
+    this.declaredSize,
   });
 
   final Uint8List bytes;
   final String contentType;
   final String extension;
 
-  int get size => bytes.length;
+  /// Set for a video so the signed URL can be requested without reading the
+  /// whole file into memory first.
+  final int? declaredSize;
+
+  int get size => declaredSize ?? bytes.length;
 }
 
 class MediaUpload {

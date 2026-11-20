@@ -17,7 +17,8 @@ import {
 } from './firebase.js';
 import { presignUrl } from './sigv4.js';
 
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const MAX_FILES = 4;
 const MAX_DOWNLOAD_KEYS = 20;
 const UPLOAD_TTL = 300; // 5 minutes to start the upload
@@ -26,10 +27,19 @@ const ALLOWED_TYPES = new Map([
   ['image/jpeg', 'jpg'],
   ['image/png', 'png'],
   ['image/webp', 'webp'],
+  ['video/mp4', 'mp4'],
+  ['video/quicktime', 'mov'],
+  ['video/webm', 'webm'],
 ]);
 
 const KEY_PATTERN =
-  /^users\/([A-Za-z0-9_-]{1,128})\/posts\/([A-Za-z0-9]{1,64})\/([A-Za-z0-9-]{8,64})\.(jpg|png|webp)$/;
+  /^users\/([A-Za-z0-9_-]{1,128})\/posts\/([A-Za-z0-9]{1,64})\/([A-Za-z0-9-]{8,64})\.(jpg|png|webp|mp4|mov|webm)$/;
+
+function limitFor(contentType) {
+  return String(contentType).startsWith('video/')
+    ? MAX_VIDEO_BYTES
+    : MAX_IMAGE_BYTES;
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -108,7 +118,7 @@ async function handleUploads(request, env, user) {
       typeof file.size !== 'number' ||
       !Number.isFinite(file.size) ||
       file.size <= 0 ||
-      file.size > MAX_UPLOAD_BYTES
+      file.size > limitFor(file.contentType)
     ) {
       return failure(413, 'file-too-large');
     }

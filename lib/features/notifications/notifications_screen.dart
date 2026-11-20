@@ -522,6 +522,12 @@ String replySummary(BuildContext context, SocialNotification item) {
       return Tr.of(context, ar: 'أعجب بمنشورك.', en: 'Liked your post.');
     case 'follow':
       return Tr.of(context, ar: 'بدأ بمتابعتك.', en: 'Started following you.');
+    case 'mention':
+      return Tr.of(
+        context,
+        ar: 'أشار إليك في منشور.',
+        en: 'Mentioned you in a post.',
+      );
     case 'comment':
       return Tr.of(
         context,

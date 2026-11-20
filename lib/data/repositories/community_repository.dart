@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/storage/local_store.dart';
 import '../models/community.dart';
 import '../models/social.dart';
 import '../models/user_profile.dart';
@@ -29,14 +30,20 @@ import 'notification_repository.dart';
 /// * `users/{uid}/savedPosts/{postId}`, `following/{uid}`, `followers/{uid}`,
 ///   `blocked/{uid}` — relationships owned by the account.
 final class CommunityRepository {
-  CommunityRepository(this._db);
+  CommunityRepository(this._db, [this._store]);
 
   final FirebaseFirestore _db;
+
+  /// Local cache used to remember a recorded view (and to keep the feed's
+  /// interaction signals without a server round-trip).
+  final LocalStore? _store;
 
   static const int pageSize = 15;
   static const int maxPostLength = 2000;
   static const int maxImages = 4;
   static const int maxCommentLength = 1000;
+  static const int maxMentions = 10;
+  static const int maxAnimeRefs = 5;
 
   /// `whereIn` accepts 30 values; keeping the chunks smaller is safe on every
   /// Firestore version and keeps one slow chunk from delaying the feed.
@@ -154,16 +161,52 @@ final class CommunityRepository {
     return doc.exists && data != null ? Post.fromDoc(doc.id, data) : null;
   }
 
-  /// Latest posts of one account, used by the unified public profile.
-  Future<List<Post>> postsBy(String uid, {int limit = 6}) async {
-    final snapshot = await _posts
+  /// One page of an account's posts, newest first.
+  ///
+  /// The profile, the anime community feed and the personal feed all page the
+  /// same `posts` collection with a time cursor; nothing is loaded in full.
+  Future<PostPage> postsBy(
+    String uid, {
+    int limit = pageSize,
+    DateTime? after,
+  }) async {
+    var query = _posts
         .where('authorUid', isEqualTo: uid)
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
-        .get();
-    return snapshot.docs
-        .map((doc) => Post.fromDoc(doc.id, doc.data()))
-        .toList(growable: false);
+        .orderBy('createdAt', descending: true);
+    if (after != null) {
+      query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+    }
+    final snapshot = await query.limit(limit).get();
+    return _page(snapshot);
+  }
+
+  /// Posts that mention the anime, newest first.
+  Future<PostPage> byAnime(
+    String animeId, {
+    DateTime? after,
+    int limit = pageSize,
+  }) async {
+    var query = _posts
+        .where('animeIds', arrayContains: animeId)
+        .orderBy('createdAt', descending: true);
+    if (after != null) {
+      query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+    }
+    final snapshot = await query.limit(limit).get();
+    return _page(snapshot);
+  }
+
+  /// Reels, newest first. The screen re-ranks the bounded page it receives on
+  /// the device; no query per candidate and no whole-collection read.
+  Future<PostPage> reels({DateTime? after, int limit = pageSize}) async {
+    var query = _posts
+        .where('kind', isEqualTo: PostKind.reel.name)
+        .orderBy('createdAt', descending: true);
+    if (after != null) {
+      query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+    }
+    final snapshot = await query.limit(limit).get();
+    return _page(snapshot);
   }
 
   Future<CommunityCounts> counts(String uid) async {
@@ -196,9 +239,18 @@ final class CommunityRepository {
     required String text,
     List<String> imageKeys = const <String>[],
     String? id,
+    PostKind kind = PostKind.post,
+    String? videoKey,
+    String? videoThumbnailKey,
+    int videoDurationMs = 0,
+    int videoWidth = 0,
+    int videoHeight = 0,
+    List<MentionRef> mentions = const <MentionRef>[],
+    List<AnimeRef> animeRefs = const <AnimeRef>[],
   }) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty && imageKeys.isEmpty) {
+    final hasVideo = (videoKey ?? '').isNotEmpty;
+    if (trimmed.isEmpty && imageKeys.isEmpty && !hasVideo) {
       throw ArgumentError('empty post');
     }
     if (trimmed.length > maxPostLength) {
@@ -206,6 +258,15 @@ final class CommunityRepository {
     }
     if (imageKeys.length > maxImages) {
       throw ArgumentError('too many images');
+    }
+    if (mentions.length > maxMentions) {
+      throw ArgumentError('too many mentions');
+    }
+    if (animeRefs.length > maxAnimeRefs) {
+      throw ArgumentError('too many anime references');
+    }
+    if (kind == PostKind.reel && !hasVideo) {
+      throw ArgumentError('a reel needs a video');
     }
     final ref = id == null ? _posts.doc() : _posts.doc(id);
     final post = Post(
@@ -219,6 +280,14 @@ final class CommunityRepository {
       imageKeys: imageKeys,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
+      kind: kind,
+      videoKey: hasVideo ? videoKey : null,
+      videoThumbnailKey: hasVideo ? videoThumbnailKey : null,
+      videoDurationMs: hasVideo ? videoDurationMs : 0,
+      videoWidth: hasVideo ? videoWidth : 0,
+      videoHeight: hasVideo ? videoHeight : 0,
+      mentions: mentions,
+      animeRefs: animeRefs,
     );
     final batch = _db.batch();
     batch.set(ref, post.toMap());
@@ -240,6 +309,8 @@ final class CommunityRepository {
     required String postId,
     required String uid,
     required String text,
+    List<MentionRef>? mentions,
+    List<AnimeRef>? animeRefs,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) throw ArgumentError('empty post');
@@ -255,6 +326,14 @@ final class CommunityRepository {
     await _post(postId).update(<String, dynamic>{
       'text': trimmed,
       'edited': true,
+      if (mentions != null) 'mentions': mentions.map((m) => m.toMap()).toList(),
+      if (animeRefs != null) ...<String, dynamic>{
+        'animeRefs': animeRefs.map((a) => a.toMap()).toList(),
+        'animeIds': <String>[
+          for (final ref in animeRefs)
+            if (ref.id.isNotEmpty) ref.id,
+        ],
+      },
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -755,6 +834,105 @@ final class CommunityRepository {
       'status': 'open',
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  // ------------------------------------------------------------------ views
+
+  /// One viewer document per account, so re-opening a Reel or a retry never
+  /// inflates the counter. The caller records a view only after the video has
+  /// really played for a few seconds.
+  Future<void> recordView({required String postId, required String uid}) async {
+    final local = _store;
+    final key = 'community_view_${uid}_$postId';
+    if (local != null && local.getString(LocalStore.cacheBox, key) != null) {
+      return;
+    }
+    try {
+      await _post(postId).collection('views').doc(uid).set(<String, dynamic>{
+        'uid': uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await local?.setString(LocalStore.cacheBox, key, '1');
+    } on Object {
+      // Offline: the next successful play retries.
+    }
+  }
+
+  Future<int> viewCount(String postId) async {
+    try {
+      final snapshot = await _post(postId).collection('views').count().get();
+      return snapshot.count ?? 0;
+    } on Object {
+      return 0;
+    }
+  }
+
+  // ------------------------------------------------------------------ hidden
+
+  /// Posts the member chose not to see. Private, like saved posts.
+  Stream<Set<String>> watchHiddenIds(String uid) => _db
+      .collection('users')
+      .doc(uid)
+      .collection('hiddenPosts')
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map((doc) => doc.id).toSet());
+
+  Future<Set<String>> fetchHiddenIds(String uid) async {
+    try {
+      final snapshot = await _db
+          .collection('users')
+          .doc(uid)
+          .collection('hiddenPosts')
+          .limit(500)
+          .get();
+      return snapshot.docs.map((doc) => doc.id).toSet();
+    } on Object {
+      return const <String>{};
+    }
+  }
+
+  Future<void> hidePost({required String uid, required String postId}) => _db
+      .collection('users')
+      .doc(uid)
+      .collection('hiddenPosts')
+      .doc(postId)
+      .set(<String, dynamic>{
+        'postId': postId,
+        'hiddenAt': FieldValue.serverTimestamp(),
+      });
+
+  Future<void> unhidePost({required String uid, required String postId}) => _db
+      .collection('users')
+      .doc(uid)
+      .collection('hiddenPosts')
+      .doc(postId)
+      .delete();
+
+  // --------------------------------------------------------------- mentions
+
+  /// Accounts whose handle starts with [prefix], for the `@` picker.
+  ///
+  /// A single range query on the indexed `normalizedUsername`, capped at eight
+  /// results. The caller debounces and caches, so typing does not query per
+  /// keystroke.
+  Future<List<UserProfile>> suggestUsers(String prefix, {int limit = 8}) async {
+    final normalized = prefix.trim().toLowerCase();
+    if (normalized.isEmpty) return const <UserProfile>[];
+    try {
+      final snapshot = await _db
+          .collection('profiles')
+          .orderBy('normalizedUsername')
+          .startAt(<Object>[normalized])
+          .endAt(<Object>['$normalized\uf8ff'])
+          .limit(limit)
+          .get();
+      return snapshot.docs
+          .map((doc) => UserProfile.fromPublicMap(doc.id, doc.data()))
+          .where((profile) => profile.username.isNotEmpty)
+          .toList(growable: false);
+    } on Object {
+      return const <UserProfile>[];
+    }
   }
 
   // ------------------------------------------------------------- moderation

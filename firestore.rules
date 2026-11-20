@@ -499,6 +499,16 @@ service cloud.firestore {
         allow delete: if isSelf(uid);
       }
 
+      // Posts this member asked not to see. Private, like the saved list, and
+      // it never touches the post itself.
+      match /hiddenPosts/{postId} {
+        allow read: if isSelf(uid);
+        allow create, update: if isSelf(uid)
+          && request.resource.data.postId == postId
+          && request.resource.data.hiddenAt is timestamp;
+        allow delete: if isSelf(uid);
+      }
+
       // The two sides of a follow relationship. The follower writes both, and
       // the followed account may remove either side when it blocks somebody.
       match /following/{targetUid} {
@@ -558,7 +568,7 @@ service cloud.firestore {
           && request.auth.uid != uid
           && request.resource.data.toUid == uid
           && request.resource.data.actorUid == request.auth.uid
-          && request.resource.data.type in ['like', 'comment', 'reply', 'follow']
+          && request.resource.data.type in ['like', 'comment', 'reply', 'follow', 'mention']
           && request.resource.data.read == false
           && request.resource.data.text is string
           && request.resource.data.text.size() <= 200
@@ -847,8 +857,48 @@ service cloud.firestore {
         && request.resource.data.text.size() <= 2000
         && request.resource.data.images is list
         && request.resource.data.images.size() <= 4
-        && (request.resource.data.text.size() >= 1
-            || request.resource.data.images.size() > 0)
+        && (!('kind' in request.resource.data)
+            || request.resource.data.kind in ['post', 'reel'])
+        // A reel without a video would be an empty full-screen page.
+        && (!('kind' in request.resource.data)
+            || request.resource.data.kind != 'reel'
+            || ('videoKey' in request.resource.data
+                && request.resource.data.videoKey is string
+                && request.resource.data.videoKey.size() > 0))
+        && (
+          request.resource.data.text.size() >= 1
+          || request.resource.data.images.size() > 0
+          || ('videoKey' in request.resource.data
+              && request.resource.data.videoKey is string
+              && request.resource.data.videoKey.size() > 0)
+        )
+        && (!('videoKey' in request.resource.data)
+            || (request.resource.data.videoKey is string
+                && request.resource.data.videoKey.size() <= 400))
+        && (!('videoThumbnailKey' in request.resource.data)
+            || (request.resource.data.videoThumbnailKey is string
+                && request.resource.data.videoThumbnailKey.size() <= 400))
+        && (!('videoDurationMs' in request.resource.data)
+            || (request.resource.data.videoDurationMs is int
+                && request.resource.data.videoDurationMs >= 0
+                && request.resource.data.videoDurationMs <= 120000))
+        && (!('videoWidth' in request.resource.data)
+            || (request.resource.data.videoWidth is int
+                && request.resource.data.videoWidth >= 0
+                && request.resource.data.videoWidth <= 10000))
+        && (!('videoHeight' in request.resource.data)
+            || (request.resource.data.videoHeight is int
+                && request.resource.data.videoHeight >= 0
+                && request.resource.data.videoHeight <= 10000))
+        && (!('mentions' in request.resource.data)
+            || (request.resource.data.mentions is list
+                && request.resource.data.mentions.size() <= 10))
+        && (!('animeRefs' in request.resource.data)
+            || (request.resource.data.animeRefs is list
+                && request.resource.data.animeRefs.size() <= 5))
+        && (!('animeIds' in request.resource.data)
+            || (request.resource.data.animeIds is list
+                && request.resource.data.animeIds.size() <= 5))
         && request.resource.data.edited == false
         && request.resource.data.likeCount == 0
         && request.resource.data.commentCount == 0
@@ -867,14 +917,27 @@ service cloud.firestore {
           (
             resource.data.authorUid == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'text', 'images', 'edited', 'updatedAt'
+              'text', 'images', 'edited', 'updatedAt',
+              'mentions', 'animeRefs', 'animeIds'
             ])
             && request.resource.data.text is string
             && request.resource.data.text.size() <= 2000
             && request.resource.data.images is list
             && request.resource.data.images.size() <= 4
+            && (!('mentions' in request.resource.data)
+                || (request.resource.data.mentions is list
+                    && request.resource.data.mentions.size() <= 10))
+            && (!('animeRefs' in request.resource.data)
+                || (request.resource.data.animeRefs is list
+                    && request.resource.data.animeRefs.size() <= 5))
+            && (!('animeIds' in request.resource.data)
+                || (request.resource.data.animeIds is list
+                    && request.resource.data.animeIds.size() <= 5))
             && (request.resource.data.text.size() >= 1
-                || request.resource.data.images.size() > 0)
+                || request.resource.data.images.size() > 0
+                || ('videoKey' in request.resource.data
+                    && request.resource.data.videoKey is string
+                    && request.resource.data.videoKey.size() > 0))
             && request.resource.data.updatedAt is timestamp
           )
           ||
@@ -906,6 +969,20 @@ service cloud.firestore {
       // The author removes their post; staff may remove any post.
       allow delete: if signedIn()
         && (resource.data.authorUid == request.auth.uid || isStaff());
+
+      // One viewer per account and per post: a retried Reel never counts
+      // twice, and the counter is the document count, never a writable field.
+      match /views/{viewerUid} {
+        allow read: if signedIn();
+        allow create: if isSelf(viewerUid)
+          && request.resource.data.uid == viewerUid
+          && request.resource.data.createdAt is timestamp
+          && !accountLocked(request.auth.uid);
+        allow update: if isSelf(viewerUid)
+          && request.resource.data.uid == viewerUid
+          && request.resource.data.createdAt is timestamp;
+        allow delete: if false;
+      }
 
       // One like per account: the document id is the uid, so a retried tap
       // cannot count twice. A blocked author can no longer be liked.

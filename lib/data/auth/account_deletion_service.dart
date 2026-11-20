@@ -51,6 +51,7 @@ class AccountDeletionService {
     // Community relationships and private lists. The posts and comments
     // themselves are removed through the activity index above.
     'savedPosts',
+    'hiddenPosts',
     'following',
     'followers',
     'blocked',
