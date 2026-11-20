@@ -731,7 +731,10 @@ final notificationRepositoryProvider = Provider<NotificationRepository>(
 /// Posts, likes, saved posts, follows and blocks. It shares the profile,
 /// comment and notification systems rather than duplicating them.
 final communityRepositoryProvider = Provider<CommunityRepository>(
-  (ref) => CommunityRepository(FirebaseFirestore.instance),
+  (ref) => CommunityRepository(
+    FirebaseFirestore.instance,
+    ref.watch(localStoreProvider),
+  ),
 );
 
 /// Signed upload/download URLs from the existing `wings-media-api` Worker.

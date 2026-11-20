@@ -67,6 +67,7 @@ abstract final class RoutePaths {
   // on top of it like any other screen in Wings.
   static const String communityCompose = '/community/new';
   static const String communitySaved = '/community/saved';
+  static const String communityReels = '/community/reels';
 
   static String communityPost(String postId) =>
       '/community/post/${Uri.encodeComponent(postId)}';

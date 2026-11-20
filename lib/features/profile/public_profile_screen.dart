@@ -419,8 +419,9 @@ class _CountTile extends StatelessWidget {
   }
 }
 
-/// The account's latest posts, inside the same public profile page. There is
-/// no separate community profile.
+/// The account's posts, inside the same public profile page. There is no
+/// separate community profile: this pages the same `posts` collection the feed
+/// reads, with the same [PostCard] and the same like/comment/save state.
 class _ProfilePosts extends ConsumerWidget {
   const _ProfilePosts({required this.profile});
 
@@ -429,7 +430,9 @@ class _ProfilePosts extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
-    final posts = ref.watch(profilePostsProvider(profile.uid));
+    final key = 'user:${profile.uid}';
+    final state = ref.watch(postsPageProvider(key));
+    final controller = ref.read(postsPageProvider(key).notifier);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -453,43 +456,74 @@ class _ProfilePosts extends ConsumerWidget {
             ],
           ),
         ),
-        posts.when(
-          loading: () => const Padding(
+        if (state.loading)
+          const Padding(
             padding: EdgeInsets.all(Space.lg),
             child: WingsLoading(),
-          ),
-          error: (error, stack) => Padding(
+          )
+        else if (state.error != null && state.posts.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  loadFailedText(context),
+                  style: context.text.labelSmall?.copyWith(
+                    color: palette.textMuted,
+                  ),
+                ),
+                TextButton(
+                  onPressed: controller.load,
+                  child: Text(
+                    Tr.of(context, ar: 'إعادة المحاولة', en: 'Retry'),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (state.posts.isEmpty)
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.lg),
             child: Text(
-              loadFailedText(context),
+              Tr.of(context, ar: 'لا منشورات بعد.', en: 'No posts yet.'),
               style: context.text.labelSmall?.copyWith(
                 color: palette.textMuted,
               ),
             ),
-          ),
-          data: (items) => items.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-                  child: Text(
-                    Tr.of(context, ar: 'لا منشورات بعد.', en: 'No posts yet.'),
-                    style: context.text.labelSmall?.copyWith(
-                      color: palette.textMuted,
-                    ),
-                  ),
-                )
-              : Column(
-                  children: <Widget>[
-                    for (final post in items)
-                      PostCard(
-                        post: post,
-                        onChanged: (_) =>
-                            ref.invalidate(profilePostsProvider(profile.uid)),
-                        onDeleted: () =>
-                            ref.invalidate(profilePostsProvider(profile.uid)),
-                      ),
-                  ],
+          )
+        else ...<Widget>[
+          for (final post in state.posts)
+            PostCard(
+              key: ValueKey<String>(post.id),
+              post: post,
+              flat: true,
+              onChanged: controller.replace,
+              onDeleted: () => controller.remove(post.id),
+            ),
+          if (state.hasMore)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.lg,
+                0,
+                Space.lg,
+                Space.lg,
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: state.loadingMore ? null : controller.loadMore,
+                  child: state.loadingMore
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(Tr.of(context, ar: 'عرض المزيد', en: 'Load more')),
                 ),
-        ),
+              ),
+            ),
+        ],
       ],
     );
   }

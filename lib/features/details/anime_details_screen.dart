@@ -16,6 +16,7 @@ import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/library.dart';
+import '../community/anime_community_section.dart';
 import 'details_providers.dart';
 
 class AnimeDetailsScreen extends ConsumerStatefulWidget {
@@ -499,6 +500,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
               );
             },
           ),
+        SliverToBoxAdapter(child: AnimeCommunitySection(anime: anime)),
         if (bundle.related.isNotEmpty) ...<Widget>[
           SliverToBoxAdapter(
             child: WingsSectionHeader(title: l10n.detailsRelated),

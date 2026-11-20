@@ -3,6 +3,68 @@ import 'package:flutter/foundation.dart';
 
 import 'user_profile.dart';
 
+/// What a unified post carries.
+///
+/// One model and one document serve every kind: text, pictures, a video inside
+/// the feed, and a short vertical Reel. There is no second posts system.
+enum PostKind { post, reel }
+
+/// A verified `@mention`.
+///
+/// The uid is what identifies the account; the username is only a display
+/// snapshot so the text can be rendered without a lookup per mention. A handle
+/// that is no longer in [Post.mentions] is never turned into a link, which is
+/// what stops a hand-typed `@name` from faking an account.
+@immutable
+class MentionRef {
+  const MentionRef({required this.uid, required this.username});
+
+  final String uid;
+  final String username;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'uid': uid,
+    'username': username,
+  };
+
+  factory MentionRef.fromMap(Object? raw) {
+    if (raw is! Map) return const MentionRef(uid: '', username: '');
+    return MentionRef(
+      uid: raw['uid'] as String? ?? '',
+      username: raw['username'] as String? ?? '',
+    );
+  }
+}
+
+/// An anime the post talks about.
+///
+/// The id is the catalogue id used by the existing details screen; the title and
+/// artwork are a display snapshot so a post renders without a catalogue read.
+/// Renaming a title later never breaks the link because navigation uses [id].
+@immutable
+class AnimeRef {
+  const AnimeRef({required this.id, required this.title, this.imageUrl = ''});
+
+  final String id;
+  final String title;
+  final String imageUrl;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'id': id,
+    'title': title,
+    'imageUrl': imageUrl,
+  };
+
+  factory AnimeRef.fromMap(Object? raw) {
+    if (raw is! Map) return const AnimeRef(id: '', title: '');
+    return AnimeRef(
+      id: raw['id'] as String? ?? '',
+      title: raw['title'] as String? ?? '',
+      imageUrl: raw['imageUrl'] as String? ?? '',
+    );
+  }
+}
+
 /// A community post.
 ///
 /// Documents live in `posts/{postId}`. The author's handle, name, badges and
@@ -27,6 +89,15 @@ class Post {
     this.edited = false,
     this.likeCount = 0,
     this.commentCount = 0,
+    this.kind = PostKind.post,
+    this.videoKey,
+    this.videoThumbnailKey,
+    this.videoDurationMs = 0,
+    this.videoWidth = 0,
+    this.videoHeight = 0,
+    this.mentions = const <MentionRef>[],
+    this.animeRefs = const <AnimeRef>[],
+    this.viewCount = 0,
   });
 
   final String id;
@@ -50,7 +121,41 @@ class Post {
   final int likeCount;
   final int commentCount;
 
+  final PostKind kind;
+
+  /// Tigris object key of the video, or null for a picture/text post.
+  final String? videoKey;
+  final String? videoThumbnailKey;
+
+  /// Probed on the device before upload; shown as the duration badge and used
+  /// by the player skeleton. Never trusted for ranking.
+  final int videoDurationMs;
+  final int videoWidth;
+  final int videoHeight;
+
+  final List<MentionRef> mentions;
+  final List<AnimeRef> animeRefs;
+
+  /// Unique viewers, counted from `posts/{id}/views`; not a stored field.
+  final int viewCount;
+
   bool get hasImages => imageKeys.isNotEmpty;
+
+  bool get hasVideo => (videoKey ?? '').isNotEmpty;
+
+  bool get isReel => kind == PostKind.reel;
+
+  /// Ids used by the anime community feed query.
+  ///
+  /// Deduplicated: mentioning the same anime twice in one post never creates a
+  /// second relationship.
+  List<String> get animeIds => <String>{
+    for (final ref in animeRefs)
+      if (ref.id.isNotEmpty) ref.id,
+  }.toList(growable: false);
+
+  double? get videoAspectRatio =>
+      videoWidth > 0 && videoHeight > 0 ? videoWidth / videoHeight : null;
 
   Post copyWith({
     String? text,
@@ -59,6 +164,9 @@ class Post {
     int? likeCount,
     int? commentCount,
     DateTime? updatedAt,
+    List<MentionRef>? mentions,
+    List<AnimeRef>? animeRefs,
+    int? viewCount,
   }) => Post(
     id: id,
     authorUid: authorUid,
@@ -73,6 +181,15 @@ class Post {
     edited: edited ?? this.edited,
     likeCount: likeCount ?? this.likeCount,
     commentCount: commentCount ?? this.commentCount,
+    kind: kind,
+    videoKey: videoKey,
+    videoThumbnailKey: videoThumbnailKey,
+    videoDurationMs: videoDurationMs,
+    videoWidth: videoWidth,
+    videoHeight: videoHeight,
+    mentions: mentions ?? this.mentions,
+    animeRefs: animeRefs ?? this.animeRefs,
+    viewCount: viewCount ?? this.viewCount,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -86,6 +203,15 @@ class Post {
     'edited': edited,
     'likeCount': likeCount,
     'commentCount': commentCount,
+    'kind': kind.name,
+    if (videoKey != null) 'videoKey': videoKey,
+    if (videoThumbnailKey != null) 'videoThumbnailKey': videoThumbnailKey,
+    if (videoKey != null) 'videoDurationMs': videoDurationMs,
+    if (videoKey != null) 'videoWidth': videoWidth,
+    if (videoKey != null) 'videoHeight': videoHeight,
+    'mentions': mentions.map((item) => item.toMap()).toList(),
+    'animeRefs': animeRefs.map((item) => item.toMap()).toList(),
+    'animeIds': animeIds,
     'createdAt': FieldValue.serverTimestamp(),
     'updatedAt': FieldValue.serverTimestamp(),
   };
@@ -114,6 +240,33 @@ class Post {
       likeCount: (raw['likeCount'] as num?)?.toInt().clamp(0, 1 << 31) ?? 0,
       commentCount:
           (raw['commentCount'] as num?)?.toInt().clamp(0, 1 << 31) ?? 0,
+      kind: raw['kind'] == 'reel' ? PostKind.reel : PostKind.post,
+      videoKey:
+          raw['videoKey'] is String && (raw['videoKey'] as String).isNotEmpty
+          ? raw['videoKey'] as String
+          : null,
+      videoThumbnailKey:
+          raw['videoThumbnailKey'] is String &&
+              (raw['videoThumbnailKey'] as String).isNotEmpty
+          ? raw['videoThumbnailKey'] as String
+          : null,
+      videoDurationMs:
+          (raw['videoDurationMs'] as num?)?.toInt().clamp(0, 3600000) ?? 0,
+      videoWidth: (raw['videoWidth'] as num?)?.toInt().clamp(0, 10000) ?? 0,
+      videoHeight: (raw['videoHeight'] as num?)?.toInt().clamp(0, 10000) ?? 0,
+      mentions: raw['mentions'] is List
+          ? (raw['mentions'] as List)
+                .map(MentionRef.fromMap)
+                .where((item) => item.uid.isNotEmpty)
+                .toList(growable: false)
+          : const <MentionRef>[],
+      animeRefs: raw['animeRefs'] is List
+          ? (raw['animeRefs'] as List)
+                .map(AnimeRef.fromMap)
+                .where((item) => item.id.isNotEmpty)
+                .toList(growable: false)
+          : const <AnimeRef>[],
+      viewCount: (raw['viewCount'] as num?)?.toInt().clamp(0, 1 << 31) ?? 0,
     );
   }
 }

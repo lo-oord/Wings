@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,7 +20,9 @@ import '../admin/admin_providers.dart';
 import '../profile/avatar_view.dart';
 import '../social/user_handle.dart';
 import 'community_providers.dart';
+import 'community_video.dart';
 import 'report_sheet.dart';
+import 'social_text.dart';
 
 /// One post, shared by the feed, the public profile and the saved list so the
 /// three can never drift apart.
@@ -30,6 +33,7 @@ class PostCard extends ConsumerStatefulWidget {
     this.onChanged,
     this.onDeleted,
     this.showFollow = false,
+    this.flat = false,
   });
 
   final Post post;
@@ -41,6 +45,10 @@ class PostCard extends ConsumerStatefulWidget {
 
   /// Show a follow button next to the author (used on the community feed).
   final bool showFollow;
+
+  /// Borderless variant used on the profile and the anime feed, where posts are
+  /// separated by one hairline divider instead of a box each.
+  final bool flat;
 
   @override
   ConsumerState<PostCard> createState() => _PostCardState();
@@ -84,13 +92,17 @@ class _PostCardState extends ConsumerState<PostCard> {
     final count = _likeCount ?? post.likeCount;
     final follows = _following ?? following.contains(post.authorUid);
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(Radii.md),
-        border: Border.all(color: palette.border),
-      ),
+    final card = Container(
+      margin: widget.flat
+          ? EdgeInsets.zero
+          : const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
+      decoration: widget.flat
+          ? null
+          : BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(Radii.md),
+              border: Border.all(color: palette.border),
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -169,10 +181,22 @@ class _PostCardState extends ConsumerState<PostCard> {
                 Space.md,
                 0,
               ),
-              child: Text(
-                post.text,
+              child: SocialText(
+                text: post.text,
+                mentions: post.mentions,
+                animeRefs: post.animeRefs,
                 style: context.text.bodyMedium?.copyWith(height: 1.65),
               ),
+            ),
+          if (post.hasVideo)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.md,
+                Space.sm + 2,
+                Space.md,
+                0,
+              ),
+              child: _PostVideo(post: post),
             ),
           if (post.hasImages)
             Padding(
@@ -222,6 +246,22 @@ class _PostCardState extends ConsumerState<PostCard> {
           ),
         ],
       ),
+    );
+    if (!widget.flat) return card;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        card,
+        Container(
+          height: 1,
+          margin: const EdgeInsets.symmetric(
+            horizontal: Space.lg,
+            vertical: Space.md,
+          ),
+          // Very light and translucent, never a heavy border.
+          color: palette.border.withValues(alpha: 0.55),
+        ),
+      ],
     );
   }
 
@@ -320,15 +360,24 @@ class _PostCardState extends ConsumerState<PostCard> {
   /// Best effort: the bucket is private and the keys are unreachable without
   /// the post, so a failed cleanup costs storage, never privacy.
   Future<void> _deletePictures() async {
-    if (post.imageKeys.isEmpty) return;
+    final keys = <String>[
+      ...post.imageKeys,
+      if (post.hasVideo) post.videoKey!,
+      if ((post.videoThumbnailKey ?? '').isNotEmpty) post.videoThumbnailKey!,
+    ];
+    if (keys.isEmpty) return;
     try {
-      await ref.read(communityMediaProvider).deleteObjects(post.imageKeys);
+      await ref.read(communityMediaProvider).deleteObjects(keys);
     } on Object {
       // Offline or the media API is not configured; nothing else to do.
     }
   }
 
   Widget _menu(BuildContext context, String? uid) {
+    final savedIds = uid == null
+        ? const <String>{}
+        : ref.watch(savedPostIdsProvider(uid)).value ?? const <String>{};
+    final saved = _saved ?? savedIds.contains(post.id);
     return PopupMenuButton<String>(
       icon: Icon(
         Icons.more_horiz_rounded,
@@ -351,6 +400,28 @@ class _PostCardState extends ConsumerState<PostCard> {
           PopupMenuItem<String>(
             value: 'delete',
             child: Text(Tr.of(context, ar: 'حذف المنشور', en: 'Delete post')),
+          ),
+        PopupMenuItem<String>(
+          value: saved ? 'unsave' : 'save',
+          child: Text(
+            saved
+                ? Tr.of(context, ar: 'إلغاء الحفظ', en: 'Remove from saved')
+                : Tr.of(context, ar: 'حفظ المنشور', en: 'Save post'),
+          ),
+        ),
+        if (post.text.trim().isNotEmpty)
+          PopupMenuItem<String>(
+            value: 'copy',
+            child: Text(Tr.of(context, ar: 'نسخ النص', en: 'Copy text')),
+          ),
+        PopupMenuItem<String>(
+          value: 'link',
+          child: Text(Tr.of(context, ar: 'نسخ الرابط', en: 'Copy link')),
+        ),
+        if (!_mine)
+          PopupMenuItem<String>(
+            value: 'hide',
+            child: Text(Tr.of(context, ar: 'إخفاء المنشور', en: 'Hide post')),
           ),
         if (!_mine)
           PopupMenuItem<String>(
@@ -422,6 +493,41 @@ class _PostCardState extends ConsumerState<PostCard> {
           if (mounted) {
             context.showSnack(
               Tr.of(context, ar: 'تم حذف المنشور.', en: 'Post deleted.'),
+            );
+          }
+        } on Object catch (error) {
+          if (mounted) {
+            context.showSnack(userFacingError(context, error), isError: true);
+          }
+        }
+      case 'save':
+        await _toggleSaved(false);
+      case 'unsave':
+        await _toggleSaved(true);
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: post.text));
+        if (mounted) {
+          context.showSnack(
+            Tr.of(context, ar: 'تم نسخ النص.', en: 'Text copied.'),
+          );
+        }
+      case 'link':
+        await Clipboard.setData(ClipboardData(text: postShareLink(post.id)));
+        if (mounted) {
+          context.showSnack(
+            Tr.of(context, ar: 'تم نسخ الرابط.', en: 'Link copied.'),
+          );
+        }
+      case 'hide':
+        if (uid == null) return;
+        try {
+          await ref
+              .read(communityRepositoryProvider)
+              .hidePost(uid: uid, postId: post.id);
+          widget.onDeleted?.call();
+          if (mounted) {
+            context.showSnack(
+              Tr.of(context, ar: 'تم إخفاء المنشور.', en: 'Post hidden.'),
             );
           }
         } on Object catch (error) {
@@ -562,6 +668,121 @@ class _ActionButton extends StatelessWidget {
             Text(label, style: context.text.labelSmall?.copyWith(color: tint)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The stable, human-facing link of a post. It always points at the post id,
+/// never at a signed media URL, and opening it inside Wings respects privacy,
+/// blocking and the account state exactly like the in-app route.
+String postShareLink(String postId) =>
+    'https://wings.app${RoutePaths.communityPost(postId)}';
+
+/// Video inside a normal post: resolved from the private bucket and paused
+/// while it is out of view.
+class _PostVideo extends ConsumerStatefulWidget {
+  const _PostVideo({required this.post});
+
+  final Post post;
+
+  @override
+  ConsumerState<_PostVideo> createState() => _PostVideoState();
+}
+
+class _PostVideoState extends ConsumerState<_PostVideo> {
+  String? _url;
+  String? _poster;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_resolve());
+  }
+
+  Future<void> _resolve() async {
+    final service = ref.read(communityMediaProvider);
+    final key = widget.post.videoKey;
+    if (!service.available || key == null) {
+      if (mounted) setState(() => _failed = true);
+      return;
+    }
+    try {
+      final keys = <String>[
+        key,
+        if ((widget.post.videoThumbnailKey ?? '').isNotEmpty)
+          widget.post.videoThumbnailKey!,
+      ];
+      final urls = await service.downloadUrls(keys);
+      if (!mounted) return;
+      setState(() {
+        _url = urls[key];
+        _poster = urls[widget.post.videoThumbnailKey];
+        _failed = (_url ?? '').isEmpty;
+      });
+    } on Object {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      return Container(
+        height: 140,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: context.palette.surfaceAlt,
+          borderRadius: BorderRadius.circular(Radii.sm),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              Icons.videocam_off_outlined,
+              size: 20,
+              color: context.palette.textMuted,
+            ),
+            const SizedBox(height: Space.xs),
+            Text(
+              Tr.of(
+                context,
+                ar: 'الفيديو غير متاح الآن',
+                en: 'The video is unavailable right now',
+              ),
+              style: context.text.labelSmall?.copyWith(
+                color: context.palette.textMuted,
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() => _failed = false);
+                unawaited(_resolve());
+              },
+              child: Text(Tr.of(context, ar: 'إعادة المحاولة', en: 'Retry')),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_url == null) {
+      return AspectRatio(
+        aspectRatio: widget.post.videoAspectRatio ?? 16 / 9,
+        child: Container(
+          color: Colors.black,
+          alignment: Alignment.center,
+          child: const CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: CommunityVideo(
+        url: _url,
+        posterUrl: _poster,
+        aspectRatio: widget.post.videoAspectRatio ?? 16 / 9,
+        showChrome: true,
       ),
     );
   }

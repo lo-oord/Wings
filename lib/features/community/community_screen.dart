@@ -27,7 +27,7 @@ class CommunityScreen extends ConsumerStatefulWidget {
 }
 
 class _CommunityScreenState extends ConsumerState<CommunityScreen> {
-  CommunityTab _tab = CommunityTab.latest;
+  CommunityTab _tab = CommunityTab.forYou;
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +42,12 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
           style: context.text.titleLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
         actions: <Widget>[
+          WingsIconButton(
+            icon: Icons.movie_filter_outlined,
+            tooltip: Tr.of(context, ar: 'ريلز', en: 'Reels'),
+            onPressed: () => context.push(RoutePaths.communityReels),
+          ),
+          const SizedBox(width: Space.xs),
           WingsIconButton(
             icon: Icons.bookmark_border_rounded,
             tooltip: Tr.of(context, ar: 'المحفوظة', en: 'Saved'),
@@ -84,13 +90,22 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
               children: <Widget>[
                 Expanded(
                   child: _TabChip(
+                    label: Tr.of(context, ar: 'لك', en: 'For you'),
+                    icon: Icons.auto_awesome_rounded,
+                    selected: _tab == CommunityTab.forYou,
+                    onTap: () => setState(() => _tab = CommunityTab.forYou),
+                  ),
+                ),
+                const SizedBox(width: Space.xs),
+                Expanded(
+                  child: _TabChip(
                     label: Tr.of(context, ar: 'الأحدث', en: 'Latest'),
                     icon: Icons.bolt_rounded,
                     selected: _tab == CommunityTab.latest,
                     onTap: () => setState(() => _tab = CommunityTab.latest),
                   ),
                 ),
-                const SizedBox(width: Space.sm),
+                const SizedBox(width: Space.xs),
                 Expanded(
                   child: _TabChip(
                     label: Tr.of(context, ar: 'أتابعهم', en: 'Following'),
@@ -100,6 +115,28 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, 0),
+            child: Text(
+              _tab == CommunityTab.forYou
+                  ? Tr.of(
+                      context,
+                      ar: 'ترتيب شخصي حسب اهتماماتك',
+                      en: 'Personal order based on your interests',
+                    )
+                  : _tab == CommunityTab.latest
+                  ? Tr.of(context, ar: 'الأحدث أولًا', en: 'Newest first')
+                  : Tr.of(
+                      context,
+                      ar: 'منشورات من تتابعهم',
+                      en: 'Posts from accounts you follow',
+                    ),
+              style: context.text.labelSmall?.copyWith(
+                color: palette.textMuted,
+                fontSize: 10,
+              ),
             ),
           ),
           const SizedBox(height: Space.sm),

@@ -93,7 +93,13 @@ class NotificationRepository {
     String text = '',
   }) async {
     if (toUid.isEmpty || toUid == actor.uid) return;
-    if (!const <String>{'like', 'comment', 'reply', 'follow'}.contains(type)) {
+    if (!const <String>{
+      'like',
+      'comment',
+      'reply',
+      'follow',
+      'mention',
+    }.contains(type)) {
       throw ArgumentError('unknown alert type');
     }
     final payload = <String, dynamic>{
