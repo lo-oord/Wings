@@ -11,6 +11,7 @@ import '../../core/widgets/wings_layout.dart';
 import '../profile/avatar_view.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// History of the messages the Owner sent. Only staff can read this list: the
 /// recipient sees their own copy, nobody else's.
@@ -37,7 +38,7 @@ class AdminMessagesScreen extends ConsumerWidget {
           error: (error, _) => WingsEmptyState(
             icon: Icons.cloud_off_rounded,
             title: Tr.of(context, ar: 'تعذّر التحميل', en: 'Failed to load'),
-            message: error.toString(),
+            message: loadFailedText(context),
           ),
           data: (page) {
             if (page.items.isEmpty) {

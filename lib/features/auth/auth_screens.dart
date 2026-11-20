@@ -16,6 +16,7 @@ import '../../core/errors/app_failure.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../data/auth/auth_error_text.dart';
+import 'blocked_identity_sheet.dart';
 import 'username_field.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
@@ -71,7 +72,9 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     if (_guestLoading) return;
     setState(() => _guestLoading = true);
     await ref.read(settingsProvider.notifier).enterGuestMode();
-    if (mounted) context.go(RoutePaths.latest);
+    if (mounted) {
+      context.go(RoutePaths.latest);
+    }
   }
 
   /// Closing the gate goes back when there is something underneath; otherwise
@@ -555,7 +558,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() => _avatarPath = file.path);
   }
 
-  void _next() {
+  Future<void> _next() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (_step == 0 && !_usernameAvailable) {
       context.showSnack(
@@ -568,8 +571,47 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       );
       return;
     }
+    if (_step == 0 && await _blockedIdentityFound()) return;
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
     setState(() => _step = (_step + 1).clamp(0, _stepCount - 1));
+  }
+
+  /// Checks the two identities the reader typed against the Wings block lists.
+  ///
+  /// The rules enforce the block anyway; this check exists so the app explains
+  /// it and offers a review request instead of a rejected write.
+  Future<bool> _blockedIdentityFound() async {
+    final repository = ref.read(identityRepositoryProvider);
+    final email = _email.text.trim();
+    final username = _username.text.trim();
+    try {
+      if (email.isNotEmpty && await repository.emailBlocked(email)) {
+        if (!mounted) return true;
+        await showBlockedIdentitySheet(
+          context,
+          ref,
+          email: true,
+          value: email,
+          counterpart: username,
+        );
+        return true;
+      }
+      if (username.isNotEmpty && await repository.usernameBlocked(username)) {
+        if (!mounted) return true;
+        await showBlockedIdentitySheet(
+          context,
+          ref,
+          email: false,
+          value: username,
+          counterpart: email,
+        );
+        return true;
+      }
+    } on Object {
+      return false;
+    }
+    return false;
   }
 
   void _back() {
@@ -614,6 +656,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final valid = _formKey.currentState?.validate() ?? false;
     setState(() => _termsError = !_acceptedTerms);
     if (!valid || !_acceptedTerms) return;
+    if (await _blockedIdentityFound()) return;
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
     setState(() => _loading = true);
     try {
@@ -634,6 +678,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
+      // A write can still be refused when the block is created while this form
+      // is open; showing the real reason beats a generic failure.
+      if (await _blockedIdentityFound()) return;
+      if (!mounted) return;
       context.showSnack(authErrorText(context, error), isError: true);
     }
   }
@@ -1239,7 +1287,9 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       if (!mounted) return;
       setState(() => _message = authErrorText(context, error));
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted) {
+        setState(() => _sending = false);
+      }
     }
   }
 
@@ -1393,7 +1443,9 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
             child: TextButton.icon(
               onPressed: () async {
                 await ref.read(authProvider.notifier).signOut();
-                if (context.mounted) context.go(RoutePaths.welcome);
+                if (context.mounted) {
+                  context.go(RoutePaths.welcome);
+                }
               },
               icon: const Icon(Icons.logout_rounded, size: 16),
               label: Text(l10n.settingsSignOut),

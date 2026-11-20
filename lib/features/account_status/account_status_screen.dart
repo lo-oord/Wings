@@ -13,6 +13,7 @@ import '../../core/widgets/wings_layout.dart';
 import '../../data/models/admin_models.dart';
 import '../admin/admin_providers.dart';
 import '../admin/admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// What the affected member sees: the state, the reason, the restrictions and
 /// the review request. It never reveals internal notes.
@@ -86,7 +87,9 @@ class _AccountStatusScreenState extends ConsumerState<AccountStatusScreen> {
         );
       }
     } on Object catch (error) {
-      if (mounted) context.showSnack(error.toString(), isError: true);
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
     }
   }
 
@@ -110,7 +113,7 @@ class _AccountStatusScreenState extends ConsumerState<AccountStatusScreen> {
         error: (error, _) => WingsEmptyState(
           icon: Icons.cloud_off_rounded,
           title: Tr.of(context, ar: 'تعذّر التحميل', en: 'Failed to load'),
-          message: error.toString(),
+          message: loadFailedText(context),
         ),
         data: (record) {
           final now = DateTime.now();
@@ -334,7 +337,9 @@ class AccountBlockedScreen extends ConsumerWidget {
               TextButton(
                 onPressed: () async {
                   await ref.read(authProvider.notifier).signOut();
-                  if (context.mounted) context.go(RoutePaths.welcome);
+                  if (context.mounted) {
+                    context.go(RoutePaths.welcome);
+                  }
                 },
                 child: Text(Tr.of(context, ar: 'خروج', en: 'Sign out')),
               ),

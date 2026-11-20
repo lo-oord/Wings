@@ -179,8 +179,9 @@ class AdminUsersController extends Notifier<AdminUsersState> {
         loading: false,
         error: '',
       );
-    } on Object catch (error) {
-      state = state.copyWith(loading: false, error: error.toString());
+    } on Object {
+      // The screen renders a translated message; the raw error never reaches it.
+      state = state.copyWith(loading: false, error: 'failed');
     }
   }
 
@@ -199,8 +200,8 @@ class AdminUsersController extends Notifier<AdminUsersState> {
         hasMore: page.hasMore,
         loadingMore: false,
       );
-    } on Object catch (error) {
-      state = state.copyWith(loadingMore: false, error: error.toString());
+    } on Object {
+      state = state.copyWith(loadingMore: false, error: 'failed');
     }
   }
 
@@ -237,6 +238,7 @@ class AdminReportsState {
   const AdminReportsState({
     this.items = const <AdminReport>[],
     this.appeals = const <AdminAppeal>[],
+    this.reviews = const <IdentityReview>[],
     this.loading = false,
     this.error = '',
     this.status = 'pending',
@@ -246,6 +248,7 @@ class AdminReportsState {
 
   final List<AdminReport> items;
   final List<AdminAppeal> appeals;
+  final List<IdentityReview> reviews;
   final bool loading;
   final String error;
   final String status;
@@ -255,6 +258,7 @@ class AdminReportsState {
   AdminReportsState copyWith({
     List<AdminReport>? items,
     List<AdminAppeal>? appeals,
+    List<IdentityReview>? reviews,
     bool? loading,
     String? error,
     String? status,
@@ -263,6 +267,7 @@ class AdminReportsState {
   }) => AdminReportsState(
     items: items ?? this.items,
     appeals: appeals ?? this.appeals,
+    reviews: reviews ?? this.reviews,
     loading: loading ?? this.loading,
     error: error ?? this.error,
     status: status ?? this.status,
@@ -279,22 +284,35 @@ class AdminReportsController extends Notifier<AdminReportsState> {
 
   Future<void> refresh() async {
     state = state.copyWith(loading: true, error: '');
+    // Both lists are fetched independently: a missing index on one query used
+    // to empty the other tab as well.
+    AdminPage<AdminReport>? page;
+    List<AdminAppeal>? appeals;
+    List<IdentityReview>? reviews;
     try {
-      final results = await Future.wait<Object>(<Future<Object>>[
-        _repository.reportsPage(status: state.status),
-        _repository.appeals(),
-      ]);
-      final page = results[0] as AdminPage<AdminReport>;
-      state = state.copyWith(
-        items: page.items,
-        cursor: page.cursor,
-        hasMore: page.hasMore,
-        appeals: results[1] as List<AdminAppeal>,
-        loading: false,
-      );
-    } on Object catch (error) {
-      state = state.copyWith(loading: false, error: error.toString());
+      page = await _repository.reportsPage(status: state.status);
+    } on Object {
+      page = null;
     }
+    try {
+      appeals = await _repository.appeals();
+    } on Object {
+      appeals = null;
+    }
+    try {
+      reviews = await _repository.identityReviews();
+    } on Object {
+      reviews = null;
+    }
+    state = state.copyWith(
+      items: page?.items ?? state.items,
+      cursor: page?.cursor,
+      hasMore: page?.hasMore ?? false,
+      appeals: appeals ?? state.appeals,
+      reviews: reviews ?? state.reviews,
+      loading: false,
+      error: page == null || appeals == null || reviews == null ? 'failed' : '',
+    );
   }
 
   Future<void> loadMore() async {
@@ -309,8 +327,8 @@ class AdminReportsController extends Notifier<AdminReportsState> {
         cursor: page.cursor,
         hasMore: page.hasMore,
       );
-    } on Object catch (error) {
-      state = state.copyWith(error: error.toString());
+    } on Object {
+      state = state.copyWith(error: 'failed');
     }
   }
 
@@ -321,6 +339,30 @@ class AdminReportsController extends Notifier<AdminReportsState> {
       cursor: null,
     );
     await refresh();
+  }
+
+  /// Approving lifts the block immediately; rejecting keeps it in place.
+  Future<bool> decideReview(
+    IdentityReview review, {
+    required bool approve,
+    required String note,
+    required String actorUid,
+    required String actorName,
+  }) async {
+    try {
+      await _repository.decideIdentityReview(
+        review: review,
+        approve: approve,
+        note: note,
+        actorUid: actorUid,
+        actorName: actorName,
+      );
+      await refresh();
+      return true;
+    } on Object {
+      state = state.copyWith(error: 'failed');
+      return false;
+    }
   }
 }
 
@@ -426,8 +468,8 @@ class AdminLogController extends Notifier<AdminLogState> {
         hasMore: page.hasMore,
         loading: false,
       );
-    } on Object catch (error) {
-      state = state.copyWith(loading: false, error: error.toString());
+    } on Object {
+      state = state.copyWith(loading: false, error: 'failed');
     }
   }
 
@@ -442,8 +484,8 @@ class AdminLogController extends Notifier<AdminLogState> {
         hasMore: page.hasMore,
         loadingMore: false,
       );
-    } on Object catch (error) {
-      state = state.copyWith(loadingMore: false, error: error.toString());
+    } on Object {
+      state = state.copyWith(loadingMore: false, error: 'failed');
     }
   }
 }

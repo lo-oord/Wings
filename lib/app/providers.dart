@@ -23,6 +23,7 @@ import '../data/models/library.dart';
 import '../data/repositories/anime_repository.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/models/social_notification.dart';
+import '../data/repositories/identity_repository.dart';
 import '../data/repositories/library_repository.dart';
 import '../data/repositories/notification_repository.dart';
 import '../data/repositories/settings_repository.dart';
@@ -227,11 +228,26 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> update(
     AppSettings Function(AppSettings current) transform,
   ) async {
-    state = transform(state);
+    final before = state;
+    state = transform(before);
     await ref.read(settingsRepositoryProvider).save(state);
     ref.read(downloadServiceProvider).notificationsEnabled =
         state.notifyDownloads;
     await configureNewEpisodeWorker(state);
+    // The system permission is asked for exactly when a member turns an alert
+    // on, never during launch. Without it Android 13+ drops every tray alert.
+    final enabledOne =
+        (!before.notifyDownloads && state.notifyDownloads) ||
+        (!before.notifyNewEpisodes && state.notifyNewEpisodes) ||
+        (!before.notifyReplies && state.notifyReplies) ||
+        (!before.notifyGeneral && state.notifyGeneral);
+    if (enabledOne) {
+      try {
+        await ref.read(notificationServiceProvider).requestPermission();
+      } on Object {
+        // The device may not support the prompt; alerts simply stay off.
+      }
+    }
     await _pushAccountSettings();
   }
 
@@ -708,6 +724,11 @@ final socialRepositoryProvider = Provider<SocialRepository>(
 
 final notificationRepositoryProvider = Provider<NotificationRepository>(
   (ref) => NotificationRepository(FirebaseFirestore.instance),
+);
+
+/// Blocked emails/usernames and their review requests.
+final identityRepositoryProvider = Provider<IdentityRepository>(
+  (ref) => IdentityRepository(FirebaseFirestore.instance),
 );
 
 /// Replies and future community alerts for one account.

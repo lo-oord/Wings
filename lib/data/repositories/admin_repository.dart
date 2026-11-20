@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import '../models/admin_models.dart';
 import '../models/user_profile.dart';
 import '../username/username_rules.dart';
+import 'identity_repository.dart';
 
 /// One page of an administratively browsed collection.
 class AdminPage<T> {
@@ -213,7 +214,9 @@ class AdminRepository {
     String raw, {
     int limit = 20,
   }) async {
-    final normalized = UsernameRules.normalize(raw);
+    // Owners often type «@handle» or paste a handle with spaces; both must find
+    // the same account.
+    final normalized = UsernameRules.sanitize(raw);
     if (normalized.isEmpty) return const <AdminUserSummary>[];
 
     // Exact handle first: it is a single document lookup.
@@ -234,9 +237,30 @@ class AdminRepository {
         .orderBy('normalizedUsername')
         .limit(limit)
         .get();
-    return snapshot.docs
-        .map((doc) => AdminUserSummary.fromDoc(doc.id, doc.data()))
-        .toList(growable: false);
+    if (snapshot.docs.isNotEmpty) {
+      return snapshot.docs
+          .map((doc) => AdminUserSummary.fromDoc(doc.id, doc.data()))
+          .toList(growable: false);
+    }
+
+    // Older documents written before `normalizedUsername` existed, or an
+    // account whose handle differs from the typed casing, still resolve
+    // through the public mirror (`profiles/{uid}`), then load the full record.
+    final mirror = await _db
+        .collection('profiles')
+        .where('username', isEqualTo: raw.trim().replaceAll(RegExp('^@+'), ''))
+        .limit(limit)
+        .get();
+    final uids = mirror.docs.map((doc) => doc.id).toList(growable: false);
+    if (uids.isEmpty) return const <AdminUserSummary>[];
+    final users = await Future.wait(
+      uids.map((uid) => _db.collection('users').doc(uid).get()),
+    );
+    return <AdminUserSummary>[
+      for (final doc in users)
+        if (doc.exists && doc.data() != null)
+          AdminUserSummary.fromDoc(doc.id, doc.data()!),
+    ];
   }
 
   DocumentReference<Map<String, dynamic>> _statusRef(String uid) =>
@@ -693,6 +717,65 @@ class AdminRepository {
     await batch.commit();
   }
 
+  /// Blocked-identity review requests, newest first. The status is filtered in
+  /// the interface to keep the query index-free.
+  Future<List<IdentityReview>> identityReviews({int limit = 60}) async {
+    final snapshot = await _db
+        .collection(IdentityRepository.reviewsCollection)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+    return snapshot.docs
+        .map((doc) => IdentityReview.fromDoc(doc.id, doc.data()))
+        .toList(growable: false);
+  }
+
+  /// Accepts (lifting the block) or rejects a review request.
+  Future<void> decideIdentityReview({
+    required IdentityReview review,
+    required bool approve,
+    required String note,
+    required String actorUid,
+    required String actorName,
+  }) async {
+    final batch = _db.batch();
+    batch.update(
+      _db.collection(IdentityRepository.reviewsCollection).doc(review.id),
+      <String, dynamic>{
+        'status': approve ? 'approved' : 'rejected',
+        'note': note,
+        'decidedBy': actorUid,
+        'decidedAt': FieldValue.serverTimestamp(),
+      },
+    );
+    if (approve) {
+      if (review.isEmail) {
+        batch.delete(
+          _db
+              .collection(IdentityRepository.emailBlocksCollection)
+              .doc(review.value.trim().toLowerCase()),
+        );
+      } else {
+        batch.delete(
+          _db
+              .collection(IdentityRepository.usernameBlocksCollection)
+              .doc(UsernameRules.normalize(review.value)),
+        );
+      }
+    }
+    _logInto(
+      batch,
+      action: approve ? AdminAction.unblockEmail : AdminAction.review,
+      actorUid: actorUid,
+      actorName: actorName,
+      targetLabel: review.value,
+      details: approve
+          ? 'identity review approved'
+          : 'identity review rejected',
+    );
+    await batch.commit();
+  }
+
   Future<AdminPage<OwnerMessage>> sentMessages({
     QueryDocumentSnapshot<Map<String, dynamic>>? cursor,
     int limit = 20,
@@ -904,25 +987,32 @@ class AdminRepository {
     QueryDocumentSnapshot<Map<String, dynamic>>? cursor,
     int limit = 20,
   }) async {
-    Query<Map<String, dynamic>> query = _db.collection(reportsCollection);
-    if (status != null && status != 'all') {
-      query = query.where(
-        'status',
-        isEqualTo: status == 'pending' ? 'open' : status,
-      );
-    }
-    query = query.orderBy('createdAt', descending: true);
+    // The status is filtered here, not in the query: a `where` plus an
+    // `orderBy` needs a composite index, and a missing index used to fail the
+    // whole inbox. Staff pages are small, so filtering a slightly larger page
+    // locally keeps reports visible on every deployment.
+    final wanted = status == null || status == 'all'
+        ? null
+        : (status == 'pending' ? 'open' : status);
+    var query = _db
+        .collection(reportsCollection)
+        .orderBy('createdAt', descending: true);
     if (cursor != null) query = query.startAfterDocument(cursor);
-    final snapshot = await query.limit(limit + 1).get();
-    final docs = snapshot.docs;
-    final hasMore = docs.length > limit;
-    final page = hasMore ? docs.take(limit).toList() : docs;
+    final fetch = wanted == null ? limit + 1 : (limit * 3) + 1;
+    final snapshot = await query.limit(fetch).get();
+    final raw = snapshot.docs;
+    final matching = wanted == null
+        ? raw
+        : raw
+              .where((doc) => (doc.data()['status'] ?? 'open') == wanted)
+              .toList(growable: false);
+    final page = matching.take(limit).toList(growable: false);
     return AdminPage<AdminReport>(
       items: page
           .map((doc) => AdminReport.fromDoc(doc.id, doc.data()))
           .toList(growable: false),
-      cursor: page.isEmpty ? cursor : page.last,
-      hasMore: hasMore,
+      cursor: raw.isEmpty ? cursor : raw.last,
+      hasMore: raw.length == fetch,
     );
   }
 

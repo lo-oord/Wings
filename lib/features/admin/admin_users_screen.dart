@@ -15,6 +15,7 @@ import '../../data/models/admin_models.dart';
 import '../profile/avatar_view.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 class AdminUsersScreen extends ConsumerStatefulWidget {
   const AdminUsersScreen({super.key});
@@ -163,7 +164,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
                         ar: 'تعذّر التحميل',
                         en: 'Load failed',
                       ),
-                      message: state.error,
+                      message: loadFailedText(context),
                       actionLabel: Tr.of(
                         context,
                         ar: 'إعادة المحاولة',

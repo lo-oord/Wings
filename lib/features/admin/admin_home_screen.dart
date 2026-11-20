@@ -12,6 +12,7 @@ import '../../data/models/admin_models.dart';
 import '../profile/avatar_view.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// The Owner dashboard. Every number is an aggregation over real documents.
 class AdminHomeScreen extends ConsumerWidget {
@@ -55,7 +56,7 @@ class AdminHomeScreen extends ConsumerWidget {
               ar: 'تعذّر تحميل البيانات',
               en: 'Could not load',
             ),
-            message: error.toString(),
+            message: loadFailedText(context),
             actionLabel: Tr.of(context, ar: 'إعادة المحاولة', en: 'Retry'),
             onAction: () => ref.invalidate(adminOverviewProvider),
           ),

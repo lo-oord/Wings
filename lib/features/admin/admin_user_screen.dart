@@ -16,6 +16,7 @@ import '../profile/avatar_view.dart';
 import 'admin_actions.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// The administrative page of one account. This is also the authorized path to
 /// a private profile: an Owner reads `users/{uid}` (staff-only) without touching
@@ -107,7 +108,7 @@ class _AdminUserScreenState extends ConsumerState<AdminUserScreen> {
       }
     } on Object catch (error) {
       if (mounted) {
-        context.showSnack(error.toString(), isError: true);
+        context.showSnack(userFacingError(context, error), isError: true);
       }
     }
   }
@@ -140,7 +141,9 @@ class _AdminUserScreenState extends ConsumerState<AdminUserScreen> {
         );
       }
     } on Object catch (error) {
-      if (mounted) context.showSnack(error.toString(), isError: true);
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
     }
   }
 
@@ -172,7 +175,7 @@ class _AdminUserScreenState extends ConsumerState<AdminUserScreen> {
               ar: 'تعذّر تحميل الحساب',
               en: 'Could not load account',
             ),
-            message: error.toString(),
+            message: loadFailedText(context),
             actionLabel: Tr.of(context, ar: 'إعادة المحاولة', en: 'Retry'),
             onAction: () => ref.invalidate(adminUserDetailProvider(widget.uid)),
           ),

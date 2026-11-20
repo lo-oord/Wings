@@ -326,6 +326,27 @@ class NotificationService {
     );
   }
 
+  /// An official notice (reply thread, report update, Owner message) shown in
+  /// the system tray.
+  Future<void> showOfficial({
+    required int id,
+    required String title,
+    required String body,
+    required String payload,
+    required bool enabled,
+  }) async {
+    if (!enabled) return;
+    await _show(
+      id: id,
+      title: title,
+      body: body,
+      payload: payload,
+      channelId: replyChannelId,
+      channelName: 'الردود والتعليقات',
+      channelDescription: 'تنبيه عند الرد على تعليقاتك أو وصول رسالة من Wings',
+    );
+  }
+
   /// A short summary shown when several downloads finish in one session.
   Future<void> showDownloadSummary({
     required int id,

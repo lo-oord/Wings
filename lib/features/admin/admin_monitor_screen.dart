@@ -11,6 +11,7 @@ import '../../data/models/admin_models.dart';
 import 'admin_actions.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// Lightweight health view of the public sources the app depends on.
 ///
@@ -50,7 +51,7 @@ class _AdminMonitorScreenState extends ConsumerState<AdminMonitorScreen> {
       if (mounted) {
         setState(() {
           _running = false;
-          _error = error.toString();
+          _error = userFacingError(context, error);
         });
       }
     }
@@ -78,7 +79,7 @@ class _AdminMonitorScreenState extends ConsumerState<AdminMonitorScreen> {
           error: (error, _) => WingsEmptyState(
             icon: Icons.cloud_off_rounded,
             title: Tr.of(context, ar: 'تعذّر التحميل', en: 'Failed to load'),
-            message: error.toString(),
+            message: loadFailedText(context),
             actionLabel: Tr.of(context, ar: 'إعادة المحاولة', en: 'Retry'),
             onAction: () => ref.invalidate(monitorProvider),
           ),

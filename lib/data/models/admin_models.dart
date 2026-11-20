@@ -388,6 +388,55 @@ class OwnerMessage {
       );
 }
 
+/// A request from someone whose email or handle is blocked, asking Wings to
+/// look at the decision again.
+@immutable
+class IdentityReview {
+  const IdentityReview({
+    required this.id,
+    this.type = 'email',
+    this.value = '',
+    this.reason = '',
+    this.counterpart = '',
+    this.requesterUid = '',
+    this.status = 'pending',
+    this.note = '',
+    this.createdAt,
+    this.decidedAt,
+  });
+
+  final String id;
+  final String type;
+  final String value;
+  final String reason;
+
+  /// The other half of the identity: the handle typed with a blocked email, or
+  /// the email typed with a blocked handle.
+  final String counterpart;
+  final String requesterUid;
+  final String status;
+  final String note;
+  final DateTime? createdAt;
+  final DateTime? decidedAt;
+
+  bool get isEmail => type == 'email';
+  bool get isPending => status == 'pending';
+
+  factory IdentityReview.fromDoc(String id, Map<String, dynamic> data) =>
+      IdentityReview(
+        id: id,
+        type: data['type'] as String? ?? 'email',
+        value: data['value'] as String? ?? '',
+        reason: data['reason'] as String? ?? '',
+        counterpart: data['counterpart'] as String? ?? '',
+        requesterUid: data['requesterUid'] as String? ?? '',
+        status: data['status'] as String? ?? 'pending',
+        note: data['note'] as String? ?? '',
+        createdAt: _date(data['createdAt']),
+        decidedAt: _date(data['decidedAt']),
+      );
+}
+
 /// A report from a member, handled in the Owner inbox.
 @immutable
 class AdminReport {

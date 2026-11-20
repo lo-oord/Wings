@@ -15,6 +15,7 @@ import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/auth/auth_error_text.dart';
 import 'auth_screens.dart' show kAgeGroups, kCountries;
+import 'blocked_identity_sheet.dart';
 import 'username_field.dart';
 
 /// Shown right after a Google sign-up, and again on any later start where the
@@ -86,6 +87,8 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       );
       return;
     }
+    if (await _blockedUsernameFound()) return;
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _loading = true;
@@ -113,10 +116,33 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       context.go(RoutePaths.latest);
     } on Object catch (error) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = authErrorText(context, error);
-      });
+      setState(() => _loading = false);
+      if (await _blockedUsernameFound()) return;
+      if (!mounted) return;
+      setState(() => _error = authErrorText(context, error));
+    }
+  }
+
+  /// A handle can be blocked before this screen is reached (a Google account,
+  /// for example); explain it and offer the review request.
+  Future<bool> _blockedUsernameFound() async {
+    final username = _username.text.trim();
+    if (username.isEmpty) return false;
+    try {
+      final blocked = await ref
+          .read(identityRepositoryProvider)
+          .usernameBlocked(username);
+      if (!blocked || !mounted) return blocked;
+      await showBlockedIdentitySheet(
+        context,
+        ref,
+        email: false,
+        value: username,
+        counterpart: ref.read(authProvider)?.email ?? '',
+      );
+      return true;
+    } on Object {
+      return false;
     }
   }
 
@@ -124,7 +150,9 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   /// gate; the reader can finish the same account later, from any device.
   Future<void> _signOut() async {
     await ref.read(authProvider.notifier).signOut();
-    if (mounted) context.go(RoutePaths.welcome);
+    if (mounted) {
+      context.go(RoutePaths.welcome);
+    }
   }
 
   @override

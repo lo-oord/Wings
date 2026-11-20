@@ -33,6 +33,10 @@ class DownloadService {
   bool _pumping = false;
   bool notificationsEnabled = true;
 
+  /// Android 13+ drops every notification until the app asks once; the prompt
+  /// is raised when a transfer starts, not during launch.
+  bool _askedForNotifications = false;
+
   Stream<List<DownloadTask>> get stream => _controller.stream;
 
   List<DownloadTask> get tasks {
@@ -68,6 +72,10 @@ class DownloadService {
     _tasks[task.id] = task;
     await _persist(task);
     _emit();
+    if (notificationsEnabled && !_askedForNotifications) {
+      _askedForNotifications = true;
+      unawaited(_notifications.requestPermission());
+    }
     unawaited(_pump());
   }
 

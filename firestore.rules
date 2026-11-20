@@ -703,8 +703,10 @@ service cloud.firestore {
             )
           );
 
+        // The author cleans up their own comment; staff may remove any
+        // comment, which is the Owner's comment tool.
         allow delete: if signedIn()
-          && resource.data.authorUid == request.auth.uid;
+          && (resource.data.authorUid == request.auth.uid || isStaff());
 
         match /replies/{replyId} {
           allow read: if signedIn();
@@ -735,7 +737,8 @@ service cloud.firestore {
           // deletion request fail instead of returning false.
           allow delete: if signedIn()
             && (
-              resource.data.authorUid == request.auth.uid
+              isStaff()
+              || resource.data.authorUid == request.auth.uid
               || (
                 exists(/databases/$(database)/documents/episodes/$(episodeId)/comments/$(commentId))
                 && get(/databases/$(database)/documents/episodes/$(episodeId)/comments/$(commentId)).data.authorUid == request.auth.uid
@@ -817,6 +820,35 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
       allow write: if isAdminRole();
+    }
+
+    // A person whose email or handle is blocked can send one review request
+    // without an account. They may never read the queue back, and staff decide
+    // the request (approving also deletes the block document above).
+    match /identityReviews/{reviewId} {
+      allow create: if request.resource.data.keys().hasOnly([
+          'type', 'value', 'reason', 'counterpart', 'requesterUid', 'status', 'createdAt'
+        ])
+        && request.resource.data.type in ['email', 'username']
+        && request.resource.data.value is string
+        && request.resource.data.value.size() >= 3
+        && request.resource.data.value.size() <= 160
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() >= 5
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.counterpart is string
+        && request.resource.data.counterpart.size() <= 160
+        && request.resource.data.requesterUid is string
+        && request.resource.data.requesterUid.size() <= 128
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt is timestamp;
+      allow read: if isStaff();
+      allow update: if isAdminRole()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'note', 'decidedBy', 'decidedAt'
+        ])
+        && request.resource.data.status in ['approved', 'rejected'];
+      allow delete: if isAdminRole();
     }
 
     // ------------------------------------------------- trusted staff roles

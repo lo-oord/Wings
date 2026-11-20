@@ -12,7 +12,9 @@ import '../../app/theme/context_ext.dart';
 import '../../core/services/app_feedback.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../data/models/admin_models.dart' show StaffRole;
 import '../../data/models/social.dart';
+import '../admin/admin_providers.dart';
 import '../profile/avatar_view.dart';
 import '../stickers/comment_draft.dart';
 import '../stickers/sticker_view.dart';
@@ -53,9 +55,14 @@ class _CommentTileState extends ConsumerState<CommentTile> {
     final palette = context.palette;
     final comment = widget.comment;
     final mine = ref.watch(authProvider)?.id == comment.authorUid;
+    // Staff can remove any comment, which is how the Owner moderates a thread
+    // without opening the console.
+    final staff =
+        (ref.watch(staffRoleProvider).value ?? StaffRole.user) !=
+        StaffRole.user;
 
     return InkWell(
-      onLongPress: () => _showActions(mine),
+      onLongPress: () => _showActions(mine, staff: staff),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           Space.lg,
@@ -324,7 +331,7 @@ class _CommentTileState extends ConsumerState<CommentTile> {
     }
   }
 
-  Future<void> _showActions(bool mine) async {
+  Future<void> _showActions(bool mine, {bool staff = false}) async {
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -343,7 +350,7 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                 title: Text(Tr.of(context, ar: 'تعديل', en: 'Edit')),
                 onTap: () => Navigator.of(sheetContext).pop('edit'),
               ),
-            if (mine)
+            if (mine || staff)
               ListTile(
                 leading: const Icon(Icons.delete_outline_rounded),
                 title: Text(Tr.of(context, ar: 'حذف', en: 'Delete')),

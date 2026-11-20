@@ -12,6 +12,7 @@ import '../../data/username/username_rules.dart';
 import 'admin_actions.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// Email and username policies. A block survives the deletion of the account
 /// that owned the address or the handle.
@@ -66,7 +67,9 @@ class _AdminPoliciesScreenState extends ConsumerState<AdminPoliciesScreen> {
         context.showSnack(Tr.of(context, ar: 'تم الحظر.', en: 'Blocked.'));
       }
     } on Object catch (error) {
-      if (mounted) context.showSnack(error.toString(), isError: true);
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
     }
   }
 
@@ -105,7 +108,9 @@ class _AdminPoliciesScreenState extends ConsumerState<AdminPoliciesScreen> {
         context.showSnack(Tr.of(context, ar: 'تم الحظر.', en: 'Blocked.'));
       }
     } on Object catch (error) {
-      if (mounted) context.showSnack(error.toString(), isError: true);
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
     }
   }
 
@@ -141,7 +146,9 @@ class _AdminPoliciesScreenState extends ConsumerState<AdminPoliciesScreen> {
         );
       }
     } on Object catch (error) {
-      if (mounted) context.showSnack(error.toString(), isError: true);
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
     }
   }
 
@@ -266,7 +273,7 @@ class _BlockList extends StatelessWidget {
       error: (error, _) => WingsEmptyState(
         icon: Icons.cloud_off_rounded,
         title: Tr.of(context, ar: 'تعذّر التحميل', en: 'Failed to load'),
-        message: error.toString(),
+        message: loadFailedText(context),
       ),
       data: (items) {
         final filtered = query.isEmpty

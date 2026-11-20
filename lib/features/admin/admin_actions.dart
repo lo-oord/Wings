@@ -10,6 +10,7 @@ import '../../data/models/admin_models.dart';
 import '../../data/repositories/admin_repository.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// The signed-in administrator, copied onto every action for the audit log.
 class AdminActor {
@@ -81,18 +82,12 @@ Future<void> _report(
 ) async {
   try {
     await future;
-    if (context.mounted) context.showSnack(success);
+    if (context.mounted) {
+      context.showSnack(success);
+    }
   } on Object catch (error) {
     if (context.mounted) {
-      context.showSnack(
-        Tr.of(
-              context,
-              ar: 'تعذّر تنفيذ الإجراء. ',
-              en: 'The action could not be completed. ',
-            ) +
-            error.toString(),
-        isError: true,
-      );
+      context.showSnack(userFacingError(context, error), isError: true);
     }
   }
 }
@@ -1171,20 +1166,18 @@ Future<void> deleteUserAccount(
       ),
     );
     if (!context.mounted) return;
+    // Never name the internal records that were skipped: the owner only needs
+    // to know that a few items are still pending.
     result = blocked.isEmpty
         ? ''
         : Tr.of(
             context,
-            ar: ' (تعذّر حذف: ${blocked.join(', ')})',
-            en: ' (not removed: ${blocked.join(', ')})',
+            ar: ' (بقيت بعض العناصر المرتبطة، ويمكن إعادة المحاولة لاحقًا)',
+            en: ' (some related items remain; retry later)',
           );
   } on Object catch (error) {
     if (context.mounted) {
-      context.showSnack(
-        Tr.of(context, ar: 'تعذّر الحذف. ', en: 'Deletion failed. ') +
-            error.toString(),
-        isError: true,
-      );
+      context.showSnack(userFacingError(context, error), isError: true);
     }
     return;
   }

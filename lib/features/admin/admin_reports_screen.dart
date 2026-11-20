@@ -13,6 +13,7 @@ import '../../data/models/admin_models.dart';
 import 'admin_actions.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// Owner inbox for reports and appeals.
 class AdminReportsScreen extends ConsumerStatefulWidget {
@@ -81,7 +82,9 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
         context.showSnack(Tr.of(context, ar: 'تم التحديث.', en: 'Updated.'));
       }
     } on Object catch (error) {
-      if (mounted) context.showSnack(error.toString(), isError: true);
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
     }
   }
 
@@ -125,8 +128,56 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
         );
       }
     } on Object catch (error) {
-      if (mounted) context.showSnack(error.toString(), isError: true);
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
     }
+  }
+
+  Future<void> _decideReview(IdentityReview review) async {
+    final note = await promptAdminText(
+      context,
+      title: Tr.of(
+        context,
+        ar: 'قرار طلب فك الحظر',
+        en: 'Block review decision',
+      ),
+      hint: Tr.of(
+        context,
+        ar: 'ملاحظة للفريق (اختياري)',
+        en: 'Team note (optional)',
+      ),
+      required: false,
+    );
+    if (note == null || !mounted) return;
+    final approve = await WingsDialog.confirm(
+      context,
+      title: Tr.of(context, ar: 'رفع الحظر؟', en: 'Lift the block?'),
+      message: Tr.of(
+        context,
+        ar: 'اختر «رفع الحظر» ليصبح بإمكان صاحب هذا الهوية التسجيل، أو «إبقاء» للاحتفاظ به.',
+        en: 'Choose Lift to let this identity register, or Keep to leave the block in place.',
+      ),
+      confirmLabel: Tr.of(context, ar: 'رفع الحظر', en: 'Lift block'),
+    );
+    if (!mounted) return;
+    final actor = AdminActor.of(ref);
+    final ok = await ref
+        .read(adminReportsProvider.notifier)
+        .decideReview(
+          review,
+          approve: approve,
+          note: note,
+          actorUid: actor.uid,
+          actorName: actor.name,
+        );
+    if (!mounted) return;
+    context.showSnack(
+      ok
+          ? Tr.of(context, ar: 'تم تسجيل القرار.', en: 'Decision saved.')
+          : loadFailedText(context),
+      isError: !ok,
+    );
   }
 
   @override
@@ -135,7 +186,7 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
     final controller = ref.read(adminReportsProvider.notifier);
     return AdminGuard(
       child: DefaultTabController(
-        length: 2,
+        length: 3,
         child: Scaffold(
           appBar: WingsAppBar(
             showBack: true,
@@ -159,6 +210,13 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                 ),
                 Tab(
                   text: Tr.of(context, ar: 'المراجعات', en: 'Appeals'),
+                ),
+                Tab(
+                  text: Tr.of(
+                    context,
+                    ar: 'طلبات فك الحظر',
+                    en: 'Block reviews',
+                  ),
                 ),
               ],
             ),
@@ -209,7 +267,7 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                               ar: 'تعذّر التحميل',
                               en: 'Failed',
                             ),
-                            message: state.error,
+                            message: loadFailedText(context),
                             actionLabel: Tr.of(
                               context,
                               ar: 'إعادة المحاولة',
@@ -363,6 +421,108 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                                   ),
                               ],
                             ),
+                          ],
+                        );
+                      },
+                    ),
+              state.reviews.isEmpty
+                  ? WingsEmptyState(
+                      icon: Icons.shield_outlined,
+                      title: Tr.of(
+                        context,
+                        ar: 'لا توجد طلبات فك حظر',
+                        en: 'No block reviews',
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(bottom: Space.xxxl),
+                      itemCount: state.reviews.length,
+                      itemBuilder: (context, index) {
+                        final review = state.reviews[index];
+                        return AdminCard(
+                          title: review.isEmail
+                              ? Tr.of(
+                                  context,
+                                  ar: 'بريد محظور',
+                                  en: 'Blocked email',
+                                )
+                              : Tr.of(
+                                  context,
+                                  ar: 'اسم مستخدم محظور',
+                                  en: 'Blocked username',
+                                ),
+                          trailing: Text(
+                            review.status,
+                            style: context.text.labelSmall?.copyWith(
+                              color: review.isPending
+                                  ? context.palette.textPrimary
+                                  : context.palette.textMuted,
+                            ),
+                          ),
+                          children: <Widget>[
+                            Text(
+                              review.value,
+                              textDirection: TextDirection.ltr,
+                              style: context.text.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (review.counterpart.isNotEmpty)
+                              Text(
+                                '${Tr.of(context, ar: 'الطرف الآخر', en: 'Other identity')}: ${review.counterpart}',
+                                textDirection: TextDirection.ltr,
+                                style: context.text.labelSmall?.copyWith(
+                                  color: context.palette.textMuted,
+                                ),
+                              ),
+                            const SizedBox(height: Space.xs),
+                            Text(review.reason, style: context.text.bodySmall),
+                            Text(
+                              adminDate(review.createdAt),
+                              style: context.text.labelSmall?.copyWith(
+                                color: context.palette.textMuted,
+                              ),
+                            ),
+                            if (review.note.isNotEmpty)
+                              Text(
+                                '${Tr.of(context, ar: 'ملاحظة', en: 'Note')}: ${review.note}',
+                                style: context.text.labelSmall?.copyWith(
+                                  color: context.palette.textSecondary,
+                                ),
+                              ),
+                            if (review.isPending) ...<Widget>[
+                              const SizedBox(height: Space.xs),
+                              Wrap(
+                                spacing: Space.xs,
+                                children: <Widget>[
+                                  TextButton(
+                                    onPressed: () => _decideReview(review),
+                                    child: Text(
+                                      Tr.of(
+                                        context,
+                                        ar: 'مراجعة الطلب',
+                                        en: 'Review request',
+                                      ),
+                                    ),
+                                  ),
+                                  if (review.requesterUid.isNotEmpty)
+                                    TextButton(
+                                      onPressed: () => context.push(
+                                        RoutePaths.adminUser(
+                                          review.requesterUid,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        Tr.of(
+                                          context,
+                                          ar: 'الحساب',
+                                          en: 'Account',
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
                           ],
                         );
                       },

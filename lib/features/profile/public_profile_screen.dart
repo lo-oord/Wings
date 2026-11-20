@@ -1,16 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
 import '../../app/providers.dart';
+import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../data/models/admin_models.dart' show StaffRole;
 import '../../data/models/user_profile.dart';
+import '../admin/admin_providers.dart';
 import '../social/username_text.dart';
 import 'avatar_view.dart';
+
+/// Staff may open a private profile: the private account document is readable
+/// for them, and the Owner's access is recorded by the admin screen.
+final _staffProfileProvider = FutureProvider.autoDispose
+    .family<UserProfile?, String>((ref, uid) async {
+      final role = await ref.watch(staffRoleProvider.future);
+      if (role == StaffRole.user) return null;
+      return ref.watch(userRepositoryProvider).fetch(uid);
+    });
 
 /// Profile of another user.
 ///
@@ -27,6 +40,10 @@ class PublicProfileScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final palette = context.palette;
     final profile = ref.watch(publicProfileProvider(uid));
+    final isStaff =
+        (ref.watch(staffRoleProvider).value ?? StaffRole.user) !=
+        StaffRole.user;
+    final revealed = ref.watch(_staffProfileProvider(uid)).value;
 
     return Scaffold(
       appBar: WingsAppBar(showBack: true, title: Text(l10n.profileTitle)),
@@ -45,20 +62,32 @@ class PublicProfileScreen extends ConsumerWidget {
             en: 'Check your connection and try again.',
           ),
         ),
-        data: (value) => value == null
+        data: (value) =>
+            value == null ||
+                (value.profileHidden && isStaff && revealed == null)
             ? _Notice(
                 icon: Icons.person_off_outlined,
-                title: Tr.of(
-                  context,
-                  ar: 'الحساب غير متاح',
-                  en: 'Account unavailable',
-                ),
-                body: Tr.of(
-                  context,
-                  ar: 'هذا الملف لم يعد موجودًا أو أنه خاص.',
-                  en: 'This profile no longer exists or is private.',
-                ),
+                title: value != null && isStaff
+                    ? Tr.of(
+                        context,
+                        ar: 'جارٍ عرض الملف',
+                        en: 'Opening the profile',
+                      )
+                    : Tr.of(
+                        context,
+                        ar: 'الحساب غير متاح',
+                        en: 'Account unavailable',
+                      ),
+                body: value != null && isStaff
+                    ? Tr.of(context, ar: 'لحظة…', en: 'One moment…')
+                    : Tr.of(
+                        context,
+                        ar: 'هذا الملف لم يعد موجودًا أو أنه خاص.',
+                        en: 'This profile no longer exists or is private.',
+                      ),
               )
+            : value.profileHidden && isStaff
+            ? _Body(profile: revealed!, staffView: true)
             : _Body(profile: value),
       ),
       backgroundColor: palette.background,
@@ -67,9 +96,13 @@ class PublicProfileScreen extends ConsumerWidget {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.profile});
+  const _Body({required this.profile, this.staffView = false});
 
   final UserProfile profile;
+
+  /// Staff opened a private profile; the content is shown with a clear banner
+  /// instead of the lock card.
+  final bool staffView;
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +111,30 @@ class _Body extends StatelessWidget {
       children: <Widget>[
         _Hero(profile: profile),
         const SizedBox(height: Space.xl),
-        if (profile.profileHidden)
+        if (staffView) ...<Widget>[
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: Space.lg),
+            padding: const EdgeInsets.all(Space.md),
+            decoration: BoxDecoration(
+              color: context.palette.surfaceAlt,
+              borderRadius: BorderRadius.circular(Radii.sm),
+              border: Border.all(color: context.palette.border),
+            ),
+            child: Text(
+              Tr.of(
+                context,
+                ar: 'ملف خاص — تعرضه الآن بصلاحية الإدارة.',
+                en: 'Private profile — you are viewing it with staff access.',
+              ),
+              style: context.text.labelSmall?.copyWith(
+                color: context.palette.textSecondary,
+                height: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: Space.lg),
+        ],
+        if (profile.profileHidden && !staffView)
           const _PrivateCard()
         else ...<Widget>[
           if (profile.bio.isNotEmpty) ...<Widget>[
@@ -356,30 +412,38 @@ class _FavoritesSection extends StatelessWidget {
                 const SizedBox(width: Space.md),
             itemBuilder: (context, index) {
               final item = favorites[index];
+              // A favourite opens its title, so the section is a real shortcut
+              // into the work rather than a picture.
               return SizedBox(
                 width: 112,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(Radii.md),
-                      child: WingsImage(
-                        url: item.imageUrl,
-                        width: 112,
-                        height: 152,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(Radii.md),
+                  onTap: item.animeId.isEmpty
+                      ? null
+                      : () => context.push(RoutePaths.anime(item.animeId)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(Radii.md),
+                        child: WingsImage(
+                          url: item.imageUrl,
+                          width: 112,
+                          height: 152,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: Space.sm),
-                    Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.text.labelSmall?.copyWith(
-                        color: palette.textSecondary,
-                        height: 1.4,
+                      const SizedBox(height: Space.sm),
+                      Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.labelSmall?.copyWith(
+                          color: palette.textSecondary,
+                          height: 1.4,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },

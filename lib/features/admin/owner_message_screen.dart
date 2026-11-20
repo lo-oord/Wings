@@ -13,6 +13,7 @@ import '../../data/models/admin_models.dart';
 import '../profile/avatar_view.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// The signature printed at the bottom of every Owner message.
 const String kOwnerSignatureAr = 'مع تحياتي\nمطور Wings';
@@ -246,7 +247,9 @@ class _OwnerMessageScreenState extends ConsumerState<OwnerMessageScreen> {
   Future<void> _load() async {
     final uid = ref.read(authProvider)?.id;
     if (uid == null) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
       return;
     }
     try {
@@ -270,7 +273,7 @@ class _OwnerMessageScreenState extends ConsumerState<OwnerMessageScreen> {
     } on Object catch (error) {
       if (mounted) {
         setState(() {
-          _error = error.toString();
+          _error = userFacingError(context, error);
           _loading = false;
         });
       }
@@ -330,7 +333,7 @@ class OwnerInboxScreen extends ConsumerWidget {
         error: (error, _) => WingsEmptyState(
           icon: Icons.cloud_off_rounded,
           title: Tr.of(context, ar: 'تعذّر التحميل', en: 'Failed to load'),
-          message: error.toString(),
+          message: loadFailedText(context),
         ),
         data: (items) {
           if (items.isEmpty) {

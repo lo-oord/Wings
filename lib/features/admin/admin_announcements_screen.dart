@@ -11,6 +11,7 @@ import '../../data/models/admin_models.dart';
 import 'admin_actions.dart';
 import 'admin_providers.dart';
 import 'admin_widgets.dart';
+import '../../core/errors/user_facing_error.dart';
 
 /// Global announcements: composed, previewed and published from here.
 class AdminAnnouncementsScreen extends ConsumerWidget {
@@ -52,7 +53,9 @@ class AdminAnnouncementsScreen extends ConsumerWidget {
         context.showSnack(Tr.of(context, ar: 'تم النشر.', en: 'Published.'));
       }
     } on Object catch (error) {
-      if (context.mounted) context.showSnack(error.toString(), isError: true);
+      if (context.mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
     }
   }
 
@@ -79,7 +82,7 @@ class AdminAnnouncementsScreen extends ConsumerWidget {
           error: (error, _) => WingsEmptyState(
             icon: Icons.cloud_off_rounded,
             title: Tr.of(context, ar: 'تعذّر التحميل', en: 'Failed to load'),
-            message: error.toString(),
+            message: loadFailedText(context),
           ),
           data: (data) {
             if (data.items.isEmpty) {
@@ -191,7 +194,7 @@ class AdminAnnouncementsScreen extends ConsumerWidget {
                               } on Object catch (error) {
                                 if (context.mounted) {
                                   context.showSnack(
-                                    error.toString(),
+                                    userFacingError(context, error),
                                     isError: true,
                                   );
                                 }
