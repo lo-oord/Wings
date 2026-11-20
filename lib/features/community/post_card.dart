@@ -173,11 +173,38 @@ class _PostCardState extends ConsumerState<PostCard> {
               ],
             ),
           ),
+          if (post.category.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.md,
+                Space.sm,
+                Space.md,
+                0,
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.sm,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: palette.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(Radii.pill),
+                ),
+                child: Text(
+                  post.category,
+                  style: context.text.labelSmall?.copyWith(
+                    color: palette.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ),
           if (post.text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 Space.md,
-                Space.xs,
+                Space.sm,
                 Space.md,
                 0,
               ),
@@ -185,7 +212,45 @@ class _PostCardState extends ConsumerState<PostCard> {
                 text: post.text,
                 mentions: post.mentions,
                 animeRefs: post.animeRefs,
-                style: context.text.bodyMedium?.copyWith(height: 1.65),
+                style: context.text.bodyMedium?.copyWith(height: 1.7),
+              ),
+            ),
+          if (post.animeRefs.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.md,
+                Space.sm,
+                Space.md,
+                0,
+              ),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: <Widget>[
+                  for (final anime in post.animeRefs.take(3))
+                    InkWell(
+                      onTap: () => context.push(RoutePaths.anime(anime.id)),
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Space.sm,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: palette.surfaceAlt,
+                          borderRadius: BorderRadius.circular(Radii.pill),
+                          border: Border.all(color: palette.border),
+                        ),
+                        child: Text(
+                          '#${anime.title}',
+                          style: context.text.labelSmall?.copyWith(
+                            color: palette.textSecondary,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           if (post.hasVideo)
@@ -225,19 +290,24 @@ class _PostCardState extends ConsumerState<PostCard> {
                   color: liked ? palette.danger : palette.textSecondary,
                   onTap: () => _toggleLike(liked, count),
                 ),
+                if (post.allowComments)
+                  _ActionButton(
+                    icon: Icons.mode_comment_outlined,
+                    label: formatCount(post.commentCount),
+                    onTap: () =>
+                        context.push(RoutePaths.communityPost(post.id)),
+                  ),
                 _ActionButton(
-                  icon: Icons.mode_comment_outlined,
-                  label: formatCount(post.commentCount),
-                  onTap: () => context.push(RoutePaths.communityPost(post.id)),
+                  icon: Icons.ios_share_rounded,
+                  label: '',
+                  onTap: _share,
                 ),
                 const Spacer(),
                 _ActionButton(
                   icon: saved
                       ? Icons.bookmark_rounded
                       : Icons.bookmark_border_rounded,
-                  label: saved
-                      ? Tr.of(context, ar: 'محفوظ', en: 'Saved')
-                      : Tr.of(context, ar: 'حفظ', en: 'Save'),
+                  label: '',
                   color: saved ? palette.primary : palette.textSecondary,
                   onTap: () => _toggleSaved(saved),
                 ),
@@ -262,6 +332,49 @@ class _PostCardState extends ConsumerState<PostCard> {
           color: palette.border.withValues(alpha: 0.55),
         ),
       ],
+    );
+  }
+
+  Future<void> _share() async {
+    final link = postShareLink(post.id);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.link_rounded),
+              title: Text(Tr.of(context, ar: 'نسخ الرابط', en: 'Copy link')),
+              onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final navigator = Navigator.of(context);
+                final message = Tr.of(
+                  context,
+                  ar: 'تم نسخ الرابط.',
+                  en: 'Link copied.',
+                );
+                await Clipboard.setData(ClipboardData(text: link));
+                navigator.pop();
+                messenger.showSnackBar(SnackBar(content: Text(message)));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.ios_share_rounded),
+              title: Text(
+                Tr.of(context, ar: 'مشاركة عبر التطبيقات', en: 'Share to apps'),
+              ),
+              onTap: () async {
+                Navigator.of(context).pop();
+                await ref
+                    .read(shareServiceProvider)
+                    .shareText(link, subject: post.authorName);
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -694,6 +807,7 @@ class _PostVideoState extends ConsumerState<_PostVideo> {
   String? _url;
   String? _poster;
   bool _failed = false;
+  bool _playing = false;
 
   @override
   void initState() {
@@ -776,13 +890,95 @@ class _PostVideoState extends ConsumerState<_PostVideo> {
         ),
       );
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(Radii.sm),
-      child: CommunityVideo(
-        url: _url,
-        posterUrl: _poster,
-        aspectRatio: widget.post.videoAspectRatio ?? 16 / 9,
-        showChrome: true,
+    // Nothing in the feed starts playing on its own. The cover stays visible
+    // until the member taps it, so scrolling a feed never costs a decoder and
+    // never plays sound unexpectedly. Full-screen autoplay belongs to Reels.
+    final ratio = widget.post.videoAspectRatio ?? 16 / 9;
+    if (_playing) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(Radii.sm),
+        child: CommunityVideo(
+          url: _url,
+          posterUrl: _poster,
+          aspectRatio: ratio,
+          showChrome: true,
+        ),
+      );
+    }
+    final duration = widget.post.videoDurationMs;
+    final label = duration <= 0
+        ? ''
+        : '${duration ~/ 60000}:'
+              '${((duration ~/ 1000) % 60).toString().padLeft(2, '0')}';
+    return GestureDetector(
+      onTap: () => setState(() => _playing = true),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(Radii.sm),
+        child: AspectRatio(
+          aspectRatio: ratio,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              if ((_poster ?? '').isNotEmpty)
+                Image.network(
+                  _poster!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) =>
+                      const ColoredBox(color: Colors.black),
+                )
+              else
+                const ColoredBox(color: Colors.black),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[Colors.transparent, Colors.black54],
+                  ),
+                ),
+              ),
+              const Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                ),
+              ),
+              if (label.isNotEmpty)
+                PositionedDirectional(
+                  end: 8,
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

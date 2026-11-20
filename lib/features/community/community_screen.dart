@@ -33,6 +33,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final uid = ref.watch(authProvider)?.id;
+    final online = ref.watch(onlineProvider).value;
 
     return Scaffold(
       backgroundColor: palette.background,
@@ -46,6 +47,13 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
             icon: Icons.movie_filter_outlined,
             tooltip: Tr.of(context, ar: 'ريلز', en: 'Reels'),
             onPressed: () => context.push(RoutePaths.communityReels),
+          ),
+          WingsIconButton(
+            icon: Icons.refresh_rounded,
+            tooltip: Tr.of(context, ar: 'تحديث', en: 'Refresh'),
+            onPressed: () => ref
+                .read(communityFeedProvider(_tab).notifier)
+                .load(refresh: true),
           ),
           const SizedBox(width: Space.xs),
           WingsIconButton(
@@ -82,67 +90,124 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
           ),
         ),
       ),
-      body: Column(
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, 0),
-            child: Row(
+      body: uid == null
+          ? const _SignedOutCommunity()
+          : Column(
               children: <Widget>[
-                Expanded(
-                  child: _TabChip(
-                    label: Tr.of(context, ar: 'لك', en: 'For you'),
-                    icon: Icons.auto_awesome_rounded,
-                    selected: _tab == CommunityTab.forYou,
-                    onTap: () => setState(() => _tab = CommunityTab.forYou),
+                if (online == false)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.fromLTRB(
+                      Space.lg,
+                      Space.xs,
+                      Space.lg,
+                      0,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Space.sm,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: palette.surfaceAlt,
+                      borderRadius: BorderRadius.circular(Radii.sm),
+                      border: Border.all(color: palette.border),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(
+                          Icons.wifi_off_rounded,
+                          size: 14,
+                          color: palette.textMuted,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            Tr.of(
+                              context,
+                              ar: 'لا يوجد اتصال. تُعرض المنشورات المحفوظة، وسيعود التحديث تلقائيًا.',
+                              en: 'No connection. Cached posts are shown and refresh resumes automatically.',
+                            ),
+                            style: context.text.labelSmall?.copyWith(
+                              color: palette.textSecondary,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.lg,
+                    Space.xs,
+                    Space.lg,
+                    0,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _TabChip(
+                          label: Tr.of(context, ar: 'لك', en: 'For you'),
+                          icon: Icons.auto_awesome_rounded,
+                          selected: _tab == CommunityTab.forYou,
+                          onTap: () =>
+                              setState(() => _tab = CommunityTab.forYou),
+                        ),
+                      ),
+                      const SizedBox(width: Space.xs),
+                      Expanded(
+                        child: _TabChip(
+                          label: Tr.of(context, ar: 'الأحدث', en: 'Latest'),
+                          icon: Icons.bolt_rounded,
+                          selected: _tab == CommunityTab.latest,
+                          onTap: () =>
+                              setState(() => _tab = CommunityTab.latest),
+                        ),
+                      ),
+                      const SizedBox(width: Space.xs),
+                      Expanded(
+                        child: _TabChip(
+                          label: Tr.of(context, ar: 'أتابعهم', en: 'Following'),
+                          icon: Icons.people_alt_outlined,
+                          selected: _tab == CommunityTab.following,
+                          onTap: () =>
+                              setState(() => _tab = CommunityTab.following),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: Space.xs),
-                Expanded(
-                  child: _TabChip(
-                    label: Tr.of(context, ar: 'الأحدث', en: 'Latest'),
-                    icon: Icons.bolt_rounded,
-                    selected: _tab == CommunityTab.latest,
-                    onTap: () => setState(() => _tab = CommunityTab.latest),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.lg,
+                    Space.xs,
+                    Space.lg,
+                    0,
+                  ),
+                  child: Text(
+                    _tab == CommunityTab.forYou
+                        ? Tr.of(
+                            context,
+                            ar: 'ترتيب شخصي حسب اهتماماتك',
+                            en: 'Personal order based on your interests',
+                          )
+                        : _tab == CommunityTab.latest
+                        ? Tr.of(context, ar: 'الأحدث أولًا', en: 'Newest first')
+                        : Tr.of(
+                            context,
+                            ar: 'منشورات من تتابعهم',
+                            en: 'Posts from accounts you follow',
+                          ),
+                    style: context.text.labelSmall?.copyWith(
+                      color: palette.textMuted,
+                      fontSize: 10,
+                    ),
                   ),
                 ),
-                const SizedBox(width: Space.xs),
-                Expanded(
-                  child: _TabChip(
-                    label: Tr.of(context, ar: 'أتابعهم', en: 'Following'),
-                    icon: Icons.people_alt_outlined,
-                    selected: _tab == CommunityTab.following,
-                    onTap: () => setState(() => _tab = CommunityTab.following),
-                  ),
-                ),
+                const SizedBox(height: Space.sm),
+                Expanded(child: _Feed(tab: _tab)),
               ],
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, 0),
-            child: Text(
-              _tab == CommunityTab.forYou
-                  ? Tr.of(
-                      context,
-                      ar: 'ترتيب شخصي حسب اهتماماتك',
-                      en: 'Personal order based on your interests',
-                    )
-                  : _tab == CommunityTab.latest
-                  ? Tr.of(context, ar: 'الأحدث أولًا', en: 'Newest first')
-                  : Tr.of(
-                      context,
-                      ar: 'منشورات من تتابعهم',
-                      en: 'Posts from accounts you follow',
-                    ),
-              style: context.text.labelSmall?.copyWith(
-                color: palette.textMuted,
-                fontSize: 10,
-              ),
-            ),
-          ),
-          const SizedBox(height: Space.sm),
-          Expanded(child: _Feed(tab: _tab)),
-        ],
-      ),
       bottomNavigationBar: null,
     );
   }
@@ -166,6 +231,83 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
     ref
         .read(communityFeedProvider(CommunityTab.latest).notifier)
         .prepend(published);
+  }
+}
+
+class _SignedOutCommunity extends StatelessWidget {
+  const _SignedOutCommunity();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(Space.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(Space.lg),
+              decoration: BoxDecoration(
+                color: palette.surfaceAlt,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.groups_2_outlined,
+                size: 36,
+                color: palette.primary,
+              ),
+            ),
+            const SizedBox(height: Space.lg),
+            Text(
+              Tr.of(
+                context,
+                ar: 'مجتمع Wings في انتظارك',
+                en: 'The Wings community is waiting',
+              ),
+              textAlign: TextAlign.center,
+              style: context.text.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: Space.xs),
+            Text(
+              Tr.of(
+                context,
+                ar: 'سجّل الدخول لتشاهد المنشورات والريلز، وتتفاعل مع الأعضاء، وتنشر أول مقطع لك.',
+                en: 'Sign in to browse posts and Reels, interact with members, and publish your first clip.',
+              ),
+              textAlign: TextAlign.center,
+              style: context.text.bodySmall?.copyWith(
+                color: palette.textSecondary,
+                height: 1.7,
+              ),
+            ),
+            const SizedBox(height: Space.lg),
+            FilledButton.icon(
+              onPressed: () => showSignInPrompt(
+                context,
+                message: Tr.of(
+                  context,
+                  ar: 'سجّل الدخول لفتح المجتمع والريلز.',
+                  en: 'Sign in to open the community and Reels.',
+                ),
+              ),
+              icon: const Icon(Icons.login_rounded, size: 18),
+              label: Text(Tr.of(context, ar: 'تسجيل الدخول', en: 'Sign in')),
+            ),
+            const SizedBox(height: Space.sm),
+            TextButton.icon(
+              onPressed: () => context.push(RoutePaths.communityReels),
+              icon: const Icon(Icons.movie_filter_outlined, size: 18),
+              label: Text(
+                Tr.of(context, ar: 'استكشاف الريلز', en: 'Explore Reels'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

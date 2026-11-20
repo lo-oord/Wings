@@ -224,6 +224,7 @@ class CommunityFeedController extends Notifier<CommunityFeedState> {
   }
 
   List<Post> _visible(List<Post> items) => items
+      .where((post) => !post.isReel)
       .where((post) => !_blocked.contains(post.authorUid))
       .where((post) => !_hidden.contains(post.id))
       .toList(growable: false);
@@ -624,12 +625,13 @@ class PostsPageController extends Notifier<PostsPageState> {
   }
 
   List<Post> _visible(List<Post> items) {
+    final visible = items.where((post) => !post.isReel).toList(growable: false);
     final uid = ref.read(authProvider)?.id;
-    if (uid == null) return items;
+    if (uid == null) return visible;
     final blocked = ref.read(blockedIdsProvider(uid)).value ?? const <String>{};
     final hidden =
         ref.read(hiddenPostIdsProvider(uid)).value ?? const <String>{};
-    return items
+    return visible
         .where((post) => !blocked.contains(post.authorUid))
         .where((post) => !hidden.contains(post.id))
         .toList(growable: false);

@@ -98,6 +98,12 @@ class Post {
     this.mentions = const <MentionRef>[],
     this.animeRefs = const <AnimeRef>[],
     this.viewCount = 0,
+    this.allowComments = true,
+    this.allowDownload = true,
+    this.allowRepost = true,
+    this.category = '',
+    this.soundTitle = '',
+    this.repostedFrom = '',
   });
 
   final String id;
@@ -139,6 +145,21 @@ class Post {
   /// Unique viewers, counted from `posts/{id}/views`; not a stored field.
   final int viewCount;
 
+  /// Per-post publishing choices. The defaults are permissive so every post
+  /// written before these settings existed keeps behaving exactly as before.
+  final bool allowComments;
+  final bool allowDownload;
+  final bool allowRepost;
+
+  /// Optional topic picked in the composer (discussion, question, news…).
+  final String category;
+
+  /// Optional sound/music label shown under a Reel.
+  final String soundTitle;
+
+  /// Id of the original post when this one is a repost.
+  final String repostedFrom;
+
   bool get hasImages => imageKeys.isNotEmpty;
 
   bool get hasVideo => (videoKey ?? '').isNotEmpty;
@@ -167,6 +188,12 @@ class Post {
     List<MentionRef>? mentions,
     List<AnimeRef>? animeRefs,
     int? viewCount,
+    bool? allowComments,
+    bool? allowDownload,
+    bool? allowRepost,
+    String? category,
+    String? soundTitle,
+    String? repostedFrom,
   }) => Post(
     id: id,
     authorUid: authorUid,
@@ -190,6 +217,12 @@ class Post {
     mentions: mentions ?? this.mentions,
     animeRefs: animeRefs ?? this.animeRefs,
     viewCount: viewCount ?? this.viewCount,
+    allowComments: allowComments ?? this.allowComments,
+    allowDownload: allowDownload ?? this.allowDownload,
+    allowRepost: allowRepost ?? this.allowRepost,
+    category: category ?? this.category,
+    soundTitle: soundTitle ?? this.soundTitle,
+    repostedFrom: repostedFrom ?? this.repostedFrom,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -212,6 +245,12 @@ class Post {
     'mentions': mentions.map((item) => item.toMap()).toList(),
     'animeRefs': animeRefs.map((item) => item.toMap()).toList(),
     'animeIds': animeIds,
+    'allowComments': allowComments,
+    'allowDownload': allowDownload,
+    'allowRepost': allowRepost,
+    if (category.isNotEmpty) 'category': category,
+    if (soundTitle.isNotEmpty) 'soundTitle': soundTitle,
+    if (repostedFrom.isNotEmpty) 'repostedFrom': repostedFrom,
     'createdAt': FieldValue.serverTimestamp(),
     'updatedAt': FieldValue.serverTimestamp(),
   };
@@ -267,6 +306,12 @@ class Post {
                 .toList(growable: false)
           : const <AnimeRef>[],
       viewCount: (raw['viewCount'] as num?)?.toInt().clamp(0, 1 << 31) ?? 0,
+      allowComments: raw['allowComments'] != false,
+      allowDownload: raw['allowDownload'] != false,
+      allowRepost: raw['allowRepost'] != false,
+      category: raw['category'] as String? ?? '',
+      soundTitle: raw['soundTitle'] as String? ?? '',
+      repostedFrom: raw['repostedFrom'] as String? ?? '',
     );
   }
 }

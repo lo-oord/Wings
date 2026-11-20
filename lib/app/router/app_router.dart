@@ -20,6 +20,7 @@ import '../../features/auth/complete_profile_screen.dart';
 import '../../features/community/community_screen.dart';
 import '../../features/community/people_screen.dart';
 import '../../features/community/post_composer_screen.dart';
+import '../../features/community/reel_composer_screen.dart';
 import '../../features/community/post_detail_screen.dart';
 import '../../features/community/reels_screen.dart';
 import '../../features/community/saved_posts_screen.dart';
@@ -339,13 +340,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: RoutePaths.communityCompose,
-        pageBuilder: (context, state) => _wingsPage(
-          context,
-          state,
-          PostComposerScreen(
-            initialReel: state.uri.queryParameters['reel'] == '1',
-          ),
-        ),
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const PostComposerScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.communityReelCompose,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const ReelComposerScreen()),
       ),
       GoRoute(
         path: RoutePaths.communityReels,

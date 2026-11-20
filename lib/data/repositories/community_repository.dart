@@ -88,6 +88,25 @@ final class CommunityRepository {
   /// snapshot, so the same helper can merge the several `whereIn` queries the
   /// following feed needs.
   Future<PostPage> latest({DateTime? after}) async {
+    try {
+      var query = _posts
+          .where('kind', isEqualTo: PostKind.post.name)
+          .orderBy('createdAt', descending: true);
+      if (after != null) {
+        query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+      }
+      final snapshot = await query.limit(pageSize).get();
+      return _page(snapshot);
+    } on FirebaseException catch (error) {
+      // A project whose composite indexes have not been deployed yet still
+      // gets a working feed: the raw page is read with the automatic index and
+      // Reels are removed on the device instead of failing the whole screen.
+      if (error.code != 'failed-precondition') rethrow;
+      return _postsOnly(await _latestRaw(after: after));
+    }
+  }
+
+  Future<PostPage> _latestRaw({DateTime? after}) async {
     var query = _posts.orderBy('createdAt', descending: true);
     if (after != null) {
       query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
@@ -95,6 +114,12 @@ final class CommunityRepository {
     final snapshot = await query.limit(pageSize).get();
     return _page(snapshot);
   }
+
+  PostPage _postsOnly(PostPage page) => PostPage(
+    items: page.items.where((post) => !post.isReel).toList(growable: false),
+    cursor: page.cursor,
+    hasMore: page.hasMore,
+  );
 
   /// Posts written by the accounts [authors] follow.
   ///
@@ -135,6 +160,7 @@ final class CommunityRepository {
     return PostPage(
       items: kept
           .map((doc) => Post.fromDoc(doc.id, doc.data()))
+          .where((post) => !post.isReel)
           .toList(growable: false),
       cursor: kept.isEmpty ? null : kept.last,
       hasMore: pages.any((page) => page.docs.length == pageSize),
@@ -170,14 +196,60 @@ final class CommunityRepository {
     int limit = pageSize,
     DateTime? after,
   }) async {
-    var query = _posts
-        .where('authorUid', isEqualTo: uid)
-        .orderBy('createdAt', descending: true);
-    if (after != null) {
-      query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+    try {
+      var query = _posts
+          .where('authorUid', isEqualTo: uid)
+          .orderBy('createdAt', descending: true);
+      if (after != null) {
+        query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+      }
+      final snapshot = await query.limit(limit).get();
+      return _postsOnly(_page(snapshot));
+    } on FirebaseException catch (error) {
+      if (error.code != 'failed-precondition') rethrow;
+      return _scanPosts(
+        after: after,
+        limit: limit,
+        keep: (post) => post.authorUid == uid,
+      );
     }
-    final snapshot = await query.limit(limit).get();
-    return _page(snapshot);
+  }
+
+  /// Raw page scan used when a composite index is missing or still building.
+  /// It never reads more than four bounded pages at a time.
+  Future<PostPage> _scanPosts({
+    DateTime? after,
+    int limit = pageSize,
+    required bool Function(Post post) keep,
+  }) async {
+    final collected = <Post>[];
+    DateTime? cursor = after;
+    DocumentSnapshot<Map<String, dynamic>>? last;
+    var hasMore = false;
+    for (var page = 0; page < 4 && collected.length < limit; page++) {
+      var query = _posts.orderBy('createdAt', descending: true);
+      if (cursor != null) {
+        query = query.startAfter(<Object>[Timestamp.fromDate(cursor)]);
+      }
+      final snapshot = await query.limit(pageSize).get();
+      if (snapshot.docs.isEmpty) {
+        hasMore = false;
+        break;
+      }
+      last = snapshot.docs.last;
+      cursor = _createdAt(last);
+      hasMore = snapshot.docs.length == pageSize;
+      for (final doc in snapshot.docs) {
+        final post = Post.fromDoc(doc.id, doc.data());
+        if (!post.isReel && keep(post)) collected.add(post);
+      }
+      if (!hasMore) break;
+    }
+    return PostPage(
+      items: collected.take(limit).toList(growable: false),
+      cursor: last,
+      hasMore: hasMore,
+    );
   }
 
   /// Posts that mention the anime, newest first.
@@ -186,48 +258,115 @@ final class CommunityRepository {
     DateTime? after,
     int limit = pageSize,
   }) async {
-    var query = _posts
-        .where('animeIds', arrayContains: animeId)
-        .orderBy('createdAt', descending: true);
-    if (after != null) {
-      query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+    try {
+      var query = _posts
+          .where('animeIds', arrayContains: animeId)
+          .orderBy('createdAt', descending: true);
+      if (after != null) {
+        query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+      }
+      final snapshot = await query.limit(limit).get();
+      return _postsOnly(_page(snapshot));
+    } on FirebaseException catch (error) {
+      if (error.code != 'failed-precondition') rethrow;
+      return _scanPosts(
+        after: after,
+        limit: limit,
+        keep: (post) => post.animeIds.contains(animeId),
+      );
     }
-    final snapshot = await query.limit(limit).get();
-    return _page(snapshot);
   }
 
   /// Reels, newest first. The screen re-ranks the bounded page it receives on
   /// the device; no query per candidate and no whole-collection read.
   Future<PostPage> reels({DateTime? after, int limit = pageSize}) async {
-    var query = _posts
-        .where('kind', isEqualTo: PostKind.reel.name)
-        .orderBy('createdAt', descending: true);
-    if (after != null) {
-      query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+    try {
+      var query = _posts
+          .where('kind', isEqualTo: PostKind.reel.name)
+          .orderBy('createdAt', descending: true);
+      if (after != null) {
+        query = query.startAfter(<Object>[Timestamp.fromDate(after)]);
+      }
+      final snapshot = await query.limit(limit).get();
+      return _page(snapshot);
+    } on FirebaseException catch (error) {
+      if (error.code != 'failed-precondition') rethrow;
+      return _reelsFallback(after: after, limit: limit);
     }
-    final snapshot = await query.limit(limit).get();
-    return _page(snapshot);
+  }
+
+  /// Reads a few raw pages and keeps only Reels.
+  ///
+  /// This is the safety net for a project whose `kind + createdAt` composite
+  /// index is still building; it reads at most four bounded pages and keeps a
+  /// cursor so the next request never starts from the beginning.
+  Future<PostPage> _reelsFallback({
+    DateTime? after,
+    int limit = pageSize,
+  }) async {
+    final collected = <Post>[];
+    DateTime? cursor = after;
+    DocumentSnapshot<Map<String, dynamic>>? last;
+    var hasMore = false;
+    for (var page = 0; page < 4 && collected.length < limit; page++) {
+      var query = _posts.orderBy('createdAt', descending: true);
+      if (cursor != null) {
+        query = query.startAfter(<Object>[Timestamp.fromDate(cursor)]);
+      }
+      final snapshot = await query.limit(pageSize).get();
+      if (snapshot.docs.isEmpty) {
+        hasMore = false;
+        break;
+      }
+      last = snapshot.docs.last;
+      cursor = _createdAt(last);
+      hasMore = snapshot.docs.length == pageSize;
+      for (final doc in snapshot.docs) {
+        final post = Post.fromDoc(doc.id, doc.data());
+        if (post.isReel) collected.add(post);
+      }
+      if (!hasMore) break;
+    }
+    return PostPage(
+      items: collected.take(limit).toList(growable: false),
+      cursor: last,
+      hasMore: hasMore,
+    );
+  }
+
+  DateTime? _createdAt(DocumentSnapshot<Map<String, dynamic>>? doc) {
+    final value = doc?.data()?['createdAt'];
+    return value is Timestamp ? value.toDate() : null;
   }
 
   Future<CommunityCounts> counts(String uid) async {
-    try {
-      final results = await Future.wait(<Future<int>>[
+    // Each counter is independent. A refused post aggregation must not zero a
+    // perfectly readable follower count, which is what made the profile show
+    // «0 متابع» while the relationship documents were there.
+    Future<int> count(Future<AggregateQuerySnapshot> query) async {
+      try {
+        return (await query).count ?? 0;
+      } on Object {
+        return 0;
+      }
+    }
+
+    final results = await Future.wait(<Future<int>>[
+      count(
         _posts
             .where('authorUid', isEqualTo: uid)
+            .where('kind', isEqualTo: PostKind.post.name)
             .count()
-            .get()
-            .then((value) => value.count ?? 0),
-        _followers(uid).count().get().then((value) => value.count ?? 0),
-        _following(uid).count().get().then((value) => value.count ?? 0),
-      ]);
-      return CommunityCounts(
-        posts: results[0],
-        followers: results[1],
-        following: results[2],
-      );
-    } on Object {
-      return CommunityCounts.zero;
-    }
+            .get(),
+      ),
+      count(_followers(uid).count().get()),
+      count(_following(uid).count().get()),
+    ]);
+    return CommunityCounts(
+      posts: results[0],
+      followers: results[1],
+      following: results[2],
+    );
   }
 
   // ------------------------------------------------------------------- posts
@@ -247,6 +386,12 @@ final class CommunityRepository {
     int videoHeight = 0,
     List<MentionRef> mentions = const <MentionRef>[],
     List<AnimeRef> animeRefs = const <AnimeRef>[],
+    bool allowComments = true,
+    bool allowDownload = true,
+    bool allowRepost = true,
+    String category = '',
+    String soundTitle = '',
+    String repostedFrom = '',
   }) async {
     final trimmed = text.trim();
     final hasVideo = (videoKey ?? '').isNotEmpty;
@@ -288,6 +433,12 @@ final class CommunityRepository {
       videoHeight: hasVideo ? videoHeight : 0,
       mentions: mentions,
       animeRefs: animeRefs,
+      allowComments: allowComments,
+      allowDownload: allowDownload,
+      allowRepost: allowRepost,
+      category: category,
+      soundTitle: soundTitle,
+      repostedFrom: repostedFrom,
     );
     final batch = _db.batch();
     batch.set(ref, post.toMap());
@@ -298,6 +449,23 @@ final class CommunityRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     await batch.commit();
+    // Mentions are best-effort alerts: the post is already saved, and the
+    // deterministic id makes a retry a no-op instead of a second alert.
+    for (final mention in mentions) {
+      if (mention.uid.isEmpty || mention.uid == author.uid) continue;
+      try {
+        await _notifications.sendSocial(
+          toUid: mention.uid,
+          actor: author,
+          type: 'mention',
+          id: 'mention_${ref.id}_${mention.uid}',
+          postId: ref.id,
+          text: trimmed,
+        );
+      } on Object {
+        // Offline or the mentioned account is gone.
+      }
+    }
     return ref.id;
   }
 

@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// Talks to the existing `wings-media-api` Worker.
 ///
@@ -223,6 +225,26 @@ class CommunityMediaService {
       result['$key'] = value;
     });
     return result;
+  }
+
+  /// Saves a signed video URL to a temporary file so the share sheet can hand
+  /// it to the gallery or a file manager. Nothing private is written to a
+  /// public folder, and the file disappears with the app cache.
+  Future<File> downloadVideo(
+    String url, {
+    required String fileName,
+    void Function(int received, int total)? onProgress,
+  }) async {
+    final directory = await getTemporaryDirectory();
+    final safe = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final path = '${directory.path}/$safe';
+    await _dio.download(
+      url,
+      path,
+      onReceiveProgress: onProgress,
+      options: Options(receiveTimeout: const Duration(minutes: 2)),
+    );
+    return File(path);
   }
 
   /// Removes objects whose post was never saved, so a failed publish does not

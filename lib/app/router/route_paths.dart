@@ -68,6 +68,7 @@ abstract final class RoutePaths {
   static const String communityCompose = '/community/new';
   static const String communitySaved = '/community/saved';
   static const String communityReels = '/community/reels';
+  static const String communityReelCompose = '/community/reels/new';
 
   static String communityPost(String postId) =>
       '/community/post/${Uri.encodeComponent(postId)}';

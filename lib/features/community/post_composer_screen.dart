@@ -45,7 +45,9 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
   final List<MentionRef> _mentions = <MentionRef>[];
   final List<AnimeRef> _animeRefs = <AnimeRef>[];
 
-  late bool _reel = widget.initialReel;
+  final bool _reel = false;
+  String _category = '';
+  bool _allowComments = true;
   _DraftVideo? _video;
   _DraftImage? _cover;
 
@@ -138,11 +140,7 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
       backgroundColor: palette.background,
       appBar: WingsAppBar(
         showBack: true,
-        title: Text(
-          _reel
-              ? Tr.of(context, ar: 'ريل جديد', en: 'New reel')
-              : Tr.of(context, ar: 'منشور جديد', en: 'New post'),
-        ),
+        title: Text(Tr.of(context, ar: 'منشور جديد', en: 'New post')),
         actions: <Widget>[
           Padding(
             padding: const EdgeInsetsDirectional.only(end: Space.sm),
@@ -197,16 +195,6 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
             ],
           ),
           const SizedBox(height: Space.md),
-          _ModeSwitch(
-            reel: _reel,
-            onChanged: _publishing
-                ? null
-                : (value) => setState(() {
-                    _reel = value;
-                    if (value && _images.isNotEmpty) _images.clear();
-                  }),
-          ),
-          const SizedBox(height: Space.sm),
           TextField(
             controller: _text,
             focusNode: _focus,
@@ -233,6 +221,30 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
               trigger: _trigger!,
               onPickUser: _pickMention,
               onPickAnime: _pickAnime,
+            ),
+          if (_category.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.sm),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.sm,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: palette.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(Radii.pill),
+                  ),
+                  child: Text(
+                    _category,
+                    style: context.text.labelSmall?.copyWith(
+                      color: palette.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
             ),
           if (_mentions.isNotEmpty) ...<Widget>[
             const SizedBox(height: Space.sm),
@@ -337,10 +349,55 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
             ),
           ],
           const SizedBox(height: Space.md),
+          Text(
+            Tr.of(context, ar: 'نوع المنشور', en: 'Post type'),
+            style: context.text.labelSmall?.copyWith(
+              color: palette.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Space.xs),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: <Widget>[
+              for (final category in const <String>[
+                'نقاش',
+                'سؤال',
+                'خبر',
+                'إبداع',
+                'أنمي',
+              ])
+                ChoiceChip(
+                  label: Text(category),
+                  selected: _category == category,
+                  onSelected: _publishing
+                      ? null
+                      : (selected) => setState(
+                          () => _category = selected ? category : '',
+                        ),
+                  labelStyle: const TextStyle(fontSize: 10),
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
+          ),
+          const SizedBox(height: Space.sm),
           Wrap(
             spacing: Space.sm,
             runSpacing: Space.sm,
             children: <Widget>[
+              FilterChip(
+                avatar: const Icon(Icons.mode_comment_outlined, size: 14),
+                label: Text(
+                  Tr.of(context, ar: 'السماح بالتعليقات', en: 'Allow comments'),
+                  style: const TextStyle(fontSize: 10),
+                ),
+                selected: _allowComments,
+                onSelected: _publishing
+                    ? null
+                    : (value) => setState(() => _allowComments = value),
+                visualDensity: VisualDensity.compact,
+              ),
               if (!_hasVideo && !_reel)
                 OutlinedButton.icon(
                   onPressed: _publishing || _images.length >= _maxImages
@@ -560,7 +617,6 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
         _cover = null;
         _uploadedVideoKey = null;
         _uploadedCoverKey = null;
-        _reel = _reel || (probe.width <= probe.height);
       });
     } on Object catch (error) {
       if (mounted) {
@@ -729,6 +785,8 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
           videoHeight: _video!.height,
           mentions: List<MentionRef>.unmodifiable(_mentions),
           animeRefs: List<AnimeRef>.unmodifiable(_animeRefs),
+          category: _category,
+          allowComments: _allowComments,
         );
         final post = await repo.fetchPost(id);
         if (!mounted) return;
@@ -779,6 +837,8 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
         id: postId,
         mentions: List<MentionRef>.unmodifiable(_mentions),
         animeRefs: List<AnimeRef>.unmodifiable(_animeRefs),
+        category: _category,
+        allowComments: _allowComments,
       );
       final post = await repo.fetchPost(id);
       if (!mounted) return;
@@ -869,70 +929,6 @@ class _DraftImage {
 
   final Uint8List bytes;
   final File file;
-}
-
-class _ModeSwitch extends StatelessWidget {
-  const _ModeSwitch({required this.reel, required this.onChanged});
-
-  final bool reel;
-  final ValueChanged<bool>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    Widget tab(String label, bool value) {
-      final selected = reel == value;
-      return Expanded(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(Radii.sm),
-          onTap: onChanged == null ? null : () => onChanged!(value),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: Space.sm),
-            decoration: BoxDecoration(
-              color: selected ? palette.surface : Colors.transparent,
-              borderRadius: BorderRadius.circular(Radii.sm),
-              border: Border.all(
-                color: selected ? palette.border : Colors.transparent,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Icon(
-                  value ? Icons.movie_filter_outlined : Icons.article_outlined,
-                  size: 16,
-                  color: selected ? palette.primary : palette.textMuted,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: context.text.labelSmall?.copyWith(
-                    color: selected ? palette.primary : palette.textMuted,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: palette.surfaceAlt,
-        borderRadius: BorderRadius.circular(Radii.sm),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        children: <Widget>[
-          tab(Tr.of(context, ar: 'منشور', en: 'Post'), false),
-          tab(Tr.of(context, ar: 'ريل', en: 'Reel'), true),
-        ],
-      ),
-    );
-  }
 }
 
 class _Chips extends StatelessWidget {

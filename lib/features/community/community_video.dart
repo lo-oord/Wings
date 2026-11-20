@@ -28,6 +28,7 @@ class CommunityVideo extends StatefulWidget {
     this.showChrome = true,
     this.onPlayedThreeSeconds,
     this.posterUrl,
+    this.rate = 1.0,
   });
 
   final String? url;
@@ -48,6 +49,9 @@ class CommunityVideo extends StatefulWidget {
   final VoidCallback? onPlayedThreeSeconds;
 
   final String? posterUrl;
+
+  /// Playback speed chosen in the Reels settings sheet (1.0 is normal).
+  final double rate;
 
   @override
   State<CommunityVideo> createState() => _CommunityVideoState();
@@ -142,6 +146,7 @@ class _CommunityVideoState extends State<CommunityVideo>
       await _player.open(Media(source), play: false);
       if (!mounted) return;
       await _player.setVolume(_muted ? 0 : 100);
+      await _player.setRate(widget.rate);
       setState(() => _ready = true);
       if (widget.active) unawaited(_player.play());
     } on Object {
@@ -163,6 +168,9 @@ class _CommunityVideoState extends State<CommunityVideo>
       } else {
         unawaited(_player.pause());
       }
+    }
+    if (oldWidget.rate != widget.rate) {
+      unawaited(_player.setRate(widget.rate));
     }
     if (oldWidget.url != widget.url ||
         oldWidget.localPath != widget.localPath) {

@@ -275,6 +275,10 @@ class _CommunityBarState extends ConsumerState<_CommunityBar> {
   bool? _following;
   bool _busy = false;
 
+  /// Applied immediately after a follow/unfollow so the counter never waits
+  /// for the aggregation to come back, then cleared when the server answers.
+  int _followerDelta = 0;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -283,6 +287,7 @@ class _CommunityBarState extends ConsumerState<_CommunityBar> {
     final counts =
         ref.watch(communityCountsProvider(profile.uid)).value ??
         CommunityCounts.zero;
+    final followers = (counts.followers + _followerDelta).clamp(0, 1 << 31);
     final followingIds = viewer == null
         ? const <String>{}
         : ref.watch(followingIdsProvider(viewer)).value ?? const <String>{};
@@ -313,7 +318,7 @@ class _CommunityBarState extends ConsumerState<_CommunityBar> {
             child: InkWell(
               onTap: () => context.push(RoutePaths.followers(profile.uid)),
               child: _CountTile(
-                value: counts.followers,
+                value: followers,
                 label: Tr.of(context, ar: 'متابع', en: 'Followers'),
               ),
             ),
@@ -366,7 +371,10 @@ class _CommunityBarState extends ConsumerState<_CommunityBar> {
     final actor = ref.read(profileProvider);
     if (actor == null || _busy) return;
     _busy = true;
-    setState(() => _following = !following);
+    setState(() {
+      _following = !following;
+      _followerDelta += following ? -1 : 1;
+    });
     try {
       await ref
           .read(communityRepositoryProvider)
@@ -376,9 +384,14 @@ class _CommunityBarState extends ConsumerState<_CommunityBar> {
             follow: !following,
           );
       ref.invalidate(communityCountsProvider(widget.profile.uid));
+      // The server count now includes the change.
+      if (mounted) setState(() => _followerDelta = 0);
     } on Object catch (error) {
       if (!mounted) return;
-      setState(() => _following = following);
+      setState(() {
+        _following = following;
+        _followerDelta -= following ? -1 : 1;
+      });
       context.showSnack(userFacingError(context, error), isError: true);
     } finally {
       _busy = false;
