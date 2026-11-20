@@ -26,7 +26,10 @@ class NotificationRepository {
             (snapshot) => snapshot.docs
                 .map((doc) => SocialNotification.fromDoc(doc.id, doc.data()))
                 .where(
-                  (item) => item.episodeId.isNotEmpty || item.type == 'admin',
+                  (item) =>
+                      item.episodeId.isNotEmpty ||
+                      item.postId.isNotEmpty ||
+                      item.type == 'admin',
                 )
                 .toList(growable: false),
           );
@@ -71,6 +74,50 @@ class NotificationRepository {
     if (episodeNumber != null) payload['episodeNumber'] = episodeNumber;
     if (animeTitle != null) payload['animeTitle'] = animeTitle;
     await _mine(toUid).add(payload);
+  }
+
+  /// A community alert: a like, a comment, a reply or a new follower.
+  ///
+  /// The document id is chosen by the caller and is deterministic
+  /// (`like_{postId}_{actor}`), so retrying a request after a timeout can never
+  /// post the same alert twice: the second write is refused as an existing
+  /// document. The shape is re-checked by the rules, which also verify that
+  /// `actorUid` is the signed-in account.
+  Future<void> sendSocial({
+    required String toUid,
+    required UserProfile actor,
+    required String type,
+    required String id,
+    String postId = '',
+    String commentId = '',
+    String text = '',
+  }) async {
+    if (toUid.isEmpty || toUid == actor.uid) return;
+    if (!const <String>{'like', 'comment', 'reply', 'follow'}.contains(type)) {
+      throw ArgumentError('unknown alert type');
+    }
+    final payload = <String, dynamic>{
+      'type': type,
+      'toUid': toUid,
+      'actorUid': actor.uid,
+      'actorName': actor.displayName,
+      'actorUsername': actor.username,
+      'actorBadges': actor.badges.toMap(),
+      'photoVersion': actor.photoVersion,
+      'text': text.length > 180 ? '${text.substring(0, 180)}…' : text,
+      'read': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+    if (postId.isNotEmpty) payload['postId'] = postId;
+    if (commentId.isNotEmpty) payload['commentId'] = commentId;
+    try {
+      await _mine(toUid).doc(id).set(payload);
+    } on FirebaseException catch (error) {
+      // `already-exists` is the expected result of a retried like or follow:
+      // the alert is already there, so this is a success, not a failure.
+      if (error.code == 'already-exists') return;
+      rethrow;
+    }
   }
 
   Future<void> markRead(String uid, Iterable<String> ids) async {

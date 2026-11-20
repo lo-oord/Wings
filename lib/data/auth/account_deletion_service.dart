@@ -48,6 +48,12 @@ class AccountDeletionService {
     'meta',
     'activity',
     'notifications',
+    // Community relationships and private lists. The posts and comments
+    // themselves are removed through the activity index above.
+    'savedPosts',
+    'following',
+    'followers',
+    'blocked',
   ];
 
   /// Removes the account and everything it owns.

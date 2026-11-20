@@ -20,6 +20,7 @@ class SocialNotification {
     required this.episodeId,
     required this.commentId,
     required this.createdAt,
+    this.postId = '',
     this.read = false,
     this.badges = ProfileBadges.none,
     this.photoVersion = 0,
@@ -41,6 +42,11 @@ class SocialNotification {
   final String text;
   final String episodeId;
   final String commentId;
+
+  /// Community post an alert points at ('' for episode replies and official
+  /// notices). The same notification collection serves both, so the app keeps
+  /// one bell, one unread count and one list.
+  final String postId;
   final String? episodeNumber;
   final String? animeTitle;
 
@@ -56,12 +62,16 @@ class SocialNotification {
 
   bool get isAdmin => type == 'admin';
 
-  String get route => isAdmin
-      ? (targetRoute.isEmpty ? '/account-status' : targetRoute)
-      : '/episode/$episodeId/comments';
+  bool get isCommunity => !isAdmin && postId.isNotEmpty;
+
+  String get route {
+    if (isAdmin) return targetRoute.isEmpty ? '/account-status' : targetRoute;
+    if (postId.isNotEmpty) return '/community/post/$postId';
+    return '/episode/$episodeId/comments';
+  }
 
   /// Stable tray id so the same alert never buzzes twice.
-  int get trayId => 'reply:$id'.hashCode.abs() % 100000;
+  int get trayId => '$type:$id'.hashCode.abs() % 100000;
 
   SocialNotification copyWith({bool? read}) => SocialNotification(
     id: id,
@@ -72,6 +82,7 @@ class SocialNotification {
     text: text,
     episodeId: episodeId,
     commentId: commentId,
+    postId: postId,
     episodeNumber: episodeNumber,
     animeTitle: animeTitle,
     createdAt: createdAt,
@@ -95,6 +106,7 @@ class SocialNotification {
       text: data['text'] as String? ?? '',
       episodeId: data['episodeId'] as String? ?? '',
       commentId: data['commentId'] as String? ?? '',
+      postId: data['postId'] as String? ?? '',
       episodeNumber: data['episodeNumber'] as String?,
       animeTitle: data['animeTitle'] as String?,
       createdAt: created is Timestamp

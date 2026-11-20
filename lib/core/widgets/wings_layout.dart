@@ -5,6 +5,7 @@ import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../app/localization/app_localizations.dart';
+import '../utils/tr.dart';
 import 'wings_image.dart';
 
 class WingsSectionHeader extends StatelessWidget {
@@ -263,6 +264,11 @@ class WingsBottomNav extends StatelessWidget {
         Icons.play_circle_outline_rounded,
         Icons.play_circle_fill_rounded,
         localizations.navLatest,
+      ),
+      (
+        Icons.forum_outlined,
+        Icons.forum_rounded,
+        Tr.of(context, ar: 'المجتمع', en: 'Community'),
       ),
       (
         Icons.travel_explore_rounded,

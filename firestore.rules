@@ -112,6 +112,22 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/blockedUsernames/$(normalized));
     }
 
+    // A member who blocked the caller cannot be interacted with: likes,
+    // comments, follows and alerts all consult this.
+    function blockedBy(targetUid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(targetUid)/blocked/$(request.auth.uid));
+    }
+
+    function blocks(uid, targetUid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(uid)/blocked/$(targetUid));
+    }
+
+    function postAuthor(postId) {
+      return get(/databases/$(database)/documents/posts/$(postId)).data.authorUid;
+    }
+
     // Official marks live in `badges/{uid}` and only an administrator writes
     // them. Clients read the document so a verified or developer handle is
     // drawn the same way on every device, and the owner's profile documents
@@ -473,6 +489,51 @@ service cloud.firestore {
       // posted the reply, straight into the parent author's list. The shape is
       // fixed so nobody can use it as a free-form mailbox, and only the owner
       // can read, mark read or remove an entry.
+      // Posts the account saved. Private to its owner: nobody else may read
+      // the list, which is what keeps a saved post from leaking.
+      match /savedPosts/{postId} {
+        allow read: if isSelf(uid);
+        allow create, update: if isSelf(uid)
+          && request.resource.data.postId == postId
+          && request.resource.data.savedAt is timestamp;
+        allow delete: if isSelf(uid);
+      }
+
+      // The two sides of a follow relationship. The follower writes both, and
+      // the followed account may remove either side when it blocks somebody.
+      match /following/{targetUid} {
+        allow read: if isSelf(uid);
+        allow create: if isSelf(uid)
+          && targetUid != uid
+          && request.resource.data.uid == targetUid
+          && request.resource.data.createdAt is timestamp
+          && !blocks(uid, targetUid);
+        allow delete: if isSelf(uid) || targetUid == request.auth.uid;
+      }
+
+      match /followers/{followerId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && followerId == request.auth.uid
+          && followerId != uid
+          && request.resource.data.uid == followerId
+          && request.resource.data.createdAt is timestamp
+          && !blockedBy(uid);
+        allow delete: if signedIn()
+          && (followerId == request.auth.uid || isSelf(uid));
+      }
+
+      // Personal blocks. Readable only by the account that owns them, so the
+      // list can never be enumerated by anybody else.
+      match /blocked/{targetUid} {
+        allow read: if isSelf(uid);
+        allow create: if isSelf(uid)
+          && targetUid != uid
+          && request.resource.data.uid == targetUid
+          && request.resource.data.createdAt is timestamp;
+        allow delete: if isSelf(uid);
+      }
+
       match /notifications/{notificationId} {
         allow read: if isSelf(uid) || isStaff();
         allow create: if signedIn()
@@ -490,6 +551,29 @@ service cloud.firestore {
           && request.resource.data.actorUsername is string
           && validUsername(request.resource.data.actorUsername)
           && request.resource.data.createdAt is timestamp;
+        // Community alerts: a like, a comment, a reply under a post, or a new
+        // follower. The actor is always the signed-in account, the recipient is
+        // never the actor, and a recipient who blocked the actor is skipped.
+        allow create: if signedIn()
+          && request.auth.uid != uid
+          && request.resource.data.toUid == uid
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.type in ['like', 'comment', 'reply', 'follow']
+          && request.resource.data.read == false
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 200
+          && request.resource.data.postId is string
+          && request.resource.data.postId.size() >= 1
+          && request.resource.data.postId.size() <= 200
+          && (!('commentId' in request.resource.data)
+              || (request.resource.data.commentId is string
+                  && request.resource.data.commentId.size() <= 200))
+          && request.resource.data.actorName is string
+          && request.resource.data.actorName.size() <= 40
+          && request.resource.data.actorUsername is string
+          && validUsername(request.resource.data.actorUsername)
+          && request.resource.data.createdAt is timestamp
+          && !blockedBy(uid);
         // Official notices (warning, restriction, suspension, ban, restore,
         // Owner message, report/appeal update) are written by staff into the
         // recipient's own list, so the in-app record stays the source of truth.
@@ -748,6 +832,192 @@ service cloud.firestore {
       }
     }
 
+    // ------------------------------------------------------------ community
+    //
+    // A post is public to signed-in members, writable by its author, and its
+    // two counters may only move by exactly one per action. Nobody can set a
+    // counter to a number of their choosing.
+    match /posts/{postId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorUid is string
+        && request.resource.data.text is string
+        && request.resource.data.text.size() <= 2000
+        && request.resource.data.images is list
+        && request.resource.data.images.size() <= 4
+        && (request.resource.data.text.size() >= 1
+            || request.resource.data.images.size() > 0)
+        && request.resource.data.edited == false
+        && request.resource.data.likeCount == 0
+        && request.resource.data.commentCount == 0
+        && validDisplayName(request.resource.data.authorName)
+        && validUsername(request.resource.data.authorUsername)
+        && validBadges(request.resource.data.authorBadges)
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && !accountLocked(request.auth.uid)
+        && !featureRestricted(request.auth.uid, 'restrictCommunity');
+
+      allow update: if signedIn()
+        && (
+          // The author edits the body or its pictures; the counters and the
+          // ownership cannot be touched this way.
+          (
+            resource.data.authorUid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'text', 'images', 'edited', 'updatedAt'
+            ])
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 2000
+            && request.resource.data.images is list
+            && request.resource.data.images.size() <= 4
+            && (request.resource.data.text.size() >= 1
+                || request.resource.data.images.size() > 0)
+            && request.resource.data.updatedAt is timestamp
+          )
+          ||
+          // A like moves the counter by exactly one, never below zero.
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount'])
+            && (
+              request.resource.data.likeCount == resource.data.likeCount + 1
+              || (
+                resource.data.likeCount > 0
+                && request.resource.data.likeCount == resource.data.likeCount - 1
+              )
+            )
+          )
+          ||
+          // A comment or a reply moves the comment counter by exactly one.
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount'])
+            && (
+              request.resource.data.commentCount == resource.data.commentCount + 1
+              || (
+                resource.data.commentCount > 0
+                && request.resource.data.commentCount == resource.data.commentCount - 1
+              )
+            )
+          )
+        );
+
+      // The author removes their post; staff may remove any post.
+      allow delete: if signedIn()
+        && (resource.data.authorUid == request.auth.uid || isStaff());
+
+      // One like per account: the document id is the uid, so a retried tap
+      // cannot count twice. A blocked author can no longer be liked.
+      match /likes/{uid} {
+        allow read: if signedIn();
+        allow create, update: if isSelf(uid)
+          && request.resource.data.uid == uid
+          && request.resource.data.createdAt is timestamp
+          && !blockedBy(postAuthor(postId))
+          && !accountLocked(request.auth.uid)
+          && !featureRestricted(request.auth.uid, 'restrictInteract');
+        allow delete: if isSelf(uid);
+      }
+
+      // Post comments use the same document shape as episode comments, so the
+      // app keeps one comment system. `postId` and `episodeId` both carry the
+      // post id for that reuse.
+      match /comments/{commentId} {
+        allow read: if signedIn();
+
+        allow create: if signedIn()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.postId == postId
+          && request.resource.data.episodeId == postId
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.deleted == false
+          && request.resource.data.replyCount == 0
+          && validDisplayName(request.resource.data.authorName)
+          && validUsername(request.resource.data.authorUsername)
+          && validBadges(request.resource.data.authorBadges)
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp
+          && !blockedBy(postAuthor(postId))
+          && !accountLocked(request.auth.uid)
+          && !featureRestricted(request.auth.uid, 'restrictComment')
+          && !featureRestricted(request.auth.uid, 'restrictCommunity');
+
+        allow update: if signedIn()
+          && (
+            (
+              resource.data.authorUid == request.auth.uid
+              && request.resource.data.text is string
+              && request.resource.data.text.size() <= 1000
+              && request.resource.data.text.size() >= 1
+              && request.resource.data.deleted is bool
+              && request.resource.data.replyCount == resource.data.replyCount
+            )
+            ||
+            (
+              resource.data.authorUid == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'authorUsername', 'authorName', 'authorBadges', 'photoVersion', 'updatedAt'
+              ])
+              && validUsername(request.resource.data.authorUsername)
+              && validDisplayName(request.resource.data.authorName)
+              && validBadges(request.resource.data.authorBadges)
+              && request.resource.data.updatedAt is timestamp
+            )
+            ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replyCount'])
+              && (
+                request.resource.data.replyCount == resource.data.replyCount + 1
+                || (
+                  resource.data.replyCount > 0
+                  && request.resource.data.replyCount == resource.data.replyCount - 1
+                )
+              )
+            )
+          );
+
+        allow delete: if signedIn()
+          && (resource.data.authorUid == request.auth.uid || isStaff());
+
+        match /replies/{replyId} {
+          allow read: if signedIn();
+          allow create: if signedIn()
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.parentId == commentId
+            && request.resource.data.postId == postId
+            && request.resource.data.episodeId == postId
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 1000
+            && request.resource.data.text.size() >= 1
+            && request.resource.data.deleted == false
+            && validDisplayName(request.resource.data.authorName)
+            && validUsername(request.resource.data.authorUsername)
+            && validBadges(request.resource.data.authorBadges)
+            && request.resource.data.createdAt is timestamp
+            && request.resource.data.updatedAt is timestamp
+            && !blockedBy(postAuthor(postId))
+            && !accountLocked(request.auth.uid)
+            && !featureRestricted(request.auth.uid, 'restrictComment')
+            && !featureRestricted(request.auth.uid, 'restrictCommunity');
+          allow update: if signedIn()
+            && resource.data.authorUid == request.auth.uid
+            && request.resource.data.authorUid == resource.data.authorUid;
+          allow delete: if signedIn()
+            && (
+              isStaff()
+              || resource.data.authorUid == request.auth.uid
+              || (
+                exists(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+                && get(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId)).data.authorUid == request.auth.uid
+              )
+            );
+        }
+      }
+    }
+
     // ------------------------------------------------ title view counters
     // One counter per title, shown on the details screen. Same constraint as
     // episode views: create at 1 or increment by exactly one.
@@ -785,6 +1055,12 @@ service cloud.firestore {
         && request.resource.data.status == 'open'
         && request.resource.data.reason is string
         && request.resource.data.reason.size() <= 200
+        // Every report names what it is about: an episode, a comment, a
+        // community post or an account.
+        && request.resource.data.targetType in ['episode', 'comment', 'post', 'user']
+        && (!('targetId' in request.resource.data)
+            || (request.resource.data.targetId is string
+                && request.resource.data.targetId.size() <= 160))
         // A restricted or banned account cannot use the report form.
         && !accountLocked(request.auth.uid)
         && !featureRestricted(request.auth.uid, 'restrictReport');

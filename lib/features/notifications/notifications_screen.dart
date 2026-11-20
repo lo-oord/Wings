@@ -14,6 +14,7 @@ import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/app_notification.dart';
 import '../../data/models/social_notification.dart';
+import '../profile/avatar_view.dart';
 import '../social/user_handle.dart';
 
 /// Everything the viewer needs to catch up: new episodes discovered on the
@@ -137,15 +138,26 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   _SectionLabel(
                     label: Tr.of(
                       context,
-                      ar: 'الردود والتعليقات',
-                      en: 'Replies and comments',
+                      ar: 'التفاعل والردود',
+                      en: 'Activity',
                     ),
                     color: palette.textMuted,
                   ),
                   for (final reply in threadReplies)
                     _ReplyTile(
                       notification: reply,
-                      onTap: () => context.push(reply.route),
+                      onTap: () async {
+                        if (uid != null && !reply.read) {
+                          try {
+                            await ref
+                                .read(notificationRepositoryProvider)
+                                .markRead(uid, <String>[reply.id]);
+                          } on Object {
+                            // The tile clears on the next visit.
+                          }
+                        }
+                        if (context.mounted) context.push(reply.route);
+                      },
                       onRemove: () async {
                         if (uid == null) return;
                         try {
@@ -214,9 +226,6 @@ class _ReplyTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.palette;
-    final initial = notification.actorName.trim().isEmpty
-        ? '?'
-        : notification.actorName.trim().characters.first;
 
     return InkWell(
       onTap: onTap,
@@ -228,16 +237,11 @@ class _ReplyTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: palette.surfaceAlt,
-              child: Text(
-                initial,
-                style: context.text.titleSmall?.copyWith(
-                  color: palette.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            UserAvatar(
+              uid: notification.actorUid,
+              photoVersion: notification.photoVersion,
+              name: notification.actorName,
+              size: 40,
             ),
             const SizedBox(width: Space.md),
             Expanded(
@@ -277,11 +281,7 @@ class _ReplyTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    Tr.of(
-                      context,
-                      ar: 'ردّ على تعليقك: ${notification.text}',
-                      en: 'Replied to your comment: ${notification.text}',
-                    ),
+                    replySummary(context, notification),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: context.text.bodySmall?.copyWith(
@@ -511,5 +511,41 @@ class _NotificationTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// One sentence describing a community alert, in the reader's language.
+String replySummary(BuildContext context, SocialNotification item) {
+  final text = item.text.trim();
+  switch (item.type) {
+    case 'like':
+      return Tr.of(context, ar: 'أعجب بمنشورك.', en: 'Liked your post.');
+    case 'follow':
+      return Tr.of(context, ar: 'بدأ بمتابعتك.', en: 'Started following you.');
+    case 'comment':
+      return Tr.of(
+        context,
+        ar: text.isEmpty ? 'علّق على منشورك.' : 'علّق على منشورك: $text',
+        en: text.isEmpty
+            ? 'Commented on your post.'
+            : 'Commented on your post: $text',
+      );
+    case 'reply':
+      if (item.postId.isNotEmpty) {
+        return Tr.of(
+          context,
+          ar: text.isEmpty ? 'ردّ على تعليقك.' : 'ردّ على تعليقك: $text',
+          en: text.isEmpty
+              ? 'Replied to your comment.'
+              : 'Replied to your comment: $text',
+        );
+      }
+      return Tr.of(
+        context,
+        ar: 'ردّ على تعليقك: $text',
+        en: 'Replied to your comment: $text',
+      );
+    default:
+      return item.text;
   }
 }

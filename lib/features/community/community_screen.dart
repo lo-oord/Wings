@@ -1,0 +1,291 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../app/localization/app_localizations.dart';
+import '../../app/providers.dart';
+import '../../app/router/route_paths.dart';
+import '../../app/theme/app_tokens.dart';
+import '../../app/theme/context_ext.dart';
+import '../../core/errors/user_facing_error.dart';
+import '../../core/utils/tr.dart';
+import '../../core/widgets/wings_buttons.dart';
+import '../../core/widgets/wings_feedback.dart';
+import '../../core/widgets/wings_layout.dart';
+import '../../data/models/community.dart';
+import '../auth/sign_in_prompt.dart';
+import 'community_providers.dart';
+import 'post_card.dart';
+
+/// The community home: newest posts and the posts of the accounts the member
+/// follows. It is a tab inside the existing shell, not a separate app.
+class CommunityScreen extends ConsumerStatefulWidget {
+  const CommunityScreen({super.key});
+
+  @override
+  ConsumerState<CommunityScreen> createState() => _CommunityScreenState();
+}
+
+class _CommunityScreenState extends ConsumerState<CommunityScreen> {
+  CommunityTab _tab = CommunityTab.latest;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final uid = ref.watch(authProvider)?.id;
+
+    return Scaffold(
+      backgroundColor: palette.background,
+      appBar: WingsAppBar(
+        title: Text(
+          Tr.of(context, ar: 'المجتمع', en: 'Community'),
+          style: context.text.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        actions: <Widget>[
+          WingsIconButton(
+            icon: Icons.bookmark_border_rounded,
+            tooltip: Tr.of(context, ar: 'المحفوظة', en: 'Saved'),
+            onPressed: () {
+              if (uid == null) {
+                showSignInPrompt(
+                  context,
+                  message: Tr.of(
+                    context,
+                    ar: 'سجّل الدخول لعرض منشوراتك المحفوظة',
+                    en: 'Sign in to open your saved posts',
+                  ),
+                );
+                return;
+              }
+              context.push(RoutePaths.communitySaved);
+            },
+          ),
+          const SizedBox(width: Space.xs),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _compose(context),
+        backgroundColor: palette.primary,
+        foregroundColor: palette.onPrimary,
+        icon: const Icon(Icons.edit_outlined, size: 20),
+        label: Text(
+          Tr.of(context, ar: 'منشور', en: 'Post'),
+          style: context.text.labelMedium?.copyWith(
+            color: palette.onPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+      body: Column(
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, 0),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: _TabChip(
+                    label: Tr.of(context, ar: 'الأحدث', en: 'Latest'),
+                    icon: Icons.bolt_rounded,
+                    selected: _tab == CommunityTab.latest,
+                    onTap: () => setState(() => _tab = CommunityTab.latest),
+                  ),
+                ),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: _TabChip(
+                    label: Tr.of(context, ar: 'أتابعهم', en: 'Following'),
+                    icon: Icons.people_alt_outlined,
+                    selected: _tab == CommunityTab.following,
+                    onTap: () => setState(() => _tab = CommunityTab.following),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: Space.sm),
+          Expanded(child: _Feed(tab: _tab)),
+        ],
+      ),
+      bottomNavigationBar: null,
+    );
+  }
+
+  Future<void> _compose(BuildContext context) async {
+    if (ref.read(authProvider) == null) {
+      showSignInPrompt(
+        context,
+        message: Tr.of(
+          context,
+          ar: 'سجّل الدخول لتشارك منشورًا في المجتمع',
+          en: 'Sign in to share a post with the community',
+        ),
+      );
+      return;
+    }
+    final published = await context.push<Post>(RoutePaths.communityCompose);
+    if (published == null || !mounted) return;
+    // The new post appears at the top of «الأحدث» immediately, without a full
+    // reload of the feed.
+    ref
+        .read(communityFeedProvider(CommunityTab.latest).notifier)
+        .prepend(published);
+  }
+}
+
+class _Feed extends ConsumerStatefulWidget {
+  const _Feed({required this.tab});
+
+  final CommunityTab tab;
+
+  @override
+  ConsumerState<_Feed> createState() => _FeedState();
+}
+
+class _FeedState extends ConsumerState<_Feed> {
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(communityFeedProvider(widget.tab));
+    final controller = ref.read(communityFeedProvider(widget.tab).notifier);
+
+    if (state.loading && state.posts.isEmpty) {
+      return const WingsLoading();
+    }
+    if (state.posts.isEmpty) {
+      if (state.error != null) {
+        return WingsEmptyState(
+          icon: Icons.cloud_off_rounded,
+          title: AppLocalizations.of(context).commonErrorTitle,
+          message: loadFailedText(context),
+          actionLabel: AppLocalizations.of(context).commonRetry,
+          onAction: () => controller.load(refresh: true),
+        );
+      }
+      return RefreshIndicator(
+        onRefresh: () => controller.load(refresh: true),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: <Widget>[
+            const SizedBox(height: Space.xxxl),
+            WingsEmptyState(
+              icon: widget.tab == CommunityTab.following
+                  ? Icons.people_outline_rounded
+                  : Icons.forum_outlined,
+              title: widget.tab == CommunityTab.following
+                  ? Tr.of(
+                      context,
+                      ar: 'لا توجد منشورات ممن تتابعهم',
+                      en: 'No posts from people you follow',
+                    )
+                  : Tr.of(
+                      context,
+                      ar: 'لا توجد منشورات بعد',
+                      en: 'No posts yet',
+                    ),
+              message: widget.tab == CommunityTab.following
+                  ? Tr.of(
+                      context,
+                      ar: 'تابع أعضاء من المجتمع لتظهر منشوراتهم هنا.',
+                      en: 'Follow members and their posts will show up here.',
+                    )
+                  : Tr.of(
+                      context,
+                      ar: 'كن أول من ينشر في Wings.',
+                      en: 'Be the first to post on Wings.',
+                    ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => controller.load(refresh: true),
+      child: ListView.builder(
+        padding: const EdgeInsets.only(top: Space.xs, bottom: 96),
+        itemCount: state.posts.length + (state.hasMore ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index >= state.posts.length) {
+            // Reaching the tail is the pagination trigger; no scroll listener
+            // and no second query for data already on screen.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              controller.loadMore();
+            });
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: Space.lg),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.2),
+                ),
+              ),
+            );
+          }
+          final post = state.posts[index];
+          return PostCard(
+            post: post,
+            showFollow: true,
+            onChanged: controller.replace,
+            onDeleted: () => controller.remove(post.id),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TabChip extends StatelessWidget {
+  const _TabChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Material(
+      color: selected ? palette.surfaceHigh : palette.surface,
+      borderRadius: BorderRadius.circular(Radii.pill),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.pill),
+        child: Container(
+          height: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Radii.pill),
+            border: Border.all(
+              color: selected ? palette.primary : palette.border,
+              width: selected ? 1.4 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(
+                icon,
+                size: 15,
+                color: selected ? palette.primary : palette.textMuted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: context.text.labelSmall?.copyWith(
+                  color: selected ? palette.primary : palette.textSecondary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

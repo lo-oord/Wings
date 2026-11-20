@@ -44,7 +44,9 @@ import '../data/auth/account_deletion_service.dart';
 import '../data/auth/account_service.dart';
 import '../data/auth/firebase_auth_repository.dart';
 import '../data/models/user_profile.dart';
+import '../core/services/community_media_service.dart';
 import '../data/repositories/avatar_repository.dart';
+import '../data/repositories/community_repository.dart';
 import '../data/repositories/cover_repository.dart';
 import '../data/repositories/social_repository.dart';
 import '../data/repositories/views_repository.dart';
@@ -724,6 +726,17 @@ final socialRepositoryProvider = Provider<SocialRepository>(
 
 final notificationRepositoryProvider = Provider<NotificationRepository>(
   (ref) => NotificationRepository(FirebaseFirestore.instance),
+);
+
+/// Posts, likes, saved posts, follows and blocks. It shares the profile,
+/// comment and notification systems rather than duplicating them.
+final communityRepositoryProvider = Provider<CommunityRepository>(
+  (ref) => CommunityRepository(FirebaseFirestore.instance),
+);
+
+/// Signed upload/download URLs from the existing `wings-media-api` Worker.
+final communityMediaProvider = Provider<CommunityMediaService>(
+  (ref) => CommunityMediaService(ref.watch(httpClientProvider)),
 );
 
 /// Blocked emails/usernames and their review requests.

@@ -7,12 +7,18 @@ import '../../app/providers.dart';
 import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/errors/user_facing_error.dart';
 import '../../core/utils/tr.dart';
+import '../../core/widgets/wings_feedback.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/admin_models.dart' show StaffRole;
 import '../../data/models/user_profile.dart';
+import '../../data/models/community.dart';
 import '../admin/admin_providers.dart';
+import '../community/community_providers.dart';
+import '../community/post_card.dart';
+import '../community/report_sheet.dart';
 import '../social/username_text.dart';
 import 'avatar_view.dart';
 
@@ -45,8 +51,44 @@ class PublicProfileScreen extends ConsumerWidget {
         StaffRole.user;
     final revealed = ref.watch(_staffProfileProvider(uid)).value;
 
+    final viewerUid = ref.watch(authProvider)?.id;
+    final canModerate = viewerUid != null && viewerUid != uid;
+
     return Scaffold(
-      appBar: WingsAppBar(showBack: true, title: Text(l10n.profileTitle)),
+      appBar: WingsAppBar(
+        showBack: true,
+        title: Text(l10n.profileTitle),
+        actions: canModerate
+            ? <Widget>[
+                PopupMenuButton<String>(
+                  icon: Icon(
+                    Icons.more_horiz_rounded,
+                    size: 20,
+                    color: palette.textMuted,
+                  ),
+                  onSelected: (value) => _profileMenu(context, ref, value),
+                  itemBuilder: (context) => <PopupMenuEntry<String>>[
+                    PopupMenuItem<String>(
+                      value: 'report',
+                      child: Text(
+                        Tr.of(
+                          context,
+                          ar: 'إبلاغ عن الحساب',
+                          en: 'Report account',
+                        ),
+                      ),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'block',
+                      child: Text(
+                        Tr.of(context, ar: 'حظر المستخدم', en: 'Block user'),
+                      ),
+                    ),
+                  ],
+                ),
+              ]
+            : null,
+      ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) => _Notice(
@@ -93,9 +135,52 @@ class PublicProfileScreen extends ConsumerWidget {
       backgroundColor: palette.background,
     );
   }
+
+  Future<void> _profileMenu(
+    BuildContext context,
+    WidgetRef ref,
+    String value,
+  ) async {
+    final viewer = ref.read(authProvider)?.id;
+    if (viewer == null) return;
+    if (value == 'report') {
+      await showReportSheet(
+        context,
+        ref,
+        targetType: 'user',
+        targetId: uid,
+        targetUid: uid,
+      );
+      return;
+    }
+    final confirmed = await WingsDialog.confirm(
+      context,
+      title: Tr.of(context, ar: 'حظر المستخدم؟', en: 'Block this user?'),
+      message: Tr.of(
+        context,
+        ar: 'لن ترى منشوراته أو تعليقاته، ولن يستطيع التفاعل معك.',
+        en: 'You will not see their posts or comments, and they cannot interact with you.',
+      ),
+      confirmLabel: Tr.of(context, ar: 'حظر', en: 'Block'),
+      destructive: true,
+    );
+    if (!confirmed || !context.mounted) return;
+    try {
+      await ref
+          .read(communityRepositoryProvider)
+          .block(uid: viewer, target: uid);
+      if (context.mounted) {
+        context.showSnack(Tr.of(context, ar: 'تم الحظر.', en: 'User blocked.'));
+      }
+    } on Object catch (error) {
+      if (context.mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
+    }
+  }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends ConsumerWidget {
   const _Body({required this.profile, this.staffView = false});
 
   final UserProfile profile;
@@ -104,8 +189,10 @@ class _Body extends StatelessWidget {
   /// instead of the lock card.
   final bool staffView;
 
+  bool get _showCommunity => !profile.profileHidden || staffView;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
       padding: const EdgeInsets.only(bottom: Space.huge),
       children: <Widget>[
@@ -151,12 +238,258 @@ class _Body extends StatelessWidget {
             ),
             const SizedBox(height: Space.lg),
           ],
+          if (_showCommunity) ...<Widget>[
+            _CommunityBar(profile: profile),
+            const SizedBox(height: Space.lg),
+          ],
           _StatsCard(profile: profile),
           if (profile.favorites.isNotEmpty) ...<Widget>[
             const SizedBox(height: Space.xl),
             _FavoritesSection(favorites: profile.favorites),
           ],
+          if (_showCommunity) ...<Widget>[
+            const SizedBox(height: Space.xl),
+            _ProfilePosts(profile: profile),
+          ],
         ],
+      ],
+    );
+  }
+}
+
+/// Followers / following / posts of the same public profile.
+///
+/// These numbers are counts over the relationship documents, never a field a
+/// client can set, and they open the same [PeopleScreen] the rest of the app
+/// uses.
+class _CommunityBar extends ConsumerStatefulWidget {
+  const _CommunityBar({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  ConsumerState<_CommunityBar> createState() => _CommunityBarState();
+}
+
+class _CommunityBarState extends ConsumerState<_CommunityBar> {
+  bool? _following;
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final profile = widget.profile;
+    final viewer = ref.watch(authProvider)?.id;
+    final counts =
+        ref.watch(communityCountsProvider(profile.uid)).value ??
+        CommunityCounts.zero;
+    final followingIds = viewer == null
+        ? const <String>{}
+        : ref.watch(followingIdsProvider(viewer)).value ?? const <String>{};
+    final following = _following ?? followingIds.contains(profile.uid);
+    final isMe = viewer == profile.uid;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: Space.lg),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.lg,
+        vertical: Space.md,
+      ),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: _CountTile(
+              value: counts.posts,
+              label: Tr.of(context, ar: 'منشور', en: 'Posts'),
+            ),
+          ),
+          Container(width: 1, height: 34, color: palette.border),
+          Expanded(
+            child: InkWell(
+              onTap: () => context.push(RoutePaths.followers(profile.uid)),
+              child: _CountTile(
+                value: counts.followers,
+                label: Tr.of(context, ar: 'متابع', en: 'Followers'),
+              ),
+            ),
+          ),
+          Container(width: 1, height: 34, color: palette.border),
+          Expanded(
+            child: InkWell(
+              onTap: () => context.push(RoutePaths.following(profile.uid)),
+              child: _CountTile(
+                value: counts.following,
+                label: Tr.of(context, ar: 'يتابع', en: 'Following'),
+              ),
+            ),
+          ),
+          if (!isMe && viewer != null) ...<Widget>[
+            const SizedBox(width: Space.sm),
+            SizedBox(
+              height: 34,
+              child: FilledButton(
+                onPressed: _busy ? null : () => _toggle(following),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.md),
+                  backgroundColor: following
+                      ? palette.surfaceHigh
+                      : palette.primary,
+                  foregroundColor: following
+                      ? palette.textPrimary
+                      : palette.onPrimary,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  following
+                      ? Tr.of(context, ar: 'متابَع', en: 'Following')
+                      : Tr.of(context, ar: 'متابعة', en: 'Follow'),
+                  style: context.text.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: following ? palette.textPrimary : palette.onPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggle(bool following) async {
+    final actor = ref.read(profileProvider);
+    if (actor == null || _busy) return;
+    _busy = true;
+    setState(() => _following = !following);
+    try {
+      await ref
+          .read(communityRepositoryProvider)
+          .setFollowing(
+            actor: actor,
+            target: widget.profile.uid,
+            follow: !following,
+          );
+      ref.invalidate(communityCountsProvider(widget.profile.uid));
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _following = following);
+      context.showSnack(userFacingError(context, error), isError: true);
+    } finally {
+      _busy = false;
+    }
+  }
+}
+
+class _CountTile extends StatelessWidget {
+  const _CountTile({required this.value, required this.label});
+
+  final int value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Column(
+      children: <Widget>[
+        Text(
+          '$value',
+          style: context.text.titleSmall?.copyWith(
+            color: palette.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: context.text.labelSmall?.copyWith(
+            color: palette.textMuted,
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The account's latest posts, inside the same public profile page. There is
+/// no separate community profile.
+class _ProfilePosts extends ConsumerWidget {
+  const _ProfilePosts({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    final posts = ref.watch(profilePostsProvider(profile.uid));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            Space.lg,
+            0,
+            Space.lg,
+            Space.md,
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.forum_outlined, size: 17, color: palette.primary),
+              const SizedBox(width: 6),
+              Text(
+                Tr.of(context, ar: 'المنشورات', en: 'Posts'),
+                style: context.text.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        posts.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(Space.lg),
+            child: WingsLoading(),
+          ),
+          error: (error, stack) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+            child: Text(
+              loadFailedText(context),
+              style: context.text.labelSmall?.copyWith(
+                color: palette.textMuted,
+              ),
+            ),
+          ),
+          data: (items) => items.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+                  child: Text(
+                    Tr.of(context, ar: 'لا منشورات بعد.', en: 'No posts yet.'),
+                    style: context.text.labelSmall?.copyWith(
+                      color: palette.textMuted,
+                    ),
+                  ),
+                )
+              : Column(
+                  children: <Widget>[
+                    for (final post in items)
+                      PostCard(
+                        post: post,
+                        onChanged: (_) =>
+                            ref.invalidate(profilePostsProvider(profile.uid)),
+                        onDeleted: () =>
+                            ref.invalidate(profilePostsProvider(profile.uid)),
+                      ),
+                  ],
+                ),
+        ),
       ],
     );
   }

@@ -1,0 +1,15 @@
+name = "wings-media-api"
+main = "src/index.js"
+compatibility_date = "2026-11-17"
+
+# Non-secret configuration only. The Tigris keys are Worker secrets:
+#   wrangler secret put TIGRIS_ACCESS_KEY_ID
+#   wrangler secret put TIGRIS_SECRET_ACCESS_KEY
+[vars]
+FIREBASE_PROJECT_ID = "wings-50acb"
+TIGRIS_BUCKET = "wings-media"
+TIGRIS_ENDPOINT = "https://t3.storage.dev"
+TIGRIS_REGION = "auto"
+
+[observability]
+enabled = true

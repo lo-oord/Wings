@@ -1,6 +1,7 @@
 abstract final class RoutePaths {
   static const String onboarding = '/onboarding';
   static const String latest = '/latest';
+  static const String community = '/community';
   static const String explore = '/explore';
   static const String library = '/library';
   static const String settings = '/settings';
@@ -55,4 +56,18 @@ abstract final class RoutePaths {
 
   static String publicProfile(String uid) =>
       '/user/${Uri.encodeComponent(uid)}';
+
+  static String followers(String uid) =>
+      '/user/${Uri.encodeComponent(uid)}/followers';
+
+  static String following(String uid) =>
+      '/user/${Uri.encodeComponent(uid)}/following';
+
+  // Community. One feed inside the shell; the detail and composer are pushed
+  // on top of it like any other screen in Wings.
+  static const String communityCompose = '/community/new';
+  static const String communitySaved = '/community/saved';
+
+  static String communityPost(String postId) =>
+      '/community/post/${Uri.encodeComponent(postId)}';
 }

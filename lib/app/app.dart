@@ -129,9 +129,16 @@ class _WingsAppState extends ConsumerState<WingsApp>
           : (latest.actorName.isEmpty
                 ? '@${latest.actorUsername}'
                 : latest.actorName);
+      // A like or a follow carries no text, so the tray alert names the event
+      // instead of staying silent.
+      final fallback = switch (latest.type) {
+        'like' => 'أعجب بمنشورك.',
+        'follow' => 'بدأ بمتابعتك.',
+        _ => latest.title,
+      };
       final body = latest.isAdmin
           ? latest.body
-          : (latest.text.isEmpty ? latest.title : latest.text);
+          : (latest.text.isEmpty ? fallback : latest.text);
       if (body.isEmpty) return;
       await ref
           .read(notificationServiceProvider)

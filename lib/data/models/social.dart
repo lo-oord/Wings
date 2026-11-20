@@ -16,7 +16,12 @@ class EpisodeCounts {
   final int comments;
 }
 
-/// A root comment. Replies live in `comments/{commentId}/replies`.
+/// One root comment, or one reply.
+///
+/// The same document shape serves an episode thread and a community post
+/// thread: [episodeId] carries the target id (an episode id, or a post id), so
+/// Wings keeps a single comment system rather than a second one for posts.
+/// Replies live in `comments/{commentId}/replies`.
 @immutable
 class EpisodeComment {
   const EpisodeComment({
@@ -89,7 +94,12 @@ class EpisodeComment {
     );
   }
 
-  EpisodeComment copyWith({bool? deleted, int? replyCount}) => EpisodeComment(
+  EpisodeComment copyWith({
+    bool? deleted,
+    int? replyCount,
+    String? text,
+    bool? edited,
+  }) => EpisodeComment(
     id: id,
     episodeId: episodeId,
     parentId: parentId,
@@ -98,9 +108,9 @@ class EpisodeComment {
     authorName: authorName,
     badges: badges,
     photoVersion: photoVersion,
-    text: text,
+    text: text ?? this.text,
     stickerId: stickerId,
-    edited: edited,
+    edited: edited ?? this.edited,
     deleted: deleted ?? this.deleted,
     replyCount: replyCount ?? this.replyCount,
     createdAt: createdAt,

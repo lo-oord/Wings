@@ -24,7 +24,7 @@ Widget _wrap(
 }
 
 void main() {
-  testWidgets('bottom navigation renders four destinations in Arabic', (
+  testWidgets('bottom navigation renders five destinations in Arabic', (
     tester,
   ) async {
     var selected = -1;
@@ -35,11 +35,15 @@ void main() {
     );
 
     expect(find.text('الأحدث'), findsOneWidget);
+    expect(find.text('المجتمع'), findsOneWidget);
     expect(find.text('استكشف'), findsOneWidget);
     expect(find.text('مكتبتي'), findsOneWidget);
     expect(find.text('الإعدادات'), findsOneWidget);
 
     await tester.tap(find.text('استكشف'));
+    await tester.pumpAndSettle();
+    expect(selected, 2);
+    await tester.tap(find.text('المجتمع'));
     await tester.pumpAndSettle();
     expect(selected, 1);
   });

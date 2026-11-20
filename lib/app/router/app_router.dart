@@ -17,6 +17,11 @@ import '../../features/admin/admin_users_screen.dart';
 import '../../features/admin/owner_message_screen.dart';
 import '../../features/auth/auth_screens.dart';
 import '../../features/auth/complete_profile_screen.dart';
+import '../../features/community/community_screen.dart';
+import '../../features/community/people_screen.dart';
+import '../../features/community/post_composer_screen.dart';
+import '../../features/community/post_detail_screen.dart';
+import '../../features/community/saved_posts_screen.dart';
 import '../../features/details/anime_details_screen.dart';
 import '../../features/downloads/downloads_screen.dart';
 import '../../features/explore/catalog_screen.dart';
@@ -182,6 +187,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: <RouteBase>[
               GoRoute(
+                path: RoutePaths.community,
+                builder: (context, state) => const CommunityScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
                 path: RoutePaths.explore,
                 builder: (context, state) => const ExploreScreen(),
               ),
@@ -298,6 +311,48 @@ final routerProvider = Provider<GoRouter>((ref) {
           state,
           PublicProfileScreen(
             uid: Uri.decodeComponent(state.pathParameters['uid'] ?? ''),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/user/:uid/followers',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          PeopleScreen(
+            uid: Uri.decodeComponent(state.pathParameters['uid'] ?? ''),
+            kind: PeopleListKind.followers,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/user/:uid/following',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          PeopleScreen(
+            uid: Uri.decodeComponent(state.pathParameters['uid'] ?? ''),
+            kind: PeopleListKind.following,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: RoutePaths.communityCompose,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const PostComposerScreen()),
+      ),
+      GoRoute(
+        path: RoutePaths.communitySaved,
+        pageBuilder: (context, state) =>
+            _wingsPage(context, state, const SavedPostsScreen()),
+      ),
+      GoRoute(
+        path: '/community/post/:postId',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          PostDetailScreen(
+            postId: Uri.decodeComponent(state.pathParameters['postId'] ?? ''),
           ),
         ),
       ),
