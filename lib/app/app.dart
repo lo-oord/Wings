@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/services/notification_actions.dart';
-import '../core/storage/local_store.dart';
 import '../core/widgets/wings_feedback.dart';
 import '../features/player/mini_player.dart';
 import '../features/player/playback_session.dart';
@@ -41,10 +40,6 @@ class _WingsAppState extends ConsumerState<WingsApp>
       await ref.read(notificationsProvider.notifier).refresh();
       await _applyTrayActions();
       await _showReplyAlerts();
-      // The permission prompt is a system dialog: let the first screen paint
-      // and settle behind it instead of throwing it over a loading interface.
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-      await _askForNotificationsOnce();
     });
   }
 
@@ -88,22 +83,6 @@ class _WingsAppState extends ConsumerState<WingsApp>
       await ref.read(downloadServiceProvider).consumeTrayActions();
     } on Object {
       // Nothing queued or the service is not ready yet.
-    }
-  }
-
-  /// Shows the system notification prompt once, after onboarding.
-  Future<void> _askForNotificationsOnce() async {
-    try {
-      final store = ref.read(localStoreProvider);
-      const key = 'notifications_permission_asked';
-      if (store.getString(LocalStore.cacheBox, key) == '1') return;
-      if (!ref.read(settingsProvider).onboardingDone) return;
-      await store.setString(LocalStore.cacheBox, key, '1');
-      final notifications = ref.read(notificationServiceProvider);
-      if (await notifications.isPermissionGranted()) return;
-      await notifications.requestPermission();
-    } on Object {
-      // A denied or unavailable prompt never blocks the app.
     }
   }
 
