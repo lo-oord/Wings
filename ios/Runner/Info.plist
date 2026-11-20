@@ -4,6 +4,10 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Wings records voice messages you choose to send in a chat.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Wings lets you choose photos or videos to share in posts and chats.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
