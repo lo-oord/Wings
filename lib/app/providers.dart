@@ -16,6 +16,7 @@ import '../core/services/permission_service.dart';
 import '../core/services/share_service.dart';
 import '../core/services/storage_service.dart';
 import '../core/storage/local_store.dart';
+import '../features/stickers/sticker_providers.dart';
 import '../data/models/anime.dart';
 import '../data/models/app_notification.dart';
 import '../data/models/library.dart';
@@ -699,6 +700,9 @@ final socialRepositoryProvider = Provider<SocialRepository>(
   (ref) => SocialRepository(
     FirebaseFirestore.instance,
     ref.watch(localStoreProvider),
+    // Null while the bundled manifest is still loading; the composer only
+    // offers ids from the same catalogue, and the rules re-check the shape.
+    ref.watch(stickerCatalogProvider).value,
   ),
 );
 

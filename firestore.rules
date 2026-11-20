@@ -238,6 +238,26 @@ service cloud.firestore {
         && value.completed is bool;
     }
 
+    // Stickers are bundled with the app, so a comment stores only the id of a
+    // catalogue entry — never artwork, a URL, Base64 or a copy of the manifest.
+    // The id is optional, and when present it must have the namespaced shape
+    // the catalogue uses (`om_…` for OpenMoji, `cb_…` for the Wings chibi set).
+    // The exact id list lives in the app; an id that no longer resolves renders
+    // as «sticker unavailable» and the stored value is never rewritten.
+    function validStickerId(data) {
+      return !('stickerId' in data)
+        || (data.stickerId is string
+            && data.stickerId.size() <= 64
+            && data.stickerId.matches('^(om|cb)_[a-z0-9_]+$'));
+    }
+
+    // A comment needs text, a sticker, or both — never neither. This is what
+    // makes a sticker-only comment acceptable without loosening the text rules.
+    function hasCommentBody(data) {
+      return (data.text is string && data.text.size() >= 1)
+        || ('stickerId' in data);
+    }
+
     // ------------------------------------------------------------- users
     match /users/{uid} {
       // The owner document is private; staff may read it for administration,
@@ -624,8 +644,9 @@ service cloud.firestore {
           && request.resource.data.authorUid == request.auth.uid
           && request.resource.data.episodeId == episodeId
           && request.resource.data.text is string
-          && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 1000
+          && validStickerId(request.resource.data)
+          && hasCommentBody(request.resource.data)
           && request.resource.data.deleted == false
           && request.resource.data.replyCount == 0
           && validDisplayName(request.resource.data.authorName)
@@ -647,6 +668,8 @@ service cloud.firestore {
               && request.resource.data.authorUid == resource.data.authorUid
               && request.resource.data.text is string
               && request.resource.data.text.size() <= 1000
+              && validStickerId(request.resource.data)
+              && hasCommentBody(request.resource.data)
               && request.resource.data.deleted is bool
               && request.resource.data.replyCount == resource.data.replyCount
             )
@@ -690,8 +713,9 @@ service cloud.firestore {
             && request.resource.data.parentId == commentId
             && request.resource.data.episodeId == episodeId
             && request.resource.data.text is string
-            && request.resource.data.text.size() >= 1
             && request.resource.data.text.size() <= 1000
+            && validStickerId(request.resource.data)
+            && hasCommentBody(request.resource.data)
             && request.resource.data.deleted == false
             && validDisplayName(request.resource.data.authorName)
             && validUsername(request.resource.data.authorUsername)

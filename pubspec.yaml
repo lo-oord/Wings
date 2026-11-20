@@ -47,6 +47,9 @@ flutter:
   assets:
     - assets/branding/
     - assets/sounds/
+    - assets/stickers/
+    - assets/stickers/openmoji/
+    - assets/stickers/chibi/
   fonts:
     - family: Cairo
       fonts:

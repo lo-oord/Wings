@@ -26,6 +26,7 @@ class EpisodeComment {
     required this.authorUsername,
     required this.authorName,
     required this.text,
+    this.stickerId,
     required this.createdAt,
     required this.updatedAt,
     this.parentId,
@@ -45,6 +46,11 @@ class EpisodeComment {
   final ProfileBadges badges;
   final int photoVersion;
   final String text;
+
+  /// Id of a bundled sticker shown under the text, or null for a text-only
+  /// comment. Only the id is stored; the artwork ships inside the app.
+  final String? stickerId;
+
   final bool edited;
   final bool deleted;
   final int replyCount;
@@ -71,6 +77,10 @@ class EpisodeComment {
       badges: ProfileBadges.fromMap(raw['authorBadges']),
       photoVersion: (raw['photoVersion'] as num?)?.toInt() ?? 0,
       text: raw['text'] as String? ?? '',
+      stickerId:
+          raw['stickerId'] is String && (raw['stickerId'] as String).isNotEmpty
+          ? raw['stickerId'] as String
+          : null,
       edited: raw['edited'] == true,
       deleted: raw['deleted'] == true,
       replyCount: (raw['replyCount'] as num?)?.toInt() ?? 0,
@@ -89,6 +99,7 @@ class EpisodeComment {
     badges: badges,
     photoVersion: photoVersion,
     text: text,
+    stickerId: stickerId,
     edited: edited,
     deleted: deleted ?? this.deleted,
     replyCount: replyCount ?? this.replyCount,

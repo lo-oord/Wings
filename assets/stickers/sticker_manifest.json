@@ -1,0 +1,1961 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "all",
+      "name": {
+        "ar": "الكل",
+        "en": "All"
+      },
+      "sortOrder": 0
+    },
+    {
+      "id": "expressions",
+      "name": {
+        "ar": "التعبيرات",
+        "en": "Expressions"
+      },
+      "sortOrder": 1
+    },
+    {
+      "id": "laughter",
+      "name": {
+        "ar": "الضحك",
+        "en": "Laughter"
+      },
+      "sortOrder": 2
+    },
+    {
+      "id": "sadness",
+      "name": {
+        "ar": "الحزن",
+        "en": "Sadness"
+      },
+      "sortOrder": 3
+    },
+    {
+      "id": "anger",
+      "name": {
+        "ar": "الغضب",
+        "en": "Anger"
+      },
+      "sortOrder": 4
+    },
+    {
+      "id": "surprise",
+      "name": {
+        "ar": "الدهشة",
+        "en": "Surprise"
+      },
+      "sortOrder": 5
+    },
+    {
+      "id": "love_joy",
+      "name": {
+        "ar": "الحب والفرح",
+        "en": "Love & joy"
+      },
+      "sortOrder": 6
+    },
+    {
+      "id": "chibi",
+      "name": {
+        "ar": "Chibi",
+        "en": "Chibi"
+      },
+      "sortOrder": 7
+    },
+    {
+      "id": "misc",
+      "name": {
+        "ar": "متنوعة",
+        "en": "Misc"
+      },
+      "sortOrder": 8
+    }
+  ],
+  "stickers": [
+    {
+      "id": "om_1f600",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f600.webp",
+      "displayName": {
+        "ar": "ابتسامة عريضة",
+        "en": "Grinning face"
+      },
+      "keywords": {
+        "ar": [
+          "ابتسامة",
+          "سعادة"
+        ],
+        "en": [
+          "grin",
+          "smile",
+          "happy"
+        ]
+      },
+      "sortOrder": 10,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f642",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f642.webp",
+      "displayName": {
+        "ar": "ابتسامة خفيفة",
+        "en": "Slight smile"
+      },
+      "keywords": {
+        "ar": [
+          "ابتسامة",
+          "هادئ"
+        ],
+        "en": [
+          "smile",
+          "calm"
+        ]
+      },
+      "sortOrder": 20,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f609",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f609.webp",
+      "displayName": {
+        "ar": "غمزة",
+        "en": "Wink"
+      },
+      "keywords": {
+        "ar": [
+          "غمزة",
+          "مزاح"
+        ],
+        "en": [
+          "wink",
+          "playful"
+        ]
+      },
+      "sortOrder": 30,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f60f",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f60f.webp",
+      "displayName": {
+        "ar": "ابتسامة ماكرة",
+        "en": "Smirk"
+      },
+      "keywords": {
+        "ar": [
+          "مكر",
+          "خبيث"
+        ],
+        "en": [
+          "smirk",
+          "sly"
+        ]
+      },
+      "sortOrder": 40,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f643",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f643.webp",
+      "displayName": {
+        "ar": "وجه مقلوب",
+        "en": "Upside down"
+      },
+      "keywords": {
+        "ar": [
+          "مقلوب",
+          "سخيف"
+        ],
+        "en": [
+          "upside",
+          "silly"
+        ]
+      },
+      "sortOrder": 50,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f60b",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f60b.webp",
+      "displayName": {
+        "ar": "متلذّذ",
+        "en": "Savoring food"
+      },
+      "keywords": {
+        "ar": [
+          "لذيذ",
+          "طعام"
+        ],
+        "en": [
+          "yum",
+          "food",
+          "tasty"
+        ]
+      },
+      "sortOrder": 60,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f92a",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f92a.webp",
+      "displayName": {
+        "ar": "وجه مجنون",
+        "en": "Zany face"
+      },
+      "keywords": {
+        "ar": [
+          "مجنون",
+          "مضحك"
+        ],
+        "en": [
+          "zany",
+          "crazy",
+          "goofy"
+        ]
+      },
+      "sortOrder": 70,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f914",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f914.webp",
+      "displayName": {
+        "ar": "تفكير",
+        "en": "Thinking"
+      },
+      "keywords": {
+        "ar": [
+          "تفكير",
+          "سؤال"
+        ],
+        "en": [
+          "think",
+          "hmm",
+          "question"
+        ]
+      },
+      "sortOrder": 80,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f910",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f910.webp",
+      "displayName": {
+        "ar": "فم مغلق بسحّاب",
+        "en": "Zipper mouth"
+      },
+      "keywords": {
+        "ar": [
+          "صمت",
+          "سر"
+        ],
+        "en": [
+          "silent",
+          "secret",
+          "zipper"
+        ]
+      },
+      "sortOrder": 90,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f911",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f911.webp",
+      "displayName": {
+        "ar": "فم النقود",
+        "en": "Money mouth"
+      },
+      "keywords": {
+        "ar": [
+          "مال",
+          "ثري"
+        ],
+        "en": [
+          "money",
+          "rich"
+        ]
+      },
+      "sortOrder": 100,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f913",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f913.webp",
+      "displayName": {
+        "ar": "وجه نيرد",
+        "en": "Nerd"
+      },
+      "keywords": {
+        "ar": [
+          "نيرد",
+          "دراسة"
+        ],
+        "en": [
+          "nerd",
+          "study",
+          "geek"
+        ]
+      },
+      "sortOrder": 110,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f978",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f978.webp",
+      "displayName": {
+        "ar": "وجه متنكّر",
+        "en": "Disguised"
+      },
+      "keywords": {
+        "ar": [
+          "تنكر",
+          "غموض"
+        ],
+        "en": [
+          "disguise",
+          "mystery"
+        ]
+      },
+      "sortOrder": 120,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f9d0",
+      "categoryId": "expressions",
+      "assetPath": "assets/stickers/openmoji/om_1f9d0.webp",
+      "displayName": {
+        "ar": "وجه بعدسة",
+        "en": "Monocle"
+      },
+      "keywords": {
+        "ar": [
+          "عدسة",
+          "تحقيق"
+        ],
+        "en": [
+          "monocle",
+          "inspect"
+        ]
+      },
+      "sortOrder": 130,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f602",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f602.webp",
+      "displayName": {
+        "ar": "دموع الضحك",
+        "en": "Tears of joy"
+      },
+      "keywords": {
+        "ar": [
+          "ضحك",
+          "دموع"
+        ],
+        "en": [
+          "laugh",
+          "tears",
+          "lol"
+        ]
+      },
+      "sortOrder": 140,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f603",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f603.webp",
+      "displayName": {
+        "ar": "ابتسامة كبيرة",
+        "en": "Big smile"
+      },
+      "keywords": {
+        "ar": [
+          "ضحك",
+          "فرح"
+        ],
+        "en": [
+          "smile",
+          "happy",
+          "grin"
+        ]
+      },
+      "sortOrder": 150,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f604",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f604.webp",
+      "displayName": {
+        "ar": "ابتسامة بعيون",
+        "en": "Smiling eyes"
+      },
+      "keywords": {
+        "ar": [
+          "ضحك",
+          "عيون"
+        ],
+        "en": [
+          "smile",
+          "eyes"
+        ]
+      },
+      "sortOrder": 160,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f605",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f605.webp",
+      "displayName": {
+        "ar": "ضحك مع عرق",
+        "en": "Sweat smile"
+      },
+      "keywords": {
+        "ar": [
+          "ضحك",
+          "حرج"
+        ],
+        "en": [
+          "sweat",
+          "laugh",
+          "awkward"
+        ]
+      },
+      "sortOrder": 170,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f606",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f606.webp",
+      "displayName": {
+        "ar": "ضحك مفتوح",
+        "en": "Laughing"
+      },
+      "keywords": {
+        "ar": [
+          "ضحك",
+          "قهقهة"
+        ],
+        "en": [
+          "laugh",
+          "haha"
+        ]
+      },
+      "sortOrder": 180,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f923",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f923.webp",
+      "displayName": {
+        "ar": "ضحك على الأرض",
+        "en": "Rolling on the floor"
+      },
+      "keywords": {
+        "ar": [
+          "ضحك",
+          "قهقهة"
+        ],
+        "en": [
+          "rofl",
+          "laugh",
+          "haha"
+        ]
+      },
+      "sortOrder": 190,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f61b",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f61b.webp",
+      "displayName": {
+        "ar": "لسان مخرج",
+        "en": "Tongue out"
+      },
+      "keywords": {
+        "ar": [
+          "لسان",
+          "مزاح"
+        ],
+        "en": [
+          "tongue",
+          "silly"
+        ]
+      },
+      "sortOrder": 200,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f61c",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f61c.webp",
+      "displayName": {
+        "ar": "غمزة بلسان",
+        "en": "Winking tongue"
+      },
+      "keywords": {
+        "ar": [
+          "غمزة",
+          "لسان"
+        ],
+        "en": [
+          "wink",
+          "tongue"
+        ]
+      },
+      "sortOrder": 210,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f61d",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f61d.webp",
+      "displayName": {
+        "ar": "لسان مضحك",
+        "en": "Squinting tongue"
+      },
+      "keywords": {
+        "ar": [
+          "لسان",
+          "ضحك"
+        ],
+        "en": [
+          "tongue",
+          "laugh"
+        ]
+      },
+      "sortOrder": 220,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f92d",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f92d.webp",
+      "displayName": {
+        "ar": "وجه صه",
+        "en": "Shushing"
+      },
+      "keywords": {
+        "ar": [
+          "صمت",
+          "سر"
+        ],
+        "en": [
+          "shush",
+          "quiet"
+        ]
+      },
+      "sortOrder": 230,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f921",
+      "categoryId": "laughter",
+      "assetPath": "assets/stickers/openmoji/om_1f921.webp",
+      "displayName": {
+        "ar": "مهرّج",
+        "en": "Clown"
+      },
+      "keywords": {
+        "ar": [
+          "مهرج",
+          "ضحك"
+        ],
+        "en": [
+          "clown",
+          "funny"
+        ]
+      },
+      "sortOrder": 240,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f622",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f622.webp",
+      "displayName": {
+        "ar": "بكاء",
+        "en": "Crying"
+      },
+      "keywords": {
+        "ar": [
+          "حزن",
+          "دموع"
+        ],
+        "en": [
+          "cry",
+          "sad",
+          "tears"
+        ]
+      },
+      "sortOrder": 250,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f62d",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f62d.webp",
+      "displayName": {
+        "ar": "نحيب",
+        "en": "Sobbing"
+      },
+      "keywords": {
+        "ar": [
+          "نحيب",
+          "حزن"
+        ],
+        "en": [
+          "sob",
+          "cry",
+          "sad"
+        ]
+      },
+      "sortOrder": 260,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f972",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f972.webp",
+      "displayName": {
+        "ar": "دمعة وابتسامة",
+        "en": "Smiling tear"
+      },
+      "keywords": {
+        "ar": [
+          "دمعة",
+          "مشاعر"
+        ],
+        "en": [
+          "tear",
+          "emotional"
+        ]
+      },
+      "sortOrder": 270,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f614",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f614.webp",
+      "displayName": {
+        "ar": "متأمّل",
+        "en": "Pensive"
+      },
+      "keywords": {
+        "ar": [
+          "تأمل",
+          "حزن"
+        ],
+        "en": [
+          "pensive",
+          "sad"
+        ]
+      },
+      "sortOrder": 280,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f641",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f641.webp",
+      "displayName": {
+        "ar": "عبوس خفيف",
+        "en": "Slight frown"
+      },
+      "keywords": {
+        "ar": [
+          "عبوس",
+          "زعل"
+        ],
+        "en": [
+          "frown",
+          "sad"
+        ]
+      },
+      "sortOrder": 290,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f613",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f613.webp",
+      "displayName": {
+        "ar": "عرق بارد",
+        "en": "Cold sweat"
+      },
+      "keywords": {
+        "ar": [
+          "قلق",
+          "توتر"
+        ],
+        "en": [
+          "sweat",
+          "anxious"
+        ]
+      },
+      "sortOrder": 300,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f62c",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f62c.webp",
+      "displayName": {
+        "ar": "تكشيرة",
+        "en": "Grimace"
+      },
+      "keywords": {
+        "ar": [
+          "تكشيرة",
+          "انزعاج"
+        ],
+        "en": [
+          "grimace",
+          "awkward"
+        ]
+      },
+      "sortOrder": 310,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f494",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f494.webp",
+      "displayName": {
+        "ar": "قلب مكسور",
+        "en": "Broken heart"
+      },
+      "keywords": {
+        "ar": [
+          "قلب",
+          "فراق"
+        ],
+        "en": [
+          "heartbreak",
+          "sad"
+        ]
+      },
+      "sortOrder": 320,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f971",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f971.webp",
+      "displayName": {
+        "ar": "تثاؤب",
+        "en": "Yawning"
+      },
+      "keywords": {
+        "ar": [
+          "تعب",
+          "ملل"
+        ],
+        "en": [
+          "yawn",
+          "tired",
+          "bored"
+        ]
+      },
+      "sortOrder": 330,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f97a",
+      "categoryId": "sadness",
+      "assetPath": "assets/stickers/openmoji/om_1f97a.webp",
+      "displayName": {
+        "ar": "وجه رجاء",
+        "en": "Pleading"
+      },
+      "keywords": {
+        "ar": [
+          "رجاء",
+          "عيون"
+        ],
+        "en": [
+          "pleading",
+          "please"
+        ]
+      },
+      "sortOrder": 340,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f620",
+      "categoryId": "anger",
+      "assetPath": "assets/stickers/openmoji/om_1f620.webp",
+      "displayName": {
+        "ar": "غاضب",
+        "en": "Angry"
+      },
+      "keywords": {
+        "ar": [
+          "غضب",
+          "زعل"
+        ],
+        "en": [
+          "angry",
+          "mad"
+        ]
+      },
+      "sortOrder": 350,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f621",
+      "categoryId": "anger",
+      "assetPath": "assets/stickers/openmoji/om_1f621.webp",
+      "displayName": {
+        "ar": "وجه عابس",
+        "en": "Pouting"
+      },
+      "keywords": {
+        "ar": [
+          "غضب",
+          "عبوس"
+        ],
+        "en": [
+          "pout",
+          "angry"
+        ]
+      },
+      "sortOrder": 360,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f624",
+      "categoryId": "anger",
+      "assetPath": "assets/stickers/openmoji/om_1f624.webp",
+      "displayName": {
+        "ar": "بخار الغضب",
+        "en": "Steam from nose"
+      },
+      "keywords": {
+        "ar": [
+          "غضب",
+          "انفجار"
+        ],
+        "en": [
+          "steam",
+          "furious"
+        ]
+      },
+      "sortOrder": 370,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f92c",
+      "categoryId": "anger",
+      "assetPath": "assets/stickers/openmoji/om_1f92c.webp",
+      "displayName": {
+        "ar": "شتائم",
+        "en": "Swearing"
+      },
+      "keywords": {
+        "ar": [
+          "غضب",
+          "كلام"
+        ],
+        "en": [
+          "swear",
+          "angry"
+        ]
+      },
+      "sortOrder": 380,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f4a5",
+      "categoryId": "anger",
+      "assetPath": "assets/stickers/openmoji/om_1f4a5.webp",
+      "displayName": {
+        "ar": "تصادم",
+        "en": "Collision"
+      },
+      "keywords": {
+        "ar": [
+          "انفجار",
+          "صدمة"
+        ],
+        "en": [
+          "boom",
+          "impact"
+        ]
+      },
+      "sortOrder": 390,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f525",
+      "categoryId": "anger",
+      "assetPath": "assets/stickers/openmoji/om_1f525.webp",
+      "displayName": {
+        "ar": "نار",
+        "en": "Fire"
+      },
+      "keywords": {
+        "ar": [
+          "نار",
+          "حماس"
+        ],
+        "en": [
+          "fire",
+          "hot",
+          "lit"
+        ]
+      },
+      "sortOrder": 400,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f480",
+      "categoryId": "anger",
+      "assetPath": "assets/stickers/openmoji/om_1f480.webp",
+      "displayName": {
+        "ar": "جمجمة",
+        "en": "Skull"
+      },
+      "keywords": {
+        "ar": [
+          "موت",
+          "ضحك"
+        ],
+        "en": [
+          "skull",
+          "dead",
+          "lol"
+        ]
+      },
+      "sortOrder": 410,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f631",
+      "categoryId": "surprise",
+      "assetPath": "assets/stickers/openmoji/om_1f631.webp",
+      "displayName": {
+        "ar": "صراخ",
+        "en": "Screaming"
+      },
+      "keywords": {
+        "ar": [
+          "خوف",
+          "صدمة"
+        ],
+        "en": [
+          "scream",
+          "fear",
+          "shock"
+        ]
+      },
+      "sortOrder": 420,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f632",
+      "categoryId": "surprise",
+      "assetPath": "assets/stickers/openmoji/om_1f632.webp",
+      "displayName": {
+        "ar": "مندهش",
+        "en": "Astonished"
+      },
+      "keywords": {
+        "ar": [
+          "دهشة",
+          "صدمة"
+        ],
+        "en": [
+          "shocked",
+          "astonished"
+        ]
+      },
+      "sortOrder": 430,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f62e",
+      "categoryId": "surprise",
+      "assetPath": "assets/stickers/openmoji/om_1f62e.webp",
+      "displayName": {
+        "ar": "وجه صامت",
+        "en": "Hushed"
+      },
+      "keywords": {
+        "ar": [
+          "دهشة",
+          "صمت"
+        ],
+        "en": [
+          "hushed",
+          "wow"
+        ]
+      },
+      "sortOrder": 440,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f633",
+      "categoryId": "surprise",
+      "assetPath": "assets/stickers/openmoji/om_1f633.webp",
+      "displayName": {
+        "ar": "وجه محمر",
+        "en": "Flushed"
+      },
+      "keywords": {
+        "ar": [
+          "خجل",
+          "حرج"
+        ],
+        "en": [
+          "blush",
+          "embarrassed"
+        ]
+      },
+      "sortOrder": 450,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f440",
+      "categoryId": "surprise",
+      "assetPath": "assets/stickers/openmoji/om_1f440.webp",
+      "displayName": {
+        "ar": "عيون",
+        "en": "Eyes"
+      },
+      "keywords": {
+        "ar": [
+          "عيون",
+          "مراقبة"
+        ],
+        "en": [
+          "eyes",
+          "look"
+        ]
+      },
+      "sortOrder": 460,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f47b",
+      "categoryId": "surprise",
+      "assetPath": "assets/stickers/openmoji/om_1f47b.webp",
+      "displayName": {
+        "ar": "شبح",
+        "en": "Ghost"
+      },
+      "keywords": {
+        "ar": [
+          "شبح",
+          "رعب"
+        ],
+        "en": [
+          "ghost",
+          "spooky"
+        ]
+      },
+      "sortOrder": 470,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f60d",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f60d.webp",
+      "displayName": {
+        "ar": "عيون القلوب",
+        "en": "Heart eyes"
+      },
+      "keywords": {
+        "ar": [
+          "حب",
+          "إعجاب"
+        ],
+        "en": [
+          "love",
+          "heart",
+          "crush"
+        ]
+      },
+      "sortOrder": 480,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f970",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f970.webp",
+      "displayName": {
+        "ar": "قلوب مبتسمة",
+        "en": "Smiling with hearts"
+      },
+      "keywords": {
+        "ar": [
+          "حب",
+          "سعادة"
+        ],
+        "en": [
+          "love",
+          "hearts"
+        ]
+      },
+      "sortOrder": 490,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f618",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f618.webp",
+      "displayName": {
+        "ar": "قبلة",
+        "en": "Kiss"
+      },
+      "keywords": {
+        "ar": [
+          "قبلة",
+          "حب"
+        ],
+        "en": [
+          "kiss",
+          "love"
+        ]
+      },
+      "sortOrder": 500,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f496",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f496.webp",
+      "displayName": {
+        "ar": "قلب متلألئ",
+        "en": "Sparkling heart"
+      },
+      "keywords": {
+        "ar": [
+          "قلب",
+          "حب"
+        ],
+        "en": [
+          "heart",
+          "sparkle"
+        ]
+      },
+      "sortOrder": 510,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f497",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f497.webp",
+      "displayName": {
+        "ar": "قلب متزايد",
+        "en": "Growing heart"
+      },
+      "keywords": {
+        "ar": [
+          "قلب",
+          "حب"
+        ],
+        "en": [
+          "heart",
+          "love"
+        ]
+      },
+      "sortOrder": 520,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_2764",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_2764.webp",
+      "displayName": {
+        "ar": "قلب أحمر",
+        "en": "Red heart"
+      },
+      "keywords": {
+        "ar": [
+          "قلب",
+          "حب"
+        ],
+        "en": [
+          "heart",
+          "love",
+          "red"
+        ]
+      },
+      "sortOrder": 530,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f60a",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f60a.webp",
+      "displayName": {
+        "ar": "ابتسامة حب",
+        "en": "Smiling face"
+      },
+      "keywords": {
+        "ar": [
+          "حب",
+          "ابتسامة"
+        ],
+        "en": [
+          "smile",
+          "love"
+        ]
+      },
+      "sortOrder": 540,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f973",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f973.webp",
+      "displayName": {
+        "ar": "احتفال",
+        "en": "Partying"
+      },
+      "keywords": {
+        "ar": [
+          "حفلة",
+          "احتفال"
+        ],
+        "en": [
+          "party",
+          "celebrate"
+        ]
+      },
+      "sortOrder": 550,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f389",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f389.webp",
+      "displayName": {
+        "ar": "مفرقعات",
+        "en": "Party popper"
+      },
+      "keywords": {
+        "ar": [
+          "حفلة",
+          "فرح"
+        ],
+        "en": [
+          "party",
+          "confetti"
+        ]
+      },
+      "sortOrder": 560,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f31f",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f31f.webp",
+      "displayName": {
+        "ar": "نجمة متوهجة",
+        "en": "Glowing star"
+      },
+      "keywords": {
+        "ar": [
+          "نجمة",
+          "تميز"
+        ],
+        "en": [
+          "star",
+          "glow"
+        ]
+      },
+      "sortOrder": 570,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f929",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f929.webp",
+      "displayName": {
+        "ar": "نجوم",
+        "en": "Star struck"
+      },
+      "keywords": {
+        "ar": [
+          "نجوم",
+          "انبهار"
+        ],
+        "en": [
+          "stars",
+          "amazed"
+        ]
+      },
+      "sortOrder": 580,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f60e",
+      "categoryId": "love_joy",
+      "assetPath": "assets/stickers/openmoji/om_1f60e.webp",
+      "displayName": {
+        "ar": "نظارة شمسية",
+        "en": "Sunglasses"
+      },
+      "keywords": {
+        "ar": [
+          "كول",
+          "ثقة"
+        ],
+        "en": [
+          "cool",
+          "sunglasses"
+        ]
+      },
+      "sortOrder": 590,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f44d",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f44d.webp",
+      "displayName": {
+        "ar": "إعجاب",
+        "en": "Thumbs up"
+      },
+      "keywords": {
+        "ar": [
+          "إعجاب",
+          "موافق"
+        ],
+        "en": [
+          "like",
+          "thumbs",
+          "yes"
+        ]
+      },
+      "sortOrder": 600,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f44e",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f44e.webp",
+      "displayName": {
+        "ar": "عدم إعجاب",
+        "en": "Thumbs down"
+      },
+      "keywords": {
+        "ar": [
+          "رفض",
+          "لا"
+        ],
+        "en": [
+          "dislike",
+          "no"
+        ]
+      },
+      "sortOrder": 610,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f44f",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f44f.webp",
+      "displayName": {
+        "ar": "تصفيق",
+        "en": "Clapping"
+      },
+      "keywords": {
+        "ar": [
+          "تصفيق",
+          "أحسنت"
+        ],
+        "en": [
+          "clap",
+          "bravo"
+        ]
+      },
+      "sortOrder": 620,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f64f",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f64f.webp",
+      "displayName": {
+        "ar": "يدان مطويتان",
+        "en": "Folded hands"
+      },
+      "keywords": {
+        "ar": [
+          "شكرا",
+          "رجاء"
+        ],
+        "en": [
+          "thanks",
+          "please"
+        ]
+      },
+      "sortOrder": 630,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f3c6",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f3c6.webp",
+      "displayName": {
+        "ar": "كأس",
+        "en": "Trophy"
+      },
+      "keywords": {
+        "ar": [
+          "فوز",
+          "بطولة"
+        ],
+        "en": [
+          "trophy",
+          "win"
+        ]
+      },
+      "sortOrder": 640,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f4af",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f4af.webp",
+      "displayName": {
+        "ar": "مئة",
+        "en": "Hundred"
+      },
+      "keywords": {
+        "ar": [
+          "مئة",
+          "كامل"
+        ],
+        "en": [
+          "100",
+          "perfect"
+        ]
+      },
+      "sortOrder": 650,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f4a4",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f4a4.webp",
+      "displayName": {
+        "ar": "نوم",
+        "en": "Sleeping"
+      },
+      "keywords": {
+        "ar": [
+          "نوم",
+          "تعب"
+        ],
+        "en": [
+          "sleep",
+          "zzz"
+        ]
+      },
+      "sortOrder": 660,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f37f",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f37f.webp",
+      "displayName": {
+        "ar": "فشار",
+        "en": "Popcorn"
+      },
+      "keywords": {
+        "ar": [
+          "فشار",
+          "مشاهدة"
+        ],
+        "en": [
+          "popcorn",
+          "watch"
+        ]
+      },
+      "sortOrder": 670,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f382",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f382.webp",
+      "displayName": {
+        "ar": "كعكة",
+        "en": "Cake"
+      },
+      "keywords": {
+        "ar": [
+          "كعكة",
+          "عيد"
+        ],
+        "en": [
+          "cake",
+          "birthday"
+        ]
+      },
+      "sortOrder": 680,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f381",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f381.webp",
+      "displayName": {
+        "ar": "هدية",
+        "en": "Gift"
+      },
+      "keywords": {
+        "ar": [
+          "هدية",
+          "مناسبة"
+        ],
+        "en": [
+          "gift",
+          "present"
+        ]
+      },
+      "sortOrder": 690,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f4a1",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f4a1.webp",
+      "displayName": {
+        "ar": "فكرة",
+        "en": "Idea"
+      },
+      "keywords": {
+        "ar": [
+          "فكرة",
+          "إبداع"
+        ],
+        "en": [
+          "idea",
+          "bulb"
+        ]
+      },
+      "sortOrder": 700,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f680",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f680.webp",
+      "displayName": {
+        "ar": "صاروخ",
+        "en": "Rocket"
+      },
+      "keywords": {
+        "ar": [
+          "صاروخ",
+          "سرعة"
+        ],
+        "en": [
+          "rocket",
+          "fast"
+        ]
+      },
+      "sortOrder": 710,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f308",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f308.webp",
+      "displayName": {
+        "ar": "قوس قزح",
+        "en": "Rainbow"
+      },
+      "keywords": {
+        "ar": [
+          "قوس قزح",
+          "ألوان"
+        ],
+        "en": [
+          "rainbow",
+          "colors"
+        ]
+      },
+      "sortOrder": 720,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "om_1f47d",
+      "categoryId": "misc",
+      "assetPath": "assets/stickers/openmoji/om_1f47d.webp",
+      "displayName": {
+        "ar": "فضائي",
+        "en": "Alien"
+      },
+      "keywords": {
+        "ar": [
+          "فضائي",
+          "غريب"
+        ],
+        "en": [
+          "alien",
+          "weird"
+        ]
+      },
+      "sortOrder": 730,
+      "enabled": true,
+      "source": "openmoji",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "cb_laugh",
+      "categoryId": "chibi",
+      "assetPath": "assets/stickers/chibi/cb_laugh.webp",
+      "displayName": {
+        "ar": "ضحكة شقيّة",
+        "en": "Cheeky laugh"
+      },
+      "keywords": {
+        "ar": [
+          "ضحك",
+          "سعادة"
+        ],
+        "en": [
+          "laugh",
+          "happy"
+        ]
+      },
+      "sortOrder": 740,
+      "enabled": true,
+      "source": "wings-original",
+      "license": "Wings original artwork"
+    },
+    {
+      "id": "cb_cry",
+      "categoryId": "chibi",
+      "assetPath": "assets/stickers/chibi/cb_cry.webp",
+      "displayName": {
+        "ar": "بكاء درامي",
+        "en": "Dramatic cry"
+      },
+      "keywords": {
+        "ar": [
+          "حزن",
+          "دموع"
+        ],
+        "en": [
+          "cry",
+          "sad"
+        ]
+      },
+      "sortOrder": 750,
+      "enabled": true,
+      "source": "wings-original",
+      "license": "Wings original artwork"
+    },
+    {
+      "id": "cb_angry",
+      "categoryId": "chibi",
+      "assetPath": "assets/stickers/chibi/cb_angry.webp",
+      "displayName": {
+        "ar": "غضب وانتفاخ",
+        "en": "Puffed anger"
+      },
+      "keywords": {
+        "ar": [
+          "غضب",
+          "زعل"
+        ],
+        "en": [
+          "angry",
+          "mad"
+        ]
+      },
+      "sortOrder": 760,
+      "enabled": true,
+      "source": "wings-original",
+      "license": "Wings original artwork"
+    },
+    {
+      "id": "cb_shock",
+      "categoryId": "chibi",
+      "assetPath": "assets/stickers/chibi/cb_shock.webp",
+      "displayName": {
+        "ar": "صدمة",
+        "en": "Shock"
+      },
+      "keywords": {
+        "ar": [
+          "دهشة",
+          "صدمة"
+        ],
+        "en": [
+          "shock",
+          "wow"
+        ]
+      },
+      "sortOrder": 770,
+      "enabled": true,
+      "source": "wings-original",
+      "license": "Wings original artwork"
+    },
+    {
+      "id": "cb_love",
+      "categoryId": "chibi",
+      "assetPath": "assets/stickers/chibi/cb_love.webp",
+      "displayName": {
+        "ar": "قلب كبير",
+        "en": "Big heart"
+      },
+      "keywords": {
+        "ar": [
+          "حب",
+          "قلب"
+        ],
+        "en": [
+          "love",
+          "heart"
+        ]
+      },
+      "sortOrder": 780,
+      "enabled": true,
+      "source": "wings-original",
+      "license": "Wings original artwork"
+    },
+    {
+      "id": "cb_sleep",
+      "categoryId": "chibi",
+      "assetPath": "assets/stickers/chibi/cb_sleep.webp",
+      "displayName": {
+        "ar": "نعسان",
+        "en": "Sleepy"
+      },
+      "keywords": {
+        "ar": [
+          "نوم",
+          "تعب"
+        ],
+        "en": [
+          "sleep",
+          "tired"
+        ]
+      },
+      "sortOrder": 790,
+      "enabled": true,
+      "source": "wings-original",
+      "license": "Wings original artwork"
+    },
+    {
+      "id": "cb_thumbs",
+      "categoryId": "chibi",
+      "assetPath": "assets/stickers/chibi/cb_thumbs.webp",
+      "displayName": {
+        "ar": "أحسنت",
+        "en": "Nice work"
+      },
+      "keywords": {
+        "ar": [
+          "إعجاب",
+          "أحسنت"
+        ],
+        "en": [
+          "thumbs",
+          "nice"
+        ]
+      },
+      "sortOrder": 800,
+      "enabled": true,
+      "source": "wings-original",
+      "license": "Wings original artwork"
+    },
+    {
+      "id": "cb_party",
+      "categoryId": "chibi",
+      "assetPath": "assets/stickers/chibi/cb_party.webp",
+      "displayName": {
+        "ar": "احتفال",
+        "en": "Celebration"
+      },
+      "keywords": {
+        "ar": [
+          "حفلة",
+          "فرح"
+        ],
+        "en": [
+          "party",
+          "celebrate"
+        ]
+      },
+      "sortOrder": 810,
+      "enabled": true,
+      "source": "wings-original",
+      "license": "Wings original artwork"
+    }
+  ]
+}

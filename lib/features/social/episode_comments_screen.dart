@@ -13,6 +13,8 @@ import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/social.dart';
 import '../auth/sign_in_prompt.dart';
+import '../stickers/comment_draft.dart';
+import 'comment_composer.dart';
 import 'comment_tile.dart';
 
 /// Full comments page, modelled on YouTube: the newest page streams live, older
@@ -105,7 +107,7 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
     }
   }
 
-  Future<void> _send(String text, {String? parentId}) async {
+  Future<bool> _send(String text, {String? parentId, String? stickerId}) async {
     final user = ref.read(authProvider);
     final profile = ref.read(profileProvider);
     if (user == null) {
@@ -117,7 +119,7 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
           en: 'Sign in to write a comment or reply to one.',
         ),
       );
-      return;
+      return false;
     }
     if (profile == null) {
       context.showSnack(
@@ -128,9 +130,10 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
         ),
         isError: true,
       );
-      return;
+      return false;
     }
-    if (text.trim().isEmpty) return;
+    final draft = CommentDraft(text: text, stickerId: stickerId);
+    if (!draft.canSend) return false;
     setState(() => _sending = true);
     try {
       await ref
@@ -138,12 +141,12 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
           .addComment(
             episodeId: widget.episodeId,
             author: profile,
-            text: text,
+            text: draft.trimmedText,
             parentId: parentId,
+            stickerId: draft.normalizedStickerId,
           );
       unawaited(AppFeedback.publish());
-      if (!mounted) return;
-      if (parentId == null) _composer.clear();
+      if (!mounted) return false;
       setState(() {
         _counts = EpisodeCounts(
           likes: _counts.likes,
@@ -151,8 +154,9 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
           comments: _counts.comments + 1,
         );
       });
+      return true;
     } on StateError catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       context.showSnack(
         error.message == 'comment-too-fast'
             ? Tr.of(
@@ -167,6 +171,7 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
               ),
         isError: true,
       );
+      return false;
     } on Object {
       if (mounted) {
         context.showSnack(
@@ -178,6 +183,7 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
           isError: true,
         );
       }
+      return false;
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -281,7 +287,11 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
                         CommentTile(
                           comment: comment,
                           rank: ranks[comment.id],
-                          onReply: (text) => _send(text, parentId: comment.id),
+                          onReply: (text, stickerId) => _send(
+                            text,
+                            parentId: comment.id,
+                            stickerId: stickerId,
+                          ),
                         ),
                         if (index != merged.length)
                           Divider(
@@ -325,10 +335,10 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
           else
             SafeArea(
               top: false,
-              child: _Composer(
+              child: CommentComposer(
                 controller: _composer,
                 sending: _sending,
-                onSend: _send,
+                onSend: (text, stickerId) => _send(text, stickerId: stickerId),
               ),
             ),
         ],
@@ -375,65 +385,6 @@ class _Header extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Composer extends StatelessWidget {
-  const _Composer({
-    required this.controller,
-    required this.sending,
-    required this.onSend,
-  });
-
-  final TextEditingController controller;
-  final bool sending;
-  final Future<void> Function(String text, {String? parentId}) onSend;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        Space.md,
-        Space.sm,
-        Space.md,
-        Space.sm,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: <Widget>[
-          Expanded(
-            child: TextField(
-              controller: controller,
-              minLines: 1,
-              maxLines: 4,
-              maxLength: 1000,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: Tr.of(
-                  context,
-                  ar: 'أضف تعليقًا…',
-                  en: 'Add a comment…',
-                ),
-                counterText: '',
-              ),
-            ),
-          ),
-          const SizedBox(width: Space.sm),
-          WingsIconButton(
-            icon: Icons.send_rounded,
-            filled: true,
-            onPressed: sending
-                ? null
-                : () {
-                    final text = controller.text;
-                    if (text.trim().isEmpty) return;
-                    controller.clear();
-                    onSend(text);
-                  },
           ),
         ],
       ),

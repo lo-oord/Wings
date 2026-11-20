@@ -14,6 +14,9 @@ import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/social.dart';
 import '../profile/avatar_view.dart';
+import '../stickers/comment_draft.dart';
+import '../stickers/sticker_view.dart';
+import 'comment_composer.dart';
 import 'user_handle.dart';
 
 /// One comment and its replies, shared by the player preview and the full
@@ -28,7 +31,9 @@ class CommentTile extends ConsumerStatefulWidget {
   });
 
   final EpisodeComment comment;
-  final void Function(String text) onReply;
+
+  /// Called with the reply text and the optional sticker id.
+  final void Function(String text, String? stickerId) onReply;
 
   /// Position in the list, used for the medal on the first three comments.
   final int? rank;
@@ -110,13 +115,21 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    comment.text,
-                    style: context.text.bodySmall?.copyWith(
-                      color: palette.textPrimary,
-                      height: 1.55,
+                  if (comment.text.isNotEmpty)
+                    Text(
+                      comment.text,
+                      style: context.text.bodySmall?.copyWith(
+                        color: palette.textPrimary,
+                        height: 1.55,
+                      ),
                     ),
-                  ),
+                  if (comment.stickerId case final stickerId?)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        top: comment.text.isEmpty ? 0 : Space.xs,
+                      ),
+                      child: StickerMessage(stickerId: stickerId),
+                    ),
                   Row(
                     children: <Widget>[
                       TextButton(
@@ -212,14 +225,29 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                                                 '/user/${reply.authorUid}',
                                               ),
                                             ),
-                                            Text(
-                                              reply.text,
-                                              style: context.text.bodySmall
-                                                  ?.copyWith(
-                                                    color:
-                                                        palette.textSecondary,
-                                                  ),
-                                            ),
+                                            if (reply.text.isNotEmpty)
+                                              Text(
+                                                reply.text,
+                                                style: context.text.bodySmall
+                                                    ?.copyWith(
+                                                      color:
+                                                          palette.textSecondary,
+                                                    ),
+                                              ),
+                                            if (reply.stickerId
+                                                case final stickerId?)
+                                              Padding(
+                                                padding: EdgeInsets.only(
+                                                  top: reply.text.isEmpty
+                                                      ? 0
+                                                      : Space.xxs,
+                                                ),
+                                                child: StickerMessage(
+                                                  stickerId: stickerId,
+                                                  size: 92,
+                                                  compact: true,
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
@@ -287,34 +315,13 @@ class _CommentTileState extends ConsumerState<CommentTile> {
   }
 
   Future<void> _replyDialog(BuildContext context) async {
-    final controller = TextEditingController();
-    final text = await showDialog<String>(
+    final draft = await showDialog<CommentDraft>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(Tr.of(context, ar: 'رد على التعليق', en: 'Reply')),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 4,
-          maxLength: 1000,
-          decoration: InputDecoration(
-            hintText: Tr.of(context, ar: 'اكتب ردك…', en: 'Write your reply…'),
-          ),
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(Tr.of(context, ar: 'إلغاء', en: 'Cancel')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: Text(Tr.of(context, ar: 'إرسال', en: 'Send')),
-          ),
-        ],
-      ),
+      builder: (dialogContext) => const _ReplyDialog(),
     );
-    controller.dispose();
-    if (text != null && text.trim().isNotEmpty) widget.onReply(text);
+    if (draft != null && draft.canSend) {
+      widget.onReply(draft.trimmedText, draft.normalizedStickerId);
+    }
   }
 
   Future<void> _showActions(bool mine) async {
@@ -324,11 +331,12 @@ class _CommentTileState extends ConsumerState<CommentTile> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: Text(Tr.of(context, ar: 'نسخ النص', en: 'Copy text')),
-              onTap: () => Navigator.of(sheetContext).pop('copy'),
-            ),
+            if (widget.comment.text.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: Text(Tr.of(context, ar: 'نسخ النص', en: 'Copy text')),
+                onTap: () => Navigator.of(sheetContext).pop('copy'),
+              ),
             if (mine)
               ListTile(
                 leading: const Icon(Icons.edit_outlined),
@@ -459,6 +467,57 @@ class _CommentTileState extends ConsumerState<CommentTile> {
         }
         break;
     }
+  }
+}
+
+/// Reply form with the same sticker support as the main composer. It returns
+/// the draft through `Navigator.pop`, and never sends anything itself.
+class _ReplyDialog extends StatefulWidget {
+  const _ReplyDialog();
+
+  @override
+  State<_ReplyDialog> createState() => _ReplyDialogState();
+}
+
+class _ReplyDialogState extends State<_ReplyDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(Tr.of(context, ar: 'رد على التعليق', en: 'Reply')),
+      contentPadding: const EdgeInsets.fromLTRB(
+        Space.md,
+        Space.md,
+        Space.md,
+        0,
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: CommentComposer(
+          controller: _controller,
+          sending: false,
+          onSend: (text, stickerId) async {
+            final draft = CommentDraft(text: text, stickerId: stickerId);
+            if (!draft.canSend) return false;
+            Navigator.of(context).pop(draft);
+            return true;
+          },
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(Tr.of(context, ar: 'إلغاء', en: 'Cancel')),
+        ),
+      ],
+    );
   }
 }
 

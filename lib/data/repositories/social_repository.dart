@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/storage/local_store.dart';
 import '../models/social.dart';
+import '../models/sticker_catalog.dart';
 import '../models/user_profile.dart';
 import 'notification_repository.dart';
 
@@ -17,13 +18,21 @@ import 'notification_repository.dart';
 /// * `reports/{reportId}` — moderation reports; not readable by ordinary
 ///   users.
 class SocialRepository {
-  SocialRepository(this._db, [this._store]);
+  SocialRepository(this._db, [this._store, this._stickers]);
 
   final FirebaseFirestore _db;
 
   /// Local cache/guard store. Optional so tests can build a repository without
   /// a Hive box.
   final LocalStore? _store;
+
+  /// Bundled sticker catalogue. Optional so tests can build a repository
+  /// without assets; when present, a comment may only reference a known id.
+  final StickerCatalog? _stickers;
+
+  /// Sticker ids are namespaced (`om_…` for OpenMoji, `cb_…` for the Wings
+  /// chibi set). The same shape is enforced by the Firestore rules.
+  static final RegExp stickerIdPattern = RegExp(r'^(om|cb)_[a-z0-9_]+$');
 
   static const int pageSize = 20;
   static const int previewSize = 3;
@@ -235,15 +244,27 @@ class SocialRepository {
   Future<String> addComment({
     required String episodeId,
     required UserProfile author,
-    required String text,
+    String text = '',
     String? parentId,
+    String? stickerId,
   }) async {
     final trimmed = text.trim();
-    if (trimmed.length < minCommentLength || trimmed.isEmpty) {
+    final sticker = (stickerId ?? '').trim().isEmpty ? null : stickerId!.trim();
+    // A sticker on its own is a complete comment; an empty draft is not.
+    if (trimmed.isEmpty && sticker == null) {
       throw ArgumentError('empty comment');
     }
     if (trimmed.length > maxCommentLength) {
       throw ArgumentError('comment too long');
+    }
+    if (sticker != null) {
+      if (!stickerIdPattern.hasMatch(sticker)) {
+        throw ArgumentError('invalid sticker');
+      }
+      final catalog = _stickers;
+      if (catalog != null && catalog.byId(sticker) == null) {
+        throw ArgumentError('unknown sticker');
+      }
     }
     final store = _store;
     if (store != null) {
@@ -270,6 +291,7 @@ class SocialRepository {
       'authorBadges': author.badges.toMap(),
       'photoVersion': author.photoVersion,
       'text': trimmed,
+      'stickerId': ?sticker,
       'edited': false,
       'deleted': false,
       'replyCount': 0,
@@ -304,7 +326,7 @@ class SocialRepository {
           actor: author,
           episodeId: episodeId,
           commentId: parentId,
-          text: trimmed,
+          text: trimmed.isEmpty ? 'أرسل ملصقًا' : trimmed,
         );
       } on Object {
         // Offline or the parent vanished; the thread stays correct.
