@@ -10,6 +10,8 @@ import '../../data/models/social.dart';
 import '../../data/repositories/community_repository.dart';
 import 'community_ranking.dart';
 
+export '../../data/repositories/community_repository.dart' show TasteProfile;
+
 export '../../app/providers.dart'
     show communityMediaProvider, communityRepositoryProvider;
 
@@ -333,14 +335,16 @@ class PostCommentsController extends Notifier<PostCommentsState> {
       final page = await _repo.pageComments(postId, after: _cursor);
       _cursor = page.cursor;
       final seen = state.comments.map((comment) => comment.id).toSet();
-      state = state.copyWith(
-        comments: <EpisodeComment>[
-          ...state.comments,
-          for (final comment in page.items)
-            if (seen.add(comment.id)) comment,
-        ],
-        hasMore: page.hasMore,
-      );
+      final merged =
+          <EpisodeComment>[
+            ...state.comments,
+            for (final comment in page.items)
+              if (seen.add(comment.id)) comment,
+          ]..sort((a, b) {
+            if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+            return b.createdAt.compareTo(a.createdAt);
+          });
+      state = state.copyWith(comments: merged, hasMore: page.hasMore);
     } on Object catch (error) {
       state = state.copyWith(error: error);
     } finally {
@@ -460,13 +464,23 @@ final hiddenPostIdsProvider = StreamProvider.family<Set<String>, String>(
   (ref, uid) => ref.watch(communityRepositoryProvider).watchHiddenIds(uid),
 );
 
+/// Derived interest weights of one account, read from the small bounded
+/// `users/{uid}/taste` store. A new device therefore starts with the same
+/// personalisation instead of replaying the whole interaction history.
+final tasteProvider = FutureProvider.autoDispose.family<TasteProfile, String>(
+  (ref, uid) => ref.watch(communityRepositoryProvider).loadTaste(uid),
+);
+
 /// Everything the personal feed and Reels ranking use, assembled from systems
 /// that already exist: the follow graph, the library and watch history, the
-/// moderation lists and the local view log. No extra collection, no profile
-/// building job, no server round-trip.
+/// moderation lists, the local view log and the derived taste store. No extra
+/// collection, no profile building job, no server round-trip.
 final feedSignalsProvider = Provider<FeedSignals>((ref) {
   final uid = ref.watch(authProvider)?.id;
   final library = ref.watch(libraryProvider);
+  final taste = uid == null
+      ? TasteProfile.empty
+      : ref.watch(tasteProvider(uid)).value ?? TasteProfile.empty;
   final weights = <String, double>{};
   for (final entry in library.favorites) {
     weights[entry.anime.id] = 1;
@@ -477,6 +491,19 @@ final feedSignalsProvider = Provider<FeedSignals>((ref) {
   for (final watch in library.history) {
     weights.putIfAbsent(watch.animeId, () => 0.55);
   }
+  // The account's own learned interest tops up the library weights.
+  for (final entry in taste.anime.entries) {
+    final learned = (entry.value / 12).clamp(0.0, 1.0);
+    if (learned > (weights[entry.key] ?? 0)) weights[entry.key] = learned;
+  }
+  final hashtags = <String, double>{
+    for (final entry in taste.hashtags.entries)
+      entry.key: (entry.value / 8).clamp(0.0, 1.0),
+  };
+  final sounds = <String, double>{
+    for (final entry in taste.sounds.entries)
+      entry.key: (entry.value / 8).clamp(0.0, 1.0),
+  };
   return FeedSignals(
     following: uid == null
         ? const <String>{}
@@ -488,6 +515,8 @@ final feedSignalsProvider = Provider<FeedSignals>((ref) {
         ? const <String>{}
         : ref.watch(hiddenPostIdsProvider(uid)).value ?? const <String>{},
     animeWeights: weights,
+    hashtagWeights: hashtags,
+    soundWeights: sounds,
     viewedPosts: ref.watch(reelViewsProvider),
   );
 });

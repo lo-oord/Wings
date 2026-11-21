@@ -18,7 +18,6 @@ import '../../data/models/library.dart';
 import '../../data/models/user_profile.dart';
 import '../auth/auth_screens.dart' show kCountries;
 import '../auth/username_field.dart';
-import '../community/profile_posts_section.dart';
 import '../social/username_text.dart';
 import 'account_deletion_overlay.dart';
 import 'account_security_section.dart';
@@ -226,10 +225,8 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: Space.lg),
-          if (user != null) ...<Widget>[
-            ProfilePostsSection(uid: user.id),
-            const SizedBox(height: Space.lg),
-          ],
+          // Posts belong to the public profile only: this screen is the private
+          // account and settings area.
           if (user == null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.lg),

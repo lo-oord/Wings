@@ -69,6 +69,12 @@ abstract final class RoutePaths {
   static const String communitySaved = '/community/saved';
   static const String communityReels = '/community/reels';
   static const String communityReelCompose = '/community/reels/new';
+  static const String communitySearch = '/community/search';
+
+  /// Results of one community hashtag. The slug is normalized (no `#`, lower
+  /// case) so one tag has exactly one destination.
+  static String communityHashtag(String slug) =>
+      '/community/tag/${Uri.encodeComponent(slug)}';
 
   static String communityPost(String postId) =>
       '/community/post/${Uri.encodeComponent(postId)}';

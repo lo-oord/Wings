@@ -43,12 +43,15 @@ class CommunityMediaService {
 
   static const int maxImageBytes = 5 * 1024 * 1024;
 
-  /// Short vertical clips stay small enough to upload on mobile data and to
-  /// start playing quickly, and the Worker enforces the same ceiling.
-  static const int maxVideoBytes = 50 * 1024 * 1024;
+  /// A community feed video may reach 100 MB / 10 minutes; a Reel stays at
+  /// 90 MB / 5 minutes so it still starts quickly. The Worker enforces the
+  /// same ceilings on the upload it signs, so the app is not the only check.
+  static const int maxVideoBytes = 100 * 1024 * 1024;
+  static const int maxReelBytes = 90 * 1024 * 1024;
   static const int maxAudioBytes = 12 * 1024 * 1024;
   static const int maxFileBytes = 20 * 1024 * 1024;
-  static const int maxVideoSeconds = 60;
+  static const int maxVideoSeconds = 600;
+  static const int maxReelSeconds = 300;
 
   static const int maxUploadsPerRequest = 4;
 

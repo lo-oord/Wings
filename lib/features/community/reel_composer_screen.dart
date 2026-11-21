@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,6 +18,7 @@ import '../../core/utils/tr.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/community.dart';
 import '../../data/models/user_profile.dart';
+import '../../data/repositories/community_repository.dart';
 import 'community_video.dart';
 import 'suggestion_panel.dart';
 
@@ -29,7 +31,11 @@ import 'suggestion_panel.dart';
 /// and a failed save removes the objects it uploaded, so Reels can never point
 /// at half-uploaded media.
 class ReelComposerScreen extends ConsumerStatefulWidget {
-  const ReelComposerScreen({super.key});
+  const ReelComposerScreen({super.key, this.seed});
+
+  /// A sound taken from another Reel («استخدام هذا الصوت») or any pre-filled
+  /// studio state. The member still chooses their own video or pictures.
+  final ReelComposerSeed? seed;
 
   @override
   ConsumerState<ReelComposerScreen> createState() => _ReelComposerScreenState();
@@ -44,6 +50,14 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
 
   _VideoDraft? _video;
   _DraftImage? _cover;
+
+  /// A picture Reel: each frame stays [_frameMs] on screen.
+  final List<_DraftImage> _frames = <_DraftImage>[];
+  int _frameMs = 2500;
+  _SoundDraft? _soundFile;
+  String? _soundKey;
+  String _soundAuthorUid = '';
+  String? _uploadedSoundKey;
 
   String _category = '';
   bool _allowComments = true;
@@ -73,6 +87,13 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
   @override
   void initState() {
     super.initState();
+    final seed = widget.seed;
+    if (seed != null) {
+      _sound.text = seed.title;
+      _soundKey = seed.key.isEmpty ? null : seed.key;
+      _soundAuthorUid = seed.authorUid;
+      if (seed.text.isNotEmpty) _caption.text = seed.text;
+    }
     _caption.addListener(_onCaptionChanged);
   }
 
@@ -85,7 +106,8 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
     super.dispose();
   }
 
-  bool get _canPublish => _video != null && !_publishing;
+  bool get _canPublish =>
+      (_video != null || _frames.isNotEmpty) && !_publishing;
 
   void _onCaptionChanged() {
     final trigger = detectTrigger(_caption);
@@ -335,10 +357,20 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
                 style: const TextStyle(color: Colors.white70, fontSize: 11),
               ),
             ),
+            const SizedBox(height: Space.xs),
+            OutlinedButton.icon(
+              onPressed: _publishing ? null : _pickFrames,
+              icon: const Icon(Icons.photo_library_outlined, size: 16),
+              label: Text(
+                Tr.of(context, ar: 'صور كريل', en: 'Picture Reel'),
+                style: const TextStyle(color: Colors.white70, fontSize: 11),
+              ),
+            ),
           ],
         ),
       );
     }
+    if (_frames.isNotEmpty) return _framesPreview();
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -388,10 +420,183 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
               Text(
                 Tr.of(
                   context,
-                  ar: '٦٠ ثانية كحد أقصى · ٥٠ ميجابايت',
-                  en: 'Up to 60s · 50 MB',
+                  ar: '٥ دقائق كحد أقصى · ٩٠ ميجابايت',
+                  en: 'Up to 5 min · 90 MB',
                 ),
                 style: const TextStyle(color: Colors.white38, fontSize: 9),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickFrames() async {
+    if (_publishing) return;
+    try {
+      final picked = await ImagePicker().pickMultiImage(
+        maxWidth: 1080,
+        imageQuality: 88,
+      );
+      if (picked.isEmpty || !mounted) return;
+      final remaining = CommunityRepository.maxReelFrames - _frames.length;
+      if (remaining <= 0) {
+        context.showSnack(
+          Tr.of(
+            context,
+            ar: 'يمكن إضافة ١٠ صور كحد أقصى للريل.',
+            en: 'A reel can hold up to 10 pictures.',
+          ),
+          isError: true,
+        );
+        return;
+      }
+      final frames = <_DraftImage>[];
+      for (final file in picked.take(remaining)) {
+        frames.add(
+          _DraftImage(bytes: await file.readAsBytes(), file: File(file.path)),
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _frames.addAll(frames);
+        _video = null;
+      });
+    } on Object catch (error) {
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
+    }
+  }
+
+  Future<void> _pickSound() async {
+    if (_publishing) return;
+    try {
+      final file = await FilePicker.pickFile(type: FileType.audio);
+      final path = file?.path;
+      if (file == null || path == null || !mounted) return;
+      final bytes = await File(path).readAsBytes();
+      if (!mounted) return;
+      if (bytes.length > CommunityMediaService.maxAudioBytes) {
+        context.showSnack(
+          Tr.of(
+            context,
+            ar: 'حجم الصوت أكبر من ١٢ ميجابايت.',
+            en: 'The sound is larger than 12 MB.',
+          ),
+          isError: true,
+        );
+        return;
+      }
+      final extension = (file.extension ?? 'mp3').toLowerCase();
+      final contentType = switch (extension) {
+        'wav' => 'audio/wav',
+        'm4a' || 'mp4' => 'audio/mp4',
+        'ogg' => 'audio/ogg',
+        _ => 'audio/mpeg',
+      };
+      setState(() {
+        _soundFile = _SoundDraft(
+          bytes: bytes,
+          extension: extension,
+          contentType: contentType,
+        );
+        if (_sound.text.trim().isEmpty) {
+          _sound.text = file.name.replaceAll(RegExp(r'\.[^.]+$'), '');
+        }
+        _uploadedSoundKey = null;
+      });
+    } on Object catch (error) {
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
+    }
+  }
+
+  Widget _framesPreview() {
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        if (_frames.isNotEmpty)
+          Image.memory(_frames.first.bytes, fit: BoxFit.contain),
+        PositionedDirectional(
+          top: Space.sm,
+          start: Space.sm,
+          child: _overlayButton(
+            icon: Icons.add_photo_alternate_outlined,
+            label: Tr.of(
+              context,
+              ar: 'إضافة صور (${_frames.length}/10)',
+              en: 'Add pictures (${_frames.length}/10)',
+            ),
+            onTap: _publishing ? null : _pickFrames,
+          ),
+        ),
+        PositionedDirectional(
+          top: Space.sm,
+          end: Space.sm,
+          child: _overlayButton(
+            icon: Icons.delete_outline_rounded,
+            label: Tr.of(context, ar: 'مسح', en: 'Clear'),
+            onTap: _publishing
+                ? null
+                : () => setState(() {
+                    _frames.clear();
+                    _cover = null;
+                  }),
+          ),
+        ),
+        PositionedDirectional(
+          start: Space.md,
+          end: Space.md,
+          bottom: Space.sm,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Icon(
+                    Icons.timer_outlined,
+                    size: 14,
+                    color: Colors.white70,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    Tr.of(
+                      context,
+                      ar: 'مدة كل صورة ${(_frameMs / 1000).toStringAsFixed(1)} ث',
+                      en: 'Each picture: ${(_frameMs / 1000).toStringAsFixed(1)}s',
+                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                ],
+              ),
+              Slider(
+                value: _frameMs.toDouble(),
+                min: 1000,
+                max: 5000,
+                divisions: 8,
+                onChanged: _publishing
+                    ? null
+                    : (value) => setState(() => _frameMs = value.round()),
+              ),
+              SizedBox(
+                height: 54,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _frames.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 6),
+                  itemBuilder: (context, index) => ClipRRect(
+                    borderRadius: BorderRadius.circular(Radii.xs),
+                    child: Image.memory(
+                      _frames[index].bytes,
+                      width: 42,
+                      height: 54,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -464,6 +669,17 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
           Icons.music_note_rounded,
           size: 17,
           color: Colors.white54,
+        ),
+        suffixIcon: IconButton(
+          tooltip: Tr.of(context, ar: 'اختيار صوت', en: 'Pick a sound'),
+          icon: Icon(
+            _soundFile == null
+                ? Icons.library_music_outlined
+                : Icons.check_circle_outline_rounded,
+            size: 18,
+            color: Colors.white54,
+          ),
+          onPressed: _publishing ? null : _pickSound,
         ),
         hintText: Tr.of(
           context,
@@ -600,7 +816,9 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
     try {
       final picked = await ImagePicker().pickVideo(
         source: camera ? ImageSource.camera : ImageSource.gallery,
-        maxDuration: const Duration(seconds: 60),
+        maxDuration: const Duration(
+          seconds: CommunityMediaService.maxReelSeconds,
+        ),
       );
       if (picked == null || !mounted) return;
       final file = File(picked.path);
@@ -608,13 +826,13 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
         throw const MediaRejectedException('missing-file');
       }
       final length = await file.length();
-      if (length <= 0 || length > CommunityMediaService.maxVideoBytes) {
+      if (length <= 0 || length > CommunityMediaService.maxReelBytes) {
         if (mounted) {
           context.showSnack(
             Tr.of(
               context,
-              ar: 'حجم الفيديو أكبر من ٥٠ ميجابايت. اختر مقطعًا أقصر أو أخف.',
-              en: 'This video is larger than 50 MB. Pick a shorter or lighter clip.',
+              ar: 'حجم الفيديو أكبر من ٩٠ ميجابايت. اختر مقطعًا أقصر أو أخف.',
+              en: 'This video is larger than 90 MB. Pick a shorter or lighter clip.',
             ),
             isError: true,
           );
@@ -634,12 +852,13 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
         );
         return;
       }
-      if (probe.duration > const Duration(seconds: 60)) {
+      if (probe.duration >
+          const Duration(seconds: CommunityMediaService.maxReelSeconds)) {
         context.showSnack(
           Tr.of(
             context,
-            ar: 'مدة الفيديو تتجاوز ٦٠ ثانية.',
-            en: 'The video is longer than 60 seconds.',
+            ar: 'مدة الريل تتجاوز ٥ دقائق.',
+            en: 'The reel is longer than 5 minutes.',
           ),
           isError: true,
         );
@@ -724,9 +943,13 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
       );
       return;
     }
-    if (video == null) {
+    if (video == null && _frames.isEmpty) {
       context.showSnack(
-        Tr.of(context, ar: 'اختر فيديو للريل أولًا.', en: 'Pick a reel video.'),
+        Tr.of(
+          context,
+          ar: 'اختر فيديو أو صورًا للريل أولًا.',
+          en: 'Pick a reel video or pictures first.',
+        ),
         isError: true,
       );
       return;
@@ -748,6 +971,80 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
     });
 
     try {
+      var soundKey = _uploadedSoundKey ?? _soundKey;
+      final sound = _soundFile;
+      if (soundKey == null && sound != null) {
+        final uploads = await media.createUploads(
+          postId: postId,
+          files: <MediaFile>[
+            MediaFile(
+              bytes: Uint8List(0),
+              contentType: sound.contentType,
+              extension: sound.extension,
+              declaredSize: sound.bytes.length,
+            ),
+          ],
+        );
+        await media.upload(uploads.first, sound.bytes);
+        soundKey = uploads.first.key;
+        _uploadedSoundKey = soundKey;
+        uploaded.add(soundKey);
+      }
+
+      // Picture Reels upload their frames instead of a video and never create
+      // a second copy of the sound when it came from another Reel.
+      if (video == null) {
+        setState(() {
+          _stage = Tr.of(
+            context,
+            ar: 'جارٍ رفع الصور…',
+            en: 'Uploading the pictures…',
+          );
+          _progress = null;
+        });
+        final uploads = await media.createUploads(
+          postId: postId,
+          files: <MediaFile>[
+            for (final frame in _frames)
+              MediaFile(
+                bytes: frame.bytes,
+                contentType: 'image/jpeg',
+                extension: 'jpg',
+              ),
+          ],
+        );
+        final keys = <String>[];
+        for (var index = 0; index < uploads.length; index++) {
+          await media.upload(uploads[index], _frames[index].bytes);
+          keys.add(uploads[index].key);
+          uploaded.add(uploads[index].key);
+        }
+        if (!mounted) return;
+        final id = await repo.createPost(
+          author: profile,
+          text: _caption.text,
+          id: postId,
+          kind: PostKind.reel,
+          videoThumbnailKey: keys.isEmpty ? null : keys.first,
+          reelFrames: <ReelFrame>[
+            for (final key in keys) ReelFrame(key: key, durationMs: _frameMs),
+          ],
+          mentions: List<MentionRef>.unmodifiable(_mentions),
+          animeRefs: List<AnimeRef>.unmodifiable(_animeRefs),
+          allowComments: _allowComments,
+          allowDownload: _allowDownload,
+          allowRepost: _allowRepost,
+          category: _category,
+          soundTitle: _sound.text.trim(),
+          soundKey: soundKey ?? '',
+          soundAuthorUid: _soundAuthorUid,
+        );
+        final post = await repo.fetchPost(id);
+        if (!mounted) return;
+        Navigator.of(context).pop(post);
+        return;
+      }
+
       final extension = video.file.path.toLowerCase().endsWith('.mov')
           ? 'mov'
           : 'mp4';
@@ -833,6 +1130,9 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
         allowRepost: _allowRepost,
         category: _category,
         soundTitle: _sound.text.trim(),
+        soundKey: soundKey ?? '',
+        soundAuthorUid: _soundAuthorUid,
+        videoBytes: video.file.lengthSync(),
       );
       final post = await repo.fetchPost(id);
       if (!mounted) return;
@@ -913,4 +1213,33 @@ class _Probe {
   final Duration duration;
   final int width;
   final int height;
+}
+
+/// A sound file chosen from the device, kept in memory until publish.
+class _SoundDraft {
+  const _SoundDraft({
+    required this.bytes,
+    required this.extension,
+    required this.contentType,
+  });
+
+  final Uint8List bytes;
+  final String extension;
+  final String contentType;
+}
+
+/// What «استخدام هذا الصوت» hands to the studio: the original object key and
+/// the credit of the account that first published it.
+class ReelComposerSeed {
+  const ReelComposerSeed({
+    required this.key,
+    required this.title,
+    required this.authorUid,
+    this.text = '',
+  });
+
+  final String key;
+  final String title;
+  final String authorUid;
+  final String text;
 }

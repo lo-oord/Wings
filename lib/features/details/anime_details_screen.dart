@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,9 +18,11 @@ import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/chat.dart';
+import '../../data/models/community.dart';
 import '../../data/models/library.dart';
 import '../chat/share_to_chat_sheet.dart';
 import '../community/anime_community_section.dart';
+import '../community/post_composer_screen.dart';
 import 'details_providers.dart';
 
 class AnimeDetailsScreen extends ConsumerStatefulWidget {
@@ -499,24 +503,7 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                 onPlay: () =>
                     _watch(anime, episode: episode, episodes: bundle.episodes),
                 onDownload: () => _openDownloadSheet(anime, episode),
-                onShare: () => shareToChats(
-                  context,
-                  ref,
-                  ChatShare(
-                    kind: ChatShareKind.episode,
-                    id: episode.id,
-                    title: anime.title,
-                    subtitle:
-                        'الحلقة ${episode.number}'
-                        '${(episode.title?.trim().isNotEmpty ?? false) ? ' · ${episode.title}' : ''}',
-                    imageUrl: episode.thumbnailUrl ?? anime.posterUrl ?? '',
-                    route: RoutePaths.watch(
-                      animeId: anime.id,
-                      episodeId: episode.id,
-                    ),
-                    extraId: anime.id,
-                  ),
-                ),
+                onShare: () => _shareEpisode(anime, episode),
               );
             },
           ),
@@ -582,11 +569,142 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.forum_outlined),
+              title: Text(
+                Tr.of(
+                  sheetContext,
+                  ar: 'المشاركة إلى المجتمع',
+                  en: 'Share to community',
+                ),
+              ),
+              subtitle: Text(
+                Tr.of(
+                  sheetContext,
+                  ar: 'يُنشأ منشور جاهز يمكنك تعديله قبل النشر',
+                  en: 'A ready post opens for you to edit before publishing',
+                ),
+                style: const TextStyle(fontSize: 10),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                shareContext.push(
+                  RoutePaths.communityCompose,
+                  extra: PostComposerSeed(
+                    text: <String>[
+                      'هذا الأنمي أعجبني وأردت أن أشاركه معكم',
+                      if ((anime.synopsis ?? '').trim().isNotEmpty)
+                        anime.synopsis!.trim(),
+                      '#${anime.title}',
+                    ].join('\n\n'),
+                    animeRefs: <AnimeRef>[
+                      AnimeRef(
+                        id: anime.id,
+                        title: anime.title,
+                        imageUrl: anime.posterUrl ?? '',
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.ios_share_rounded),
               title: Text(Tr.of(sheetContext, ar: 'مشاركة', en: 'Share')),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 ref.read(shareServiceProvider).shareAnime(anime);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Episode sharing keeps the video where it is: the post stores a reference
+  /// to the real episode, so publishing never uploads or duplicates a file.
+  Future<void> _shareEpisode(Anime anime, AnimeEpisode episode) async {
+    final shareContext = context;
+    await WingsPopup.show<void>(
+      context: shareContext,
+      heightFactor: 0.6,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline_rounded),
+              title: Text(
+                Tr.of(sheetContext, ar: 'إرسال إلى محادثة', en: 'Send to chat'),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                unawaited(
+                  shareToChats(
+                    shareContext,
+                    ref,
+                    ChatShare(
+                      kind: ChatShareKind.episode,
+                      id: episode.id,
+                      title: anime.title,
+                      subtitle:
+                          'الحلقة ${episode.number}'
+                          '${(episode.title?.trim().isNotEmpty ?? false) ? ' · ${episode.title}' : ''}',
+                      imageUrl: episode.thumbnailUrl ?? anime.posterUrl ?? '',
+                      route: RoutePaths.watch(
+                        animeId: anime.id,
+                        episodeId: episode.id,
+                      ),
+                      extraId: anime.id,
+                    ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.forum_outlined),
+              title: Text(
+                Tr.of(
+                  sheetContext,
+                  ar: 'المشاركة إلى المجتمع',
+                  en: 'Share to community',
+                ),
+              ),
+              subtitle: Text(
+                Tr.of(
+                  sheetContext,
+                  ar: 'يُفتح المنشور بالغلاف ورقم الحلقة ويمكن تشغيلها من المجتمع',
+                  en: 'Opens with the cover and number, playable from the community',
+                ),
+                style: const TextStyle(fontSize: 10),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                shareContext.push(
+                  RoutePaths.communityCompose,
+                  extra: PostComposerSeed(
+                    text: <String>[
+                      'شاركتكم الحلقة ${episode.number} من ${anime.title}',
+                      if ((episode.title ?? '').trim().isNotEmpty)
+                        episode.title!.trim(),
+                      '#${anime.title}',
+                    ].join('\n\n'),
+                    animeRefs: <AnimeRef>[
+                      AnimeRef(
+                        id: anime.id,
+                        title: anime.title,
+                        imageUrl: anime.posterUrl ?? '',
+                      ),
+                    ],
+                    episodeRef: EpisodeRef(
+                      animeId: anime.id,
+                      episodeId: episode.id,
+                      animeTitle: anime.title,
+                      episodeTitle: episode.title ?? '',
+                      episodeNumber: episode.number,
+                    ),
+                  ),
+                );
               },
             ),
           ],

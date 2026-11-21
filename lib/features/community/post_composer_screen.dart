@@ -18,6 +18,7 @@ import '../../core/widgets/wings_layout.dart';
 import '../../data/models/anime.dart';
 import '../../data/models/community.dart';
 import '../../data/models/user_profile.dart';
+import '../../data/repositories/community_repository.dart';
 import 'community_video.dart';
 import 'suggestion_panel.dart';
 
@@ -29,10 +30,14 @@ import 'suggestion_panel.dart';
 /// a post pointing at a missing object. Objects uploaded for a post whose save
 /// failed are deleted again.
 class PostComposerScreen extends ConsumerStatefulWidget {
-  const PostComposerScreen({super.key, this.initialReel = false});
+  const PostComposerScreen({super.key, this.initialReel = false, this.seed});
 
   /// Opens in Reel mode (the Reels screen "create" action).
   final bool initialReel;
+
+  /// Pre-filled content when the composer is opened from an anime or an
+  /// episode share. The member can edit every part before publishing.
+  final PostComposerSeed? seed;
 
   @override
   ConsumerState<PostComposerScreen> createState() => _PostComposerScreenState();
@@ -45,13 +50,14 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
   final List<MentionRef> _mentions = <MentionRef>[];
   final List<AnimeRef> _animeRefs = <AnimeRef>[];
 
-  final bool _reel = false;
+  late final bool _reel = widget.initialReel;
   String _category = '';
   bool _allowComments = true;
   bool _allowDownload = true;
   bool _allowRepost = true;
   _DraftVideo? _video;
   _DraftImage? _cover;
+  EpisodeRef? _episodeRef;
 
   bool _publishing = false;
   String? _stage;
@@ -67,11 +73,18 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
   Timer? _debounce;
   ActiveTrigger? _trigger;
 
-  static const int _maxImages = 4;
+  static const int _maxImages = CommunityRepository.maxImages;
 
   @override
   void initState() {
     super.initState();
+    final seed = widget.seed;
+    if (seed != null) {
+      _text.text = seed.text;
+      _animeRefs.addAll(seed.animeRefs);
+      _episodeRef = seed.episodeRef;
+      _category = seed.category;
+    }
     _text.addListener(_onTextChanged);
   }
 
@@ -130,6 +143,15 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
         ),
       );
     }
+    setState(() => _trigger = null);
+  }
+
+  /// A free hashtag is inserted as text only: the server registers it and the
+  /// renderer links it to its results page.
+  void _pickHashtag(HashtagInfo tag) {
+    final trigger = _trigger;
+    if (trigger == null) return;
+    applySuggestion(_text, trigger, '#${tag.name}');
     setState(() => _trigger = null);
   }
 
@@ -203,7 +225,7 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
             autofocus: !widget.initialReel,
             maxLines: null,
             minLines: 4,
-            maxLength: 2000,
+            maxLength: CommunityRepository.maxPostLength,
             textInputAction: TextInputAction.newline,
             style: context.text.bodyMedium?.copyWith(height: 1.7),
             decoration: InputDecoration(
@@ -223,6 +245,7 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
               trigger: _trigger!,
               onPickUser: _pickMention,
               onPickAnime: _pickAnime,
+              onPickHashtag: _pickHashtag,
             ),
           if (_category.isNotEmpty)
             Padding(
@@ -595,7 +618,9 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
     try {
       final picked = await ImagePicker().pickVideo(
         source: ImageSource.gallery,
-        maxDuration: const Duration(seconds: 60),
+        maxDuration: const Duration(
+          seconds: CommunityMediaService.maxVideoSeconds,
+        ),
       );
       if (picked == null || !mounted) return;
       final file = File(picked.path);
@@ -608,8 +633,8 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
           context.showSnack(
             Tr.of(
               context,
-              ar: 'حجم الفيديو أكبر من ٥٠ ميجابايت. اختر مقطعًا أقصر أو بجودة أقل.',
-              en: 'This video is larger than 50 MB. Pick a shorter or lighter clip.',
+              ar: 'حجم الفيديو أكبر من ١٠٠ ميجابايت. اختر مقطعًا أقصر أو بجودة أقل.',
+              en: 'This video is larger than 100 MB. Pick a shorter or lighter clip.',
             ),
             isError: true,
           );
@@ -629,12 +654,13 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
         );
         return;
       }
-      if (probe.duration > Duration(seconds: 60)) {
+      if (probe.duration >
+          Duration(seconds: CommunityMediaService.maxVideoSeconds)) {
         context.showSnack(
           Tr.of(
             context,
-            ar: 'مدة الفيديو تتجاوز ٦٠ ثانية.',
-            en: 'The video is longer than 60 seconds.',
+            ar: 'مدة الفيديو تتجاوز ١٠ دقائق.',
+            en: 'The video is longer than 10 minutes.',
           ),
           isError: true,
         );
@@ -823,6 +849,8 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
           allowComments: _allowComments,
           allowDownload: _allowDownload,
           allowRepost: _allowRepost,
+          videoBytes: _video?.file.lengthSync() ?? 0,
+          episodeRef: _episodeRef,
         );
         final post = await repo.fetchPost(id);
         if (!mounted) return;
@@ -877,6 +905,7 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
         allowComments: _allowComments,
         allowDownload: _allowDownload,
         allowRepost: _allowRepost,
+        episodeRef: _episodeRef,
       );
       final post = await repo.fetchPost(id);
       if (!mounted) return;
@@ -1067,4 +1096,20 @@ class _PreviewTile extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Content prepared for the community composer when a member shares an anime
+/// or an episode. Every field stays editable: the seed only fills the form.
+class PostComposerSeed {
+  const PostComposerSeed({
+    this.text = '',
+    this.animeRefs = const <AnimeRef>[],
+    this.episodeRef,
+    this.category = '',
+  });
+
+  final String text;
+  final List<AnimeRef> animeRefs;
+  final EpisodeRef? episodeRef;
+  final String category;
 }

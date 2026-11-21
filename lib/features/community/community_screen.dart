@@ -44,6 +44,11 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
         ),
         actions: <Widget>[
           WingsIconButton(
+            icon: Icons.search_rounded,
+            tooltip: Tr.of(context, ar: 'بحث', en: 'Search'),
+            onPressed: () => context.push(RoutePaths.communitySearch),
+          ),
+          WingsIconButton(
             icon: Icons.movie_filter_rounded,
             tooltip: Tr.of(context, ar: 'ريلز', en: 'Reels'),
             onPressed: () => context.push(RoutePaths.communityReels),

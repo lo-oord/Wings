@@ -72,25 +72,58 @@ final class ChatRepository {
   // ------------------------------------------------------------------- list
 
   /// One listener for the whole chat list, never one per conversation.
-  Stream<List<Chat>> watchChats(String uid) => _chats
-      .where('members', arrayContains: uid)
-      .orderBy('updatedAt', descending: true)
-      .limit(50)
-      .snapshots()
-      .asyncMap((snapshot) async {
-        final chats = snapshot.docs
-            .map((doc) => Chat.fromDoc(doc.id, doc.data()))
-            .toList(growable: false);
-        final peers = <String>{for (final chat in chats) chat.peerOf(uid)}
-          ..remove('');
-        final profiles = await profilesFor(uid, peers);
-        final filled = <Chat>[
-          for (final chat in chats)
-            chat.copyWith(peer: profiles[chat.peerOf(uid)]),
-        ];
-        await _local.saveChats(uid, filled);
-        return filled;
-      });
+  ///
+  /// The ordered query needs the `members + updatedAt` composite index. A
+  /// project whose index is still building used to fail the whole list with
+  /// «تعذّر تحميل المحادثات», so a missing index now falls back to the plain
+  /// equality query sorted on the device. The cache write is also guarded: a
+  /// local storage problem must never turn a readable conversation list into
+  /// a connection error.
+  Stream<List<Chat>> watchChats(String uid) async* {
+    try {
+      await for (final chats in _chatPages(uid, ordered: true)) {
+        yield await _fill(uid, chats);
+      }
+    } on FirebaseException catch (error) {
+      if (error.code != 'failed-precondition') rethrow;
+      await for (final chats in _chatPages(uid, ordered: false)) {
+        yield await _fill(uid, chats);
+      }
+    }
+  }
+
+  Stream<List<Chat>> _chatPages(String uid, {required bool ordered}) {
+    var query = _chats.where('members', arrayContains: uid);
+    if (ordered) {
+      query = query.orderBy('updatedAt', descending: true);
+    }
+    return query
+        .limit(50)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => Chat.fromDoc(doc.id, doc.data()))
+              .toList(growable: false),
+        );
+  }
+
+  Future<List<Chat>> _fill(String uid, List<Chat> chats) async {
+    final sorted = <Chat>[...chats]
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final peers = <String>{for (final chat in sorted) chat.peerOf(uid)}
+      ..remove('');
+    final profiles = await profilesFor(uid, peers);
+    final filled = <Chat>[
+      for (final chat in sorted)
+        chat.copyWith(peer: profiles[chat.peerOf(uid)]),
+    ];
+    try {
+      await _local.saveChats(uid, filled);
+    } on Object {
+      // The server list is authoritative; the cache is an offline convenience.
+    }
+    return filled;
+  }
 
   List<Chat> cachedChats(String uid) => _local.loadChats(uid);
 
@@ -113,7 +146,12 @@ final class ChatRepository {
     final result = <String, UserProfile>{};
     final missing = <String>[];
     for (final peer in peers) {
-      final cached = _local.readProfile(uid, peer);
+      UserProfile? cached;
+      try {
+        cached = _local.readProfile(uid, peer);
+      } on Object {
+        cached = null;
+      }
       if (cached != null) {
         result[peer] = cached;
       } else {
@@ -132,7 +170,11 @@ final class ChatRepository {
         for (final doc in docs.docs) {
           final profile = UserProfile.fromPublicMap(doc.id, doc.data());
           result[doc.id] = profile;
-          await _local.cacheProfile(uid, profile);
+          try {
+            await _local.cacheProfile(uid, profile);
+          } on Object {
+            // The profile is already in memory for this launch.
+          }
         }
       } on Object {
         // Offline: the cached names already in the result are enough.

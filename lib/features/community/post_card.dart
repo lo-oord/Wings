@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../app/providers.dart';
 import '../../app/router/route_paths.dart';
@@ -25,6 +26,7 @@ import '../social/user_handle.dart';
 import 'community_providers.dart';
 import 'community_video.dart';
 import 'report_sheet.dart';
+import 'post_media_viewer.dart';
 import 'social_text.dart';
 
 /// One post, shared by the feed, the public profile and the saved list so the
@@ -74,6 +76,8 @@ class _PostCardState extends ConsumerState<PostCard> {
 
   bool get _isStaff =>
       (ref.watch(staffRoleProvider).value ?? StaffRole.user) != StaffRole.user;
+
+  bool get _isOwner => ref.watch(isOwnerProvider);
 
   @override
   Widget build(BuildContext context) {
@@ -168,6 +172,14 @@ class _PostCardState extends ConsumerState<PostCard> {
                                 fontSize: 10,
                               ),
                             ),
+                          if (post.pinned) ...<Widget>[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.push_pin_rounded,
+                              size: 11,
+                              color: palette.primary,
+                            ),
+                          ],
                         ],
                       ),
                     ],
@@ -222,6 +234,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                 text: post.text,
                 mentions: post.mentions,
                 animeRefs: post.animeRefs,
+                hashtags: post.hashtags,
                 style: context.text.bodyMedium?.copyWith(height: 1.7),
               ),
             ),
@@ -281,7 +294,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                 Space.md,
                 0,
               ),
-              child: _PostImages(post: post),
+              child: _PostImages(post: post, onOpen: _openGallery),
             ),
           Container(
             margin: const EdgeInsets.fromLTRB(
@@ -358,6 +371,81 @@ class _PostCardState extends ConsumerState<PostCard> {
         ),
       ],
     );
+  }
+
+  Future<void> _openGallery(List<String> urls, int index) async {
+    await showPostImageGallery(
+      context: context,
+      urls: urls,
+      initialIndex: index,
+      canSave: post.allowDownload,
+      canRepost: post.allowRepost,
+      onSave: _saveImage,
+      onRepost: _repost,
+    );
+  }
+
+  /// Saves one picture through the system share sheet: the file is written to
+  /// the app cache first, so the gallery or a file manager receives a real
+  /// file without Wings needing a storage permission.
+  Future<void> _saveImage(String url, int index) async {
+    try {
+      final file = await ref
+          .read(communityMediaProvider)
+          .downloadVideo(url, fileName: 'wings_${post.id}_${index + 1}.jpg');
+      await SharePlus.instance.share(
+        ShareParams(files: <XFile>[XFile(file.path)]),
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
+    }
+  }
+
+  /// Shares the post again while pointing at the original media objects: no
+  /// second upload, and the original author is credited by `repostedFrom`.
+  Future<void> _repost() async {
+    final profile = ref.read(profileProvider);
+    if (profile == null || !post.allowRepost) return;
+    try {
+      final id = await ref
+          .read(communityRepositoryProvider)
+          .createPost(
+            author: profile,
+            text: post.text,
+            imageKeys: post.imageKeys,
+            videoKey: post.videoKey,
+            videoThumbnailKey: post.videoThumbnailKey,
+            videoDurationMs: post.videoDurationMs,
+            videoWidth: post.videoWidth,
+            videoHeight: post.videoHeight,
+            mentions: post.mentions,
+            animeRefs: post.animeRefs,
+            hashtags: post.hashtags,
+            allowComments: post.allowComments,
+            allowDownload: post.allowDownload,
+            allowRepost: post.allowRepost,
+            category: post.category,
+            repostedFrom: post.id,
+            videoBytes: post.videoBytes,
+          );
+      final created = await ref.read(communityRepositoryProvider).fetchPost(id);
+      if (created != null) widget.onChanged?.call(created);
+      if (mounted) {
+        context.showSnack(
+          Tr.of(
+            context,
+            ar: 'تمت إعادة النشر في حسابك.',
+            en: 'Reposted to your account.',
+          ),
+        );
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        context.showSnack(userFacingError(context, error), isError: true);
+      }
+    }
   }
 
   Future<void> _share() async {
@@ -596,6 +684,19 @@ class _PostCardState extends ConsumerState<PostCard> {
             value: 'block',
             child: Text(Tr.of(context, ar: 'حظر المستخدم', en: 'Block user')),
           ),
+        if (_isOwner)
+          PopupMenuItem<String>(
+            value: post.pinned ? 'unpin' : 'pin',
+            child: Text(
+              post.pinned
+                  ? Tr.of(context, ar: 'إلغاء التثبيت', en: 'Unpin post')
+                  : Tr.of(
+                      context,
+                      ar: 'تثبيت في المجتمع',
+                      en: 'Pin in community',
+                    ),
+            ),
+          ),
         if (_isStaff)
           PopupMenuItem<String>(
             value: 'staff-delete',
@@ -734,6 +835,29 @@ class _PostCardState extends ConsumerState<PostCard> {
           if (mounted) {
             context.showSnack(
               Tr.of(context, ar: 'تم الحظر.', en: 'User blocked.'),
+            );
+          }
+        } on Object catch (error) {
+          if (mounted) {
+            context.showSnack(userFacingError(context, error), isError: true);
+          }
+        }
+      case 'pin':
+      case 'unpin':
+        try {
+          await ref
+              .read(communityRepositoryProvider)
+              .setPinnedPost(postId: post.id, pinned: value == 'pin');
+          widget.onChanged?.call(post.copyWith(pinned: value == 'pin'));
+          if (mounted) {
+            context.showSnack(
+              value == 'pin'
+                  ? Tr.of(context, ar: 'تم تثبيت المنشور.', en: 'Post pinned.')
+                  : Tr.of(
+                      context,
+                      ar: 'تم إلغاء التثبيت.',
+                      en: 'Post unpinned.',
+                    ),
             );
           }
         } on Object catch (error) {
@@ -1058,9 +1182,13 @@ class _PostVideoState extends ConsumerState<_PostVideo> {
 /// placeholder instead of a broken image, which is exactly what a member would
 /// see while offline.
 class _PostImages extends ConsumerStatefulWidget {
-  const _PostImages({required this.post});
+  const _PostImages({required this.post, required this.onOpen});
 
   final Post post;
+
+  /// Opens the full-screen viewer with the already-resolved URLs, so tapping a
+  /// picture never asks the Worker for signed links a second time.
+  final Future<void> Function(List<String> urls, int index) onOpen;
 
   @override
   ConsumerState<_PostImages> createState() => _PostImagesState();
@@ -1126,28 +1254,60 @@ class _PostImagesState extends ConsumerState<_PostImages> {
         ),
       );
     }
+    final urls = <String>[
+      for (final key in keys)
+        if ((_urls[key] ?? '').isNotEmpty) _urls[key]!,
+    ];
     if (keys.length == 1) {
-      return AspectRatio(
-        aspectRatio: 4 / 3,
-        child: WingsImage(
-          url: _urls[keys.first],
-          borderRadius: BorderRadius.circular(Radii.sm),
+      return GestureDetector(
+        onTap: urls.isEmpty ? null : () => widget.onOpen(urls, 0),
+        child: AspectRatio(
+          aspectRatio: 4 / 3,
+          child: WingsImage(
+            url: _urls[keys.first],
+            borderRadius: BorderRadius.circular(Radii.sm),
+          ),
         ),
       );
     }
+    final shown = keys.take(6).toList(growable: false);
     return GridView.count(
-      crossAxisCount: 2,
+      crossAxisCount: shown.length <= 4 ? 2 : 3,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: Space.xs,
       crossAxisSpacing: Space.xs,
       children: <Widget>[
-        for (final key in keys.take(4))
-          AspectRatio(
-            aspectRatio: 1,
-            child: WingsImage(
-              url: _urls[key],
-              borderRadius: BorderRadius.circular(Radii.xs),
+        for (final (index, key) in shown.indexed)
+          GestureDetector(
+            onTap: urls.isEmpty ? null : () => widget.onOpen(urls, index),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  WingsImage(
+                    url: _urls[key],
+                    borderRadius: BorderRadius.circular(Radii.xs),
+                  ),
+                  if (index == shown.length - 1 && keys.length > shown.length)
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(Radii.xs),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '+${keys.length - shown.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
       ],
@@ -1183,7 +1343,7 @@ class _EditPostDialogState extends State<_EditPostDialog> {
         controller: _controller,
         maxLines: 6,
         minLines: 3,
-        maxLength: 2000,
+        maxLength: 5000,
         textInputAction: TextInputAction.newline,
         decoration: InputDecoration(
           hintText: Tr.of(context, ar: 'نص المنشور', en: 'Post text'),

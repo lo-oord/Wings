@@ -10,10 +10,10 @@
 // only ever write or delete under their own prefix whatever the request says.
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 export const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
-export const MAX_FILES = 4;
+export const MAX_FILES = 10;
 export const MAX_DOWNLOAD_KEYS = 20;
 export const MAX_DELETE_KEYS = 12;
 

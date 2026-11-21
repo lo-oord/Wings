@@ -528,6 +528,29 @@ service cloud.firestore {
         allow delete: if isSelf(uid);
       }
 
+      // Derived interest weights for the personalised ranking. Private to the
+      // account: nobody else can read or write another member's taste, and the
+      // client can only accumulate a weight, never rewrite the raw history it
+      // was learned from.
+      match /taste/{key} {
+        allow read: if isSelf(uid);
+        allow create: if isSelf(uid)
+          && request.resource.data.type in ['anime', 'hashtag', 'sound']
+          && request.resource.data.id is string
+          && request.resource.data.id.size() <= 200
+          && request.resource.data.weight is number
+          && request.resource.data.weight >= 0
+          && request.resource.data.weight <= 100000
+          && !accountLocked(request.auth.uid);
+        allow update: if isSelf(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'weight', 'updatedAt'
+          ])
+          && request.resource.data.weight is number
+          && request.resource.data.weight >= 0;
+        allow delete: if isSelf(uid);
+      }
+
       // The two sides of a follow relationship. The follower writes both, and
       // the followed account may remove either side when it blocks somebody.
       match /following/{targetUid} {
@@ -787,6 +810,7 @@ service cloud.firestore {
           && hasCommentBody(request.resource.data)
           && request.resource.data.deleted == false
           && request.resource.data.replyCount == 0
+          && request.resource.data.get('pinned', false) == false
           && validDisplayName(request.resource.data.authorName)
           && validUsername(request.resource.data.authorUsername)
           && validBadges(request.resource.data.authorBadges)
@@ -825,6 +849,13 @@ service cloud.firestore {
               && validBadges(request.resource.data.authorBadges)
               && request.resource.data.photoVersion is int
               && request.resource.data.updatedAt is timestamp
+            )
+            ||
+            // The Owner is the only account allowed to pin an episode comment.
+            (
+              isOwner()
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned'])
+              && request.resource.data.pinned is bool
             )
             ||
             // Replies raise or lower the counter by exactly one, never below
@@ -898,23 +929,30 @@ service cloud.firestore {
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.authorUid is string
         && request.resource.data.text is string
-        && request.resource.data.text.size() <= 2000
+        && request.resource.data.text.size() <= 5000
         && request.resource.data.images is list
-        && request.resource.data.images.size() <= 4
+        && request.resource.data.images.size() <= 10
         && (!('kind' in request.resource.data)
             || request.resource.data.kind in ['post', 'reel'])
-        // A reel without a video would be an empty full-screen page.
+        // A reel without a video and without pictures would be an empty
+        // full-screen page.
         && (!('kind' in request.resource.data)
             || request.resource.data.kind != 'reel'
             || ('videoKey' in request.resource.data
                 && request.resource.data.videoKey is string
-                && request.resource.data.videoKey.size() > 0))
+                && request.resource.data.videoKey.size() > 0)
+            || ('reelFrames' in request.resource.data
+                && request.resource.data.reelFrames is list
+                && request.resource.data.reelFrames.size() > 0))
         && (
           request.resource.data.text.size() >= 1
           || request.resource.data.images.size() > 0
           || ('videoKey' in request.resource.data
               && request.resource.data.videoKey is string
               && request.resource.data.videoKey.size() > 0)
+          || ('reelFrames' in request.resource.data
+              && request.resource.data.reelFrames is list
+              && request.resource.data.reelFrames.size() > 0)
         )
         && (!('videoKey' in request.resource.data)
             || (request.resource.data.videoKey is string
@@ -922,10 +960,46 @@ service cloud.firestore {
         && (!('videoThumbnailKey' in request.resource.data)
             || (request.resource.data.videoThumbnailKey is string
                 && request.resource.data.videoThumbnailKey.size() <= 400))
+        // A community video may run ten minutes; a Reel five. The same split
+        // applies to the uploaded size (100 MB / 90 MB).
         && (!('videoDurationMs' in request.resource.data)
             || (request.resource.data.videoDurationMs is int
                 && request.resource.data.videoDurationMs >= 0
-                && request.resource.data.videoDurationMs <= 120000))
+                && request.resource.data.videoDurationMs <= 600000)
+                && (request.resource.data.get('kind', 'post') != 'reel'
+                    || request.resource.data.videoDurationMs <= 300000))
+        && (!('videoBytes' in request.resource.data)
+            || (request.resource.data.videoBytes is int
+                && request.resource.data.videoBytes >= 0
+                && request.resource.data.videoBytes <= 104857600)
+                && (request.resource.data.get('kind', 'post') != 'reel'
+                    || request.resource.data.videoBytes <= 94371840))
+        && (!('reelFrames' in request.resource.data)
+            || (request.resource.data.reelFrames is list
+                && request.resource.data.reelFrames.size() <= 10))
+        && (!('hashtags' in request.resource.data)
+            || (request.resource.data.hashtags is list
+                && request.resource.data.hashtags.size() <= 6))
+        && (!('searchTerms' in request.resource.data)
+            || (request.resource.data.searchTerms is list
+                && request.resource.data.searchTerms.size() <= 24))
+        && (!('soundKey' in request.resource.data)
+            || (request.resource.data.soundKey is string
+                && request.resource.data.soundKey.size() <= 400))
+        && (!('soundAuthorUid' in request.resource.data)
+            || (request.resource.data.soundAuthorUid is string
+                && request.resource.data.soundAuthorUid.size() <= 128))
+        && (!('soundUsageCount' in request.resource.data)
+            || request.resource.data.soundUsageCount is int)
+        && (!('episodeRef' in request.resource.data)
+            || (request.resource.data.episodeRef is map
+                && request.resource.data.episodeRef.animeId is string
+                && request.resource.data.episodeRef.animeId.size() <= 200
+                && request.resource.data.episodeRef.episodeId is string
+                && request.resource.data.episodeRef.episodeId.size() <= 200))
+        // Pinning is never allowed at creation: it is an Owner action after
+        // the post exists.
+        && request.resource.data.get('pinned', false) == false
         && (!('videoWidth' in request.resource.data)
             || (request.resource.data.videoWidth is int
                 && request.resource.data.videoWidth >= 0
@@ -982,9 +1056,9 @@ service cloud.firestore {
               'mentions', 'animeRefs', 'animeIds'
             ])
             && request.resource.data.text is string
-            && request.resource.data.text.size() <= 2000
+            && request.resource.data.text.size() <= 5000
             && request.resource.data.images is list
-            && request.resource.data.images.size() <= 4
+            && request.resource.data.images.size() <= 10
             && (!('mentions' in request.resource.data)
                 || (request.resource.data.mentions is list
                     && request.resource.data.mentions.size() <= 10))
@@ -1012,6 +1086,16 @@ service cloud.firestore {
                 && request.resource.data.likeCount == resource.data.likeCount - 1
               )
             )
+          )
+          ||
+          // The Owner pins any post; nobody else can move this flag.
+          (
+            isOwner()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'pinned', 'updatedAt'
+            ])
+            && request.resource.data.pinned is bool
+            && request.resource.data.updatedAt is timestamp
           )
           ||
           // A comment or a reply moves the comment counter by exactly one.
@@ -1073,6 +1157,7 @@ service cloud.firestore {
           && request.resource.data.text.size() >= 1
           && request.resource.data.deleted == false
           && request.resource.data.replyCount == 0
+          && request.resource.data.get('pinned', false) == false
           && validDisplayName(request.resource.data.authorName)
           && validUsername(request.resource.data.authorUsername)
           && validBadges(request.resource.data.authorBadges)
@@ -1106,6 +1191,14 @@ service cloud.firestore {
               && validDisplayName(request.resource.data.authorName)
               && validBadges(request.resource.data.authorBadges)
               && request.resource.data.updatedAt is timestamp
+            )
+            ||
+            // The Owner pins any comment; the author of the post pins a comment
+            // on their own post. No client flag can widen this.
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned'])
+              && request.resource.data.pinned is bool
+              && (isOwner() || postAuthor(postId) == request.auth.uid)
             )
             ||
             (
@@ -1174,6 +1267,33 @@ service cloud.firestore {
         allow create: if signedIn() && viewerId == request.auth.uid;
         allow update, delete: if false;
       }
+    }
+
+    // -------------------------------------------------------- hashtags
+    //
+    // A free community hashtag is an ordinary document keyed by its normalized
+    // slug, so `#Anime`, `#anime` and `# ANIME` are one tag. The first author
+    // owns it forever; later authors may only raise the usage counter by one.
+    match /hashtags/{slug} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.slug == slug
+        && request.resource.data.name == slug
+        && slug.size() >= 2
+        && slug.size() <= 40
+        && request.resource.data.creatorUsername is string
+        && request.resource.data.creatorUsername.size() <= 30
+        && request.resource.data.usageCount == 1
+        && request.resource.data.createdAt is timestamp
+        && !accountLocked(request.auth.uid)
+        && !featureRestricted(request.auth.uid, 'restrictCommunity');
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'usageCount'
+        ])
+        && request.resource.data.usageCount == resource.data.usageCount + 1;
+      allow delete: if isOwner() || isAdmin();
     }
 
     // ------------------------------------------------------------ badges

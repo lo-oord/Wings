@@ -258,10 +258,33 @@ class _PostCommentTileState extends ConsumerState<_PostCommentTile> {
                         ],
                       ),
                       const SizedBox(height: 2),
+                      if (comment.pinned)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Row(
+                            children: <Widget>[
+                              Icon(
+                                Icons.push_pin_rounded,
+                                size: 11,
+                                color: palette.primary,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                Tr.of(context, ar: 'مثبت', en: 'Pinned'),
+                                style: context.text.labelSmall?.copyWith(
+                                  color: palette.primary,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       SocialText(
                         text: comment.text,
                         mentions: comment.mentions,
                         animeRefs: comment.animeRefs,
+                        hashtags: comment.hashtags,
                         showAnimeChips: false,
                         linkColor: palette.success,
                         style: context.text.bodySmall?.copyWith(height: 1.55),
@@ -355,6 +378,12 @@ class _PostCommentTileState extends ConsumerState<_PostCommentTile> {
 
   Future<void> _actions(bool mine, bool staff) async {
     final isOwner = ref.read(isOwnerAccountProvider(widget.comment.authorUid));
+    final post = ref.read(postProvider(widget.postId)).value;
+    // The Owner pins any comment; the post author pins a comment on their own
+    // post. The rules enforce the same rule on the write itself.
+    final canPin =
+        ref.read(isOwnerProvider) ||
+        (post != null && post.authorUid == widget.uid);
     final choice = await WingsPopup.show<String>(
       context: context,
       heightFactor: 0.72,
@@ -370,6 +399,28 @@ class _PostCommentTileState extends ConsumerState<_PostCommentTile> {
                 ),
                 onTap: () => Navigator.of(context).pop('profile'),
               ),
+              if (canPin)
+                ListTile(
+                  leading: Icon(
+                    widget.comment.pinned
+                        ? Icons.push_pin_outlined
+                        : Icons.push_pin_rounded,
+                  ),
+                  title: Text(
+                    widget.comment.pinned
+                        ? Tr.of(
+                            context,
+                            ar: 'إلغاء التثبيت',
+                            en: 'Unpin comment',
+                          )
+                        : Tr.of(
+                            context,
+                            ar: 'تثبيت التعليق',
+                            en: 'Pin comment',
+                          ),
+                  ),
+                  onTap: () => Navigator.of(context).pop('pin'),
+                ),
               if (mine)
                 ListTile(
                   leading: const Icon(Icons.edit_outlined),
@@ -407,6 +458,37 @@ class _PostCommentTileState extends ConsumerState<_PostCommentTile> {
     switch (choice) {
       case 'profile':
         context.push(RoutePaths.publicProfile(widget.comment.authorUid));
+      case 'pin':
+        try {
+          await ref
+              .read(communityRepositoryProvider)
+              .setPinnedComment(
+                postId: widget.postId,
+                commentId: widget.comment.id,
+                parentId: widget.comment.parentId,
+                pinned: !widget.comment.pinned,
+              );
+          await controller.load();
+          if (mounted) {
+            context.showSnack(
+              widget.comment.pinned
+                  ? Tr.of(
+                      context,
+                      ar: 'تم إلغاء التثبيت.',
+                      en: 'Comment unpinned.',
+                    )
+                  : Tr.of(
+                      context,
+                      ar: 'تم تثبيت التعليق أولًا.',
+                      en: 'Comment pinned to the top.',
+                    ),
+            );
+          }
+        } on Object catch (error) {
+          if (mounted) {
+            context.showSnack(userFacingError(context, error), isError: true);
+          }
+        }
       case 'edit':
         final text = await _askText(
           title: Tr.of(context, ar: 'تعديل التعليق', en: 'Edit comment'),

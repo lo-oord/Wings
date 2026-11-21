@@ -43,6 +43,8 @@ class EpisodeComment {
     this.edited = false,
     this.deleted = false,
     this.replyCount = 0,
+    this.pinned = false,
+    this.hashtags = const <String>[],
   });
 
   final String id;
@@ -67,6 +69,14 @@ class EpisodeComment {
   final bool edited;
   final bool deleted;
   final int replyCount;
+
+  /// A pinned comment is shown above every other comment. The Owner may pin any
+  /// comment; a post author may pin a comment on their own post.
+  final bool pinned;
+
+  /// Free hashtags written in the comment (anime titles stay in [animeRefs]).
+  final List<String> hashtags;
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -109,6 +119,14 @@ class EpisodeComment {
       edited: raw['edited'] == true,
       deleted: raw['deleted'] == true,
       replyCount: (raw['replyCount'] as num?)?.toInt() ?? 0,
+      pinned: raw['pinned'] == true,
+      hashtags: raw['hashtags'] is List
+          ? (raw['hashtags'] as List)
+                .whereType<String>()
+                .where((tag) => tag.isNotEmpty)
+                .take(6)
+                .toList(growable: false)
+          : const <String>[],
       createdAt: read(raw['createdAt']),
       updatedAt: read(raw['updatedAt']),
     );
@@ -121,6 +139,8 @@ class EpisodeComment {
     bool? edited,
     List<MentionRef>? mentions,
     List<AnimeRef>? animeRefs,
+    List<String>? hashtags,
+    bool? pinned,
   }) => EpisodeComment(
     id: id,
     episodeId: episodeId,
@@ -137,6 +157,8 @@ class EpisodeComment {
     edited: edited ?? this.edited,
     deleted: deleted ?? this.deleted,
     replyCount: replyCount ?? this.replyCount,
+    hashtags: hashtags ?? this.hashtags,
+    pinned: pinned ?? this.pinned,
     createdAt: createdAt,
     updatedAt: updatedAt,
   );

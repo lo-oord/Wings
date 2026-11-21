@@ -14,6 +14,8 @@ class FeedSignals {
     this.viewedPosts = const <String>{},
     this.likedAuthors = const <String>{},
     this.authorsWithReplies = const <String>{},
+    this.hashtagWeights = const <String, double>{},
+    this.soundWeights = const <String, double>{},
     this.now,
   });
 
@@ -34,6 +36,14 @@ class FeedSignals {
   /// Authors the viewer commented on or replied to.
   final Set<String> authorsWithReplies;
 
+  /// Hashtag slug → weight, learned from the viewer's own likes, saves,
+  /// comments and watch time. This is what makes two accounts see two
+  /// different orders of the same page.
+  final Map<String, double> hashtagWeights;
+
+  /// Sound key → weight, learned the same way (using a sound counts too).
+  final Map<String, double> soundWeights;
+
   /// Injectable clock so the ranking is testable.
   final DateTime? now;
 
@@ -51,6 +61,8 @@ class FeedSignals {
     viewedPosts: viewedPosts,
     likedAuthors: likedAuthors,
     authorsWithReplies: authorsWithReplies,
+    hashtagWeights: hashtagWeights,
+    soundWeights: soundWeights,
     now: value,
   );
 }
@@ -114,6 +126,20 @@ class CommunityRanking {
     return best.clamp(0, 1).toDouble();
   }
 
+  static double _hashtagInterest(Post post, FeedSignals signals) {
+    if (signals.hashtagWeights.isEmpty) return 0;
+    var best = 0.0;
+    for (final tag in post.hashtags) {
+      final weight = signals.hashtagWeights[tag] ?? 0;
+      if (weight > best) best = weight;
+    }
+    if (post.soundKey.isNotEmpty) {
+      final sound = signals.soundWeights[post.soundKey] ?? 0;
+      if (sound > best) best = sound;
+    }
+    return best.clamp(0, 1).toDouble();
+  }
+
   static double _relationship(Post post, FeedSignals signals) {
     var score = 0.0;
     if (signals.following.contains(post.authorUid)) score += 0.9;
@@ -149,12 +175,14 @@ class CommunityRanking {
       final recency = _recency(post.createdAt, now);
       final relationship = _relationship(post, signals);
       final interest = _interest(post, signals);
+      final tagInterest = _hashtagInterest(post, signals);
       final engagement = _engagement(post);
       final viewedPenalty = signals.viewedPosts.contains(post.id) ? 0.35 : 0.0;
       final score =
           (recency * 1.0) +
           relationship +
           (interest * 1.1) +
+          (tagInterest * 0.8) +
           engagement -
           viewedPenalty;
       scored.add(
@@ -175,9 +203,26 @@ class CommunityRanking {
       return b.post.createdAt.compareTo(a.post.createdAt);
     });
 
-    final ordered = _spreadAuthors(scored.map((item) => item.post).toList());
+    final ordered = _pinnedFirst(
+      _spreadAuthors(scored.map((item) => item.post).toList()),
+    );
     if (limit == null || ordered.length <= limit) return ordered;
     return ordered.sublist(0, limit);
+  }
+
+  /// A pinned post (Owner choice) always sits at the top of the page, in the
+  /// order it was pinned, without disturbing the rest of the ranking.
+  static List<Post> _pinnedFirst(List<Post> posts) {
+    final pinned = <Post>[
+      for (final post in posts)
+        if (post.pinned) post,
+    ];
+    if (pinned.isEmpty) return posts;
+    return <Post>[
+      ...pinned,
+      for (final post in posts)
+        if (!post.pinned) post,
+    ];
   }
 
   /// Prevents a run of posts from the same account when alternatives exist.

@@ -10,6 +10,7 @@ import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_feedback.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../data/models/anime.dart';
+import '../../data/models/community.dart';
 import '../../data/models/user_profile.dart';
 import '../profile/avatar_view.dart';
 import '../social/username_text.dart';
@@ -135,6 +136,13 @@ final animeSuggestionsProvider = FutureProvider.autoDispose
       }
     });
 
+/// Free community hashtags matching what was typed after `#`.
+final hashtagSuggestionsProvider = FutureProvider.autoDispose
+    .family<List<HashtagInfo>, String>(
+      (ref, query) =>
+          ref.watch(communityRepositoryProvider).suggestHashtags(query),
+    );
+
 /// The suggestion list shown under a composer.
 class SuggestionPanel extends ConsumerWidget {
   const SuggestionPanel({
@@ -142,11 +150,16 @@ class SuggestionPanel extends ConsumerWidget {
     required this.trigger,
     required this.onPickUser,
     required this.onPickAnime,
+    this.onPickHashtag,
   });
 
   final ActiveTrigger trigger;
   final ValueChanged<UserProfile> onPickUser;
   final ValueChanged<Anime> onPickAnime;
+
+  /// A free community hashtag. Anime titles keep their own callback so the
+  /// post still stores a real catalogue reference.
+  final ValueChanged<HashtagInfo>? onPickHashtag;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -246,6 +259,10 @@ class SuggestionPanel extends ConsumerWidget {
 
   Widget _anime(BuildContext context, WidgetRef ref, palette) {
     final results = ref.watch(animeSuggestionsProvider(trigger.query));
+    final tags = onPickHashtag == null
+        ? const <HashtagInfo>[]
+        : ref.watch(hashtagSuggestionsProvider(trigger.query)).value ??
+              const <HashtagInfo>[];
     return results.when(
       loading: () => const Padding(
         padding: EdgeInsets.all(Space.md),
@@ -253,62 +270,100 @@ class SuggestionPanel extends ConsumerWidget {
       ),
       error: (error, stack) => _empty(context, palette),
       data: (items) {
-        if (items.isEmpty) return _empty(context, palette);
-        return ListView.builder(
+        if (items.isEmpty && tags.isEmpty) return _empty(context, palette);
+        return ListView(
           shrinkWrap: true,
           padding: const EdgeInsets.symmetric(vertical: Space.xxs),
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final anime = items[index];
-            return InkWell(
-              onTap: () => onPickAnime(anime),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: Space.sm + 2,
-                  vertical: Space.xs + 2,
-                ),
-                child: Row(
-                  children: <Widget>[
-                    WingsImage(
-                      url: anime.imageUrl,
-                      width: 32,
-                      height: 45,
-                      borderRadius: BorderRadius.circular(Radii.xs),
-                    ),
-                    const SizedBox(width: Space.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            anime.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: context.text.labelMedium,
-                          ),
-                          if ((anime.englishTitle ?? '').isNotEmpty &&
-                              anime.englishTitle != anime.title)
-                            Text(
-                              anime.englishTitle!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: context.text.labelSmall?.copyWith(
-                                color: palette.textMuted,
-                              ),
-                            ),
-                        ],
+          children: <Widget>[
+            for (final tag in tags)
+              InkWell(
+                onTap: () => onPickHashtag!(tag),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.sm + 2,
+                    vertical: Space.xs + 2,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(
+                        Icons.tag_rounded,
+                        size: 16,
+                        color: palette.textMuted,
                       ),
-                    ),
-                    Icon(
-                      Icons.arrow_outward_rounded,
-                      size: 14,
-                      color: palette.textMuted,
-                    ),
-                  ],
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: Text(
+                          '#${tag.name}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        tag.creatorUsername.isEmpty
+                            ? '${tag.usageCount}'
+                            : '@${tag.creatorUsername}',
+                        style: context.text.labelSmall?.copyWith(
+                          color: palette.textMuted,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            );
-          },
+            for (final anime in items)
+              InkWell(
+                onTap: () => onPickAnime(anime),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.sm + 2,
+                    vertical: Space.xs + 2,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      WingsImage(
+                        url: anime.imageUrl,
+                        width: 32,
+                        height: 45,
+                        borderRadius: BorderRadius.circular(Radii.xs),
+                      ),
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              anime.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.text.labelMedium,
+                            ),
+                            if ((anime.englishTitle ?? '').isNotEmpty &&
+                                anime.englishTitle != anime.title)
+                              Text(
+                                anime.englishTitle!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: context.text.labelSmall?.copyWith(
+                                  color: palette.textMuted,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_outward_rounded,
+                        size: 14,
+                        color: palette.textMuted,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );

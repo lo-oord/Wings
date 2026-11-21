@@ -18,6 +18,7 @@ class SocialText extends StatefulWidget {
     required this.text,
     this.mentions = const <MentionRef>[],
     this.animeRefs = const <AnimeRef>[],
+    this.hashtags = const <String>[],
     this.style,
     this.maxLines,
     this.showAnimeChips = true,
@@ -27,6 +28,11 @@ class SocialText extends StatefulWidget {
   final String text;
   final List<MentionRef> mentions;
   final List<AnimeRef> animeRefs;
+
+  /// Free community hashtags (normalized, no `#`). Each one opens the tag's
+  /// results page; anime titles are matched from [animeRefs] instead.
+  final List<String> hashtags;
+
   final TextStyle? style;
   final int? maxLines;
   final bool showAnimeChips;
@@ -70,6 +76,7 @@ class _SocialTextState extends State<SocialText> {
       text,
       ...widget.mentions.map((item) => '${item.uid}:${item.username}'),
       ...widget.animeRefs.map((item) => '${item.id}:${item.title}'),
+      ...widget.hashtags,
     ].join('|');
     if (signature == _signature) return;
     _signature = signature;
@@ -100,6 +107,31 @@ class _SocialTextState extends State<SocialText> {
           _Token(start: index, end: end, route: RoutePaths.anime(ref.id)),
         );
         matched.add(ref.id);
+      }
+    }
+
+    // Free hashtags are matched after the anime titles, so a title that also
+    // exists as a free tag keeps opening the anime page, never a search page.
+    for (final tag in widget.hashtags) {
+      final clean = tag.trim().toLowerCase();
+      if (clean.isEmpty) continue;
+      final needle = '#$clean';
+      var from = 0;
+      while (true) {
+        final index = lower.indexOf(needle, from);
+        if (index < 0) break;
+        from = index + needle.length;
+        final end = index + needle.length;
+        if (tokens.any((token) => index < token.end && end > token.start)) {
+          continue;
+        }
+        tokens.add(
+          _Token(
+            start: index,
+            end: end,
+            route: RoutePaths.communityHashtag(clean),
+          ),
+        );
       }
     }
 

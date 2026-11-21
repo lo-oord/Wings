@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/storage/local_store.dart';
+import '../../core/utils/hashtags.dart';
 import '../models/community.dart';
 import '../models/social.dart';
 import '../models/sticker_catalog.dart';
@@ -171,11 +172,26 @@ class SocialRepository {
       .snapshots()
       // Old soft-deleted placeholders are hidden instead of being rendered.
       .map(
-        (snapshot) => snapshot.docs
-            .map((doc) => EpisodeComment.fromDoc(episodeId, doc.id, doc.data()))
-            .where((comment) => !comment.isDeleted)
-            .toList(growable: false),
+        (snapshot) => _ordered(
+          snapshot.docs
+              .map(
+                (doc) => EpisodeComment.fromDoc(episodeId, doc.id, doc.data()),
+              )
+              .where((comment) => !comment.isDeleted)
+              .toList(growable: false),
+        ),
       );
+
+  /// Pinned first, then newest to oldest. The page is already newest-first, so
+  /// this is one local sort and never a second query.
+  List<EpisodeComment> _ordered(List<EpisodeComment> comments) {
+    final ordered = <EpisodeComment>[...comments];
+    ordered.sort((a, b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      return b.createdAt.compareTo(a.createdAt);
+    });
+    return ordered;
+  }
 
   /// Medals of the first three commenters on an episode.
   ///
@@ -209,10 +225,12 @@ class SocialRepository {
     if (after != null) query = query.startAfterDocument(after);
     final snapshot = await query.get();
     return CommentPage(
-      items: snapshot.docs
-          .map((doc) => EpisodeComment.fromDoc(episodeId, doc.id, doc.data()))
-          .where((comment) => !comment.isDeleted)
-          .toList(growable: false),
+      items: _ordered(
+        snapshot.docs
+            .map((doc) => EpisodeComment.fromDoc(episodeId, doc.id, doc.data()))
+            .where((comment) => !comment.isDeleted)
+            .toList(growable: false),
+      ),
       cursor: snapshot.docs.isEmpty ? null : snapshot.docs.last,
       hasMore: snapshot.docs.length == pageSize,
     );
@@ -286,6 +304,10 @@ class SocialRepository {
         : _comments(episodeId).doc(parentId).collection('replies');
     final ref = collection.doc();
     final batch = _db.batch();
+    final hashtags = extractHashtags(
+      trimmed,
+      exclude: animeRefs.map((ref) => ref.title),
+    );
     final data = <String, dynamic>{
       'episodeId': episodeId,
       'authorUid': author.uid,
@@ -299,8 +321,10 @@ class SocialRepository {
         'mentions': mentions.map((item) => item.toMap()).toList(),
       if (animeRefs.isNotEmpty)
         'animeRefs': animeRefs.map((item) => item.toMap()).toList(),
+      if (hashtags.isNotEmpty) 'hashtags': hashtags,
       'edited': false,
       'deleted': false,
+      'pinned': false,
       'replyCount': 0,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -340,6 +364,23 @@ class SocialRepository {
       }
     }
     return ref.id;
+  }
+
+  /// The Owner may pin any episode comment. The rules enforce the role, so a
+  /// client cannot pin by simply calling this.
+  Future<void> setPinnedComment({
+    required String episodeId,
+    required String commentId,
+    String? parentId,
+    required bool pinned,
+  }) {
+    final ref = parentId == null
+        ? _comments(episodeId).doc(commentId)
+        : _comments(episodeId)
+              .doc(parentId)
+              .collection('replies')
+              .doc(commentId);
+    return ref.update(<String, dynamic>{'pinned': pinned});
   }
 
   Future<void> editComment({

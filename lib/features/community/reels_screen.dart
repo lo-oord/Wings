@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +15,7 @@ import '../../app/theme/context_ext.dart';
 import '../../core/errors/user_facing_error.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
+import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/chat.dart';
 import '../../data/models/community.dart';
@@ -26,6 +28,7 @@ import '../social/user_handle.dart';
 import 'community_providers.dart';
 import 'community_video.dart';
 import 'post_card.dart' show postShareLink;
+import 'reel_composer_screen.dart' show ReelComposerSeed;
 import 'reels_provider.dart';
 import 'report_sheet.dart';
 import 'social_text.dart';
@@ -47,6 +50,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   final TextEditingController _search = TextEditingController();
   int _index = 0;
   bool _searching = false;
+  bool _grid = false;
 
   @override
   void dispose() {
@@ -74,7 +78,13 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   }
 
   void _onQueryChanged() {
-    setState(() => _index = 0);
+    final query = _search.text.trim();
+    setState(() {
+      _index = 0;
+      // A query opens the result grid, which is the browsing surface; picking
+      // a tile returns to the player at exactly that Reel.
+      _grid = query.isNotEmpty;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_pages.hasClients) _pages.jumpToPage(0);
     });
@@ -138,6 +148,22 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                     active: index == _index,
                   );
                 },
+              ),
+            if (_grid && _search.text.trim().isNotEmpty && visible.isNotEmpty)
+              Positioned.fill(
+                top: 100,
+                child: _ReelSearchGrid(
+                  posts: visible,
+                  onOpen: (index) {
+                    setState(() {
+                      _grid = false;
+                      _index = index;
+                    });
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (_pages.hasClients) _pages.jumpToPage(index);
+                    });
+                  },
+                ),
               ),
             PositionedDirectional(
               top: Space.xs,
@@ -220,6 +246,22 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                     },
                   ),
                   const SizedBox(width: Space.sm),
+                  if (_searching && _search.text.trim().isNotEmpty)
+                    _RoundButton(
+                      icon: _grid
+                          ? Icons.play_circle_outline_rounded
+                          : Icons.grid_view_rounded,
+                      tooltip: _grid
+                          ? Tr.of(context, ar: 'تشغيل', en: 'Play')
+                          : Tr.of(
+                              context,
+                              ar: 'شبكة النتائج',
+                              en: 'Results grid',
+                            ),
+                      onTap: () => setState(() => _grid = !_grid),
+                    ),
+                  if (_searching && _search.text.trim().isNotEmpty)
+                    const SizedBox(width: Space.sm),
                   _RoundButton(
                     icon: Icons.autorenew_rounded,
                     tooltip: Tr.of(context, ar: 'تحديث', en: 'Refresh'),
@@ -443,6 +485,9 @@ class _ReelPageState extends ConsumerState<ReelPage> {
   bool _busy = false;
   double _speed = 1;
   bool _burst = false;
+  bool _expanded = false;
+  List<String> _frameUrls = const <String>[];
+  String? _soundUrl;
   Timer? _burstTimer;
 
   Post get post => widget.post;
@@ -478,8 +523,35 @@ class _ReelPageState extends ConsumerState<ReelPage> {
 
   Future<void> _resolve() async {
     final service = ref.read(communityMediaProvider);
+    if (!service.available) {
+      if (mounted) setState(() => _failed = true);
+      return;
+    }
+    // A picture Reel has no video object: the frames and the optional sound are
+    // resolved together, so the slideshow starts without a second round-trip.
+    if (post.hasSlides) {
+      try {
+        final keys = <String>[
+          for (final frame in post.reelFrames) frame.key,
+          if (post.soundKey.isNotEmpty) post.soundKey,
+        ];
+        final urls = await service.downloadUrls(keys);
+        if (!mounted) return;
+        setState(() {
+          _frameUrls = <String>[
+            for (final frame in post.reelFrames)
+              if ((urls[frame.key] ?? '').isNotEmpty) urls[frame.key]!,
+          ];
+          _soundUrl = urls[post.soundKey];
+          _failed = _frameUrls.isEmpty;
+        });
+      } on Object {
+        if (mounted) setState(() => _failed = true);
+      }
+      return;
+    }
     final key = post.videoKey;
-    if (!service.available || key == null) {
+    if (key == null) {
       if (mounted) setState(() => _failed = true);
       return;
     }
@@ -534,11 +606,16 @@ class _ReelPageState extends ConsumerState<ReelPage> {
       children: <Widget>[
         GestureDetector(
           onDoubleTap: () => _doubleTapLike(liked),
+          // Hold to watch at 2×. Releasing the finger returns to 1× without
+          // opening any menu, and the other gestures stay untouched.
+          onLongPressStart: (_) => setState(() => _speed = 2),
+          onLongPressEnd: (_) => setState(() => _speed = 1),
+          onLongPressCancel: () => setState(() => _speed = 1),
           child: ColoredBox(
             color: Colors.black,
             child: _failed
                 ? const SizedBox.shrink()
-                : _url == null
+                : _url == null && !post.hasSlides
                 ? Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -555,6 +632,13 @@ class _ReelPageState extends ConsumerState<ReelPage> {
                       ],
                     ),
                   )
+                : post.hasSlides
+                ? _ReelSlides(
+                    frames: post.reelFrames,
+                    urls: _frameUrls,
+                    soundUrl: _soundUrl,
+                    active: widget.active,
+                  )
                 : CommunityVideo(
                     url: _url,
                     posterUrl: _poster,
@@ -568,6 +652,26 @@ class _ReelPageState extends ConsumerState<ReelPage> {
                   ),
           ),
         ),
+        if (_speed != 1)
+          PositionedDirectional(
+            top: 96,
+            end: Space.md,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                '2×',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
         if (_burst)
           Positioned.fill(
             child: IgnorePointer(
@@ -735,13 +839,45 @@ class _ReelPageState extends ConsumerState<ReelPage> {
                   text: post.text,
                   mentions: post.mentions,
                   animeRefs: post.animeRefs,
-                  maxLines: 3,
+                  hashtags: post.hashtags,
+                  maxLines: _expanded ? null : 2,
+                  linkColor: palette.success,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,
                     height: 1.5,
                   ),
                 ),
+                if (!_expanded && post.text.trim().length > 90)
+                  GestureDetector(
+                    onTap: () => setState(() => _expanded = true),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        Tr.of(context, ar: 'المزيد', en: 'More'),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (_expanded)
+                  GestureDetector(
+                    onTap: () => setState(() => _expanded = false),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        Tr.of(context, ar: 'أقل', en: 'Less'),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
               if (post.repostedFrom.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 3),
@@ -1021,9 +1157,13 @@ class _ReelPageState extends ConsumerState<ReelPage> {
   }
 
   Future<void> _openComments() async {
-    await WingsPopup.show<void>(
+    // The comments window slides from the bottom, keeps a fixed composer under
+    // the list and follows the keyboard.
+    await showModalBottomSheet<void>(
       context: context,
-      heightFactor: 0.86,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => _CommentsSheet(post: post),
     );
   }
@@ -1033,12 +1173,24 @@ class _ReelPageState extends ConsumerState<ReelPage> {
     await WingsPopup.show<void>(
       context: context,
       heightFactor: 0.88,
-      builder: (context) => _ReelSettingsSheet(
+      builder: (sheetContext) => _ReelSettingsSheet(
         post: post,
         isOwner: isOwner,
+        onUseSound: post.soundKey.isEmpty
+            ? null
+            : () => context.push(
+                RoutePaths.communityReelCompose,
+                extra: ReelComposerSeed(
+                  key: post.soundKey,
+                  title: post.soundTitle,
+                  authorUid: post.soundAuthorUid.isEmpty
+                      ? post.authorUid
+                      : post.soundAuthorUid,
+                ),
+              ),
         speed: _speed,
         onSpeed: (value) {
-          Navigator.of(context).pop();
+          Navigator.of(sheetContext).pop();
           setState(() => _speed = value);
         },
         onDownload: _download,
@@ -1369,6 +1521,7 @@ class _ReelSettingsSheet extends StatelessWidget {
   const _ReelSettingsSheet({
     required this.post,
     required this.isOwner,
+    this.onUseSound,
     required this.speed,
     required this.onSpeed,
     required this.onDownload,
@@ -1382,6 +1535,7 @@ class _ReelSettingsSheet extends StatelessWidget {
 
   final Post post;
   final bool isOwner;
+  final VoidCallback? onUseSound;
   final double speed;
   final ValueChanged<double> onSpeed;
   final VoidCallback onDownload;
@@ -1481,6 +1635,27 @@ class _ReelSettingsSheet extends StatelessWidget {
                 ],
               ),
             ),
+            if (onUseSound != null)
+              ListTile(
+                leading: const Icon(Icons.library_music_outlined),
+                title: Text(
+                  Tr.of(context, ar: 'استخدام هذا الصوت', en: 'Use this sound'),
+                ),
+                subtitle: Text(
+                  post.soundTitle.isNotEmpty
+                      ? '${post.soundTitle} · ${post.soundUsageCount}'
+                      : Tr.of(
+                          context,
+                          ar: 'افتح الاستوديو بهذا الصوت',
+                          en: 'Open the studio with this sound',
+                        ),
+                  style: const TextStyle(fontSize: 11),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onUseSound!();
+                },
+              ),
             if (post.allowDownload)
               ListTile(
                 leading: const Icon(Icons.download_outlined),
@@ -1718,6 +1893,7 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
                                       text: comment.text,
                                       mentions: comment.mentions,
                                       animeRefs: comment.animeRefs,
+                                      hashtags: comment.hashtags,
                                       showAnimeChips: false,
                                       linkColor: palette.success,
                                       style: context.text.bodySmall?.copyWith(
@@ -1784,5 +1960,243 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
       );
     }
     return sent;
+  }
+}
+
+/// A Reel made of pictures: each frame stays for its own duration, the change
+/// is a short fade, and the chosen sound loops while the Reel is on screen.
+///
+/// It is deliberately one widget for every picture Reel, so no extra player is
+/// created and only the visible Reel holds an audio player.
+class _ReelSlides extends StatefulWidget {
+  const _ReelSlides({
+    required this.frames,
+    required this.urls,
+    required this.active,
+    this.soundUrl,
+  });
+
+  final List<ReelFrame> frames;
+  final List<String> urls;
+  final bool active;
+  final String? soundUrl;
+
+  @override
+  State<_ReelSlides> createState() => _ReelSlidesState();
+}
+
+class _ReelSlidesState extends State<_ReelSlides> {
+  int _index = 0;
+  Timer? _timer;
+  AudioPlayer? _audio;
+
+  @override
+  void initState() {
+    super.initState();
+    _schedule();
+    if (widget.active) unawaited(_playSound());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReelSlides oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.frames.length != widget.frames.length ||
+        oldWidget.urls.length != widget.urls.length) {
+      _index = 0;
+      _schedule();
+    }
+    if (oldWidget.active != widget.active) {
+      if (widget.active) {
+        unawaited(_playSound());
+      } else {
+        unawaited(_audio?.pause());
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    unawaited(_audio?.dispose());
+    super.dispose();
+  }
+
+  void _schedule() {
+    _timer?.cancel();
+    if (widget.frames.isEmpty) return;
+    final current = widget.frames[_index.clamp(0, widget.frames.length - 1)];
+    _timer = Timer(
+      Duration(milliseconds: current.durationMs.clamp(800, 15000)),
+      () {
+        if (!mounted) return;
+        setState(() => _index = (_index + 1) % widget.frames.length);
+        _schedule();
+      },
+    );
+  }
+
+  Future<void> _playSound() async {
+    final url = widget.soundUrl;
+    if (url == null || url.isEmpty) return;
+    try {
+      final player = _audio ??= AudioPlayer();
+      await player.setReleaseMode(ReleaseMode.loop);
+      await player.play(UrlSource(url), volume: 0.85);
+    } on Object {
+      // A sound that cannot start never stops the slideshow.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final urls = widget.urls;
+    if (urls.isEmpty) return const ColoredBox(color: Colors.black);
+    final index = _index % urls.length;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 420),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: SizedBox.expand(
+        key: ValueKey<int>(index),
+        child: WingsImage(url: urls[index], fit: BoxFit.contain),
+      ),
+    );
+  }
+}
+
+/// The browsing grid of Reels search results: preview image, author, avatar and
+/// engagement, in the order the personal ranking produced. A tap opens the
+/// player at that exact Reel so the search context is kept.
+class _ReelSearchGrid extends ConsumerStatefulWidget {
+  const _ReelSearchGrid({required this.posts, required this.onOpen});
+
+  final List<Post> posts;
+  final ValueChanged<int> onOpen;
+
+  @override
+  ConsumerState<_ReelSearchGrid> createState() => _ReelSearchGridState();
+}
+
+class _ReelSearchGridState extends ConsumerState<_ReelSearchGrid> {
+  Map<String, String> _urls = const <String, String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_resolve());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReelSearchGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.posts.length != widget.posts.length) unawaited(_resolve());
+  }
+
+  Future<void> _resolve() async {
+    final service = ref.read(communityMediaProvider);
+    if (!service.available) return;
+    final keys = <String>[
+      for (final post in widget.posts.take(30))
+        if ((post.videoThumbnailKey ?? '').isNotEmpty)
+          post.videoThumbnailKey!
+        else if (post.hasSlides)
+          post.reelFrames.first.key,
+    ];
+    if (keys.isEmpty) return;
+    try {
+      final urls = await service.downloadUrls(keys);
+      if (mounted) setState(() => _urls = urls);
+    } on Object {
+      // The tiles fall back to the author's initial.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black,
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 120),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: Space.sm,
+          crossAxisSpacing: Space.sm,
+          childAspectRatio: 0.72,
+        ),
+        itemCount: widget.posts.length,
+        itemBuilder: (context, index) {
+          final post = widget.posts[index];
+          final key = (post.videoThumbnailKey ?? '').isNotEmpty
+              ? post.videoThumbnailKey!
+              : (post.hasSlides ? post.reelFrames.first.key : '');
+          return GestureDetector(
+            onTap: () => widget.onOpen(index),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(Radii.sm),
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  if ((_urls[key] ?? '').isNotEmpty)
+                    WingsImage(url: _urls[key], fit: BoxFit.cover)
+                  else
+                    const ColoredBox(color: Color(0xFF1A1A1A)),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[Colors.transparent, Colors.black87],
+                        stops: <double>[0.45, 1],
+                      ),
+                    ),
+                  ),
+                  PositionedDirectional(
+                    start: 8,
+                    end: 8,
+                    bottom: 8,
+                    child: Row(
+                      children: <Widget>[
+                        UserAvatar(
+                          uid: post.authorUid,
+                          photoVersion: post.photoVersion,
+                          name: post.authorName,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '@${post.authorUsername}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.favorite_rounded,
+                          size: 11,
+                          color: Colors.white70,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          formatCount(post.likeCount),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 9,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }

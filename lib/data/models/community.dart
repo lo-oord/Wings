@@ -65,6 +65,126 @@ class AnimeRef {
   }
 }
 
+/// A reference to one episode of the catalogue, stored on a community post
+/// that shares an episode.
+///
+/// Only the ids are authoritative: the titles, the number and the cover keys
+/// are a display snapshot, and the player resolves the streams from the real
+/// episode at play time. The video itself is never copied into the post.
+@immutable
+class EpisodeRef {
+  const EpisodeRef({
+    required this.animeId,
+    required this.episodeId,
+    this.animeTitle = '',
+    this.episodeTitle = '',
+    this.episodeNumber = 0,
+    this.coverKey = '',
+    this.animeCoverKey = '',
+    this.durationMs = 0,
+  });
+
+  final String animeId;
+  final String episodeId;
+  final String animeTitle;
+  final String episodeTitle;
+  final int episodeNumber;
+  final String coverKey;
+  final String animeCoverKey;
+  final int durationMs;
+
+  bool get isNotEmpty => animeId.isNotEmpty && episodeId.isNotEmpty;
+
+  String get displayTitle => episodeTitle.trim().isNotEmpty
+      ? episodeTitle.trim()
+      : '${animeTitle.trim()} · ${episodeNumber > 0 ? episodeNumber : 1}';
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'animeId': animeId,
+    'episodeId': episodeId,
+    if (animeTitle.isNotEmpty) 'animeTitle': animeTitle,
+    if (episodeTitle.isNotEmpty) 'episodeTitle': episodeTitle,
+    'episodeNumber': episodeNumber,
+    if (coverKey.isNotEmpty) 'coverKey': coverKey,
+    if (animeCoverKey.isNotEmpty) 'animeCoverKey': animeCoverKey,
+    if (durationMs > 0) 'durationMs': durationMs,
+  };
+
+  factory EpisodeRef.fromMap(Object? raw) {
+    if (raw is! Map) {
+      return const EpisodeRef(animeId: '', episodeId: '');
+    }
+    return EpisodeRef(
+      animeId: raw['animeId'] as String? ?? '',
+      episodeId: raw['episodeId'] as String? ?? '',
+      animeTitle: raw['animeTitle'] as String? ?? '',
+      episodeTitle: raw['episodeTitle'] as String? ?? '',
+      episodeNumber: (raw['episodeNumber'] as num?)?.toInt() ?? 0,
+      coverKey: raw['coverKey'] as String? ?? '',
+      animeCoverKey: raw['animeCoverKey'] as String? ?? '',
+      durationMs: (raw['durationMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// One picture of a picture Reel and how long it stays on screen.
+///
+/// A Reel made of pictures has no video object at all: the frames are the same
+/// private Tigris keys a picture post uses, played as a timed slideshow in the
+/// community player.
+@immutable
+class ReelFrame {
+  const ReelFrame({required this.key, this.durationMs = 2500});
+
+  final String key;
+  final int durationMs;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'key': key,
+    'durationMs': durationMs,
+  };
+
+  factory ReelFrame.fromMap(Object? raw) {
+    if (raw is! Map) return const ReelFrame(key: '');
+    return ReelFrame(
+      key: raw['key'] as String? ?? '',
+      durationMs:
+          (raw['durationMs'] as num?)?.toInt().clamp(500, 15000) ?? 2500,
+    );
+  }
+}
+
+/// A public hashtag of the community.
+///
+/// Anime hashtags are `animeRefs` on the post; a hashtag in this collection is
+/// a free topic. The creator of the first post that used it is kept forever,
+/// and the usage counter is the only field another member may move.
+@immutable
+class HashtagInfo {
+  const HashtagInfo({
+    required this.slug,
+    required this.name,
+    required this.creatorUid,
+    required this.creatorUsername,
+    this.usageCount = 0,
+  });
+
+  final String slug;
+  final String name;
+  final String creatorUid;
+  final String creatorUsername;
+  final int usageCount;
+
+  factory HashtagInfo.fromDoc(String slug, Map<String, dynamic> raw) =>
+      HashtagInfo(
+        slug: slug,
+        name: raw['name'] as String? ?? slug,
+        creatorUid: raw['creatorUid'] as String? ?? '',
+        creatorUsername: raw['creatorUsername'] as String? ?? '',
+        usageCount: (raw['usageCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
 /// A community post.
 ///
 /// Documents live in `posts/{postId}`. The author's handle, name, badges and
@@ -104,6 +224,14 @@ class Post {
     this.category = '',
     this.soundTitle = '',
     this.repostedFrom = '',
+    this.pinned = false,
+    this.hashtags = const <String>[],
+    this.episodeRef,
+    this.reelFrames = const <ReelFrame>[],
+    this.soundKey = '',
+    this.soundAuthorUid = '',
+    this.soundUsageCount = 0,
+    this.videoBytes = 0,
   });
 
   final String id;
@@ -160,11 +288,42 @@ class Post {
   /// Id of the original post when this one is a repost.
   final String repostedFrom;
 
+  /// Set by the Owner (any post) or by staff. A pinned post is shown first in
+  /// every community feed.
+  final bool pinned;
+
+  /// Free hashtags written by the author, normalized and without `#`.
+  /// Anime titles are not here: they live in [animeRefs] so a tag always opens
+  /// the right catalogue page.
+  final List<String> hashtags;
+
+  /// The catalogue episode this post shares, when it is an episode share.
+  final EpisodeRef? episodeRef;
+
+  /// Pictures of a picture Reel, in order, with their own duration.
+  final List<ReelFrame> reelFrames;
+
+  /// Object key of the sound/music used by a Reel, and the account that first
+  /// published it so «استخدام هذا الصوت» can credit the original creator.
+  final String soundKey;
+  final String soundAuthorUid;
+  final int soundUsageCount;
+
+  /// Uploaded size of the video, checked by the rules against the per-kind
+  /// ceiling (a community video and a Reel have different limits).
+  final int videoBytes;
+
   bool get hasImages => imageKeys.isNotEmpty;
 
   bool get hasVideo => (videoKey ?? '').isNotEmpty;
 
   bool get isReel => kind == PostKind.reel;
+
+  bool get hasSlides => reelFrames.isNotEmpty;
+
+  bool get isPlayable => hasVideo || hasSlides;
+
+  bool get hasEpisode => episodeRef?.isNotEmpty ?? false;
 
   /// Ids used by the anime community feed query.
   ///
@@ -194,6 +353,14 @@ class Post {
     String? category,
     String? soundTitle,
     String? repostedFrom,
+    bool? pinned,
+    List<String>? hashtags,
+    EpisodeRef? episodeRef,
+    List<ReelFrame>? reelFrames,
+    String? soundKey,
+    String? soundAuthorUid,
+    int? soundUsageCount,
+    int? videoBytes,
   }) => Post(
     id: id,
     authorUid: authorUid,
@@ -223,6 +390,14 @@ class Post {
     category: category ?? this.category,
     soundTitle: soundTitle ?? this.soundTitle,
     repostedFrom: repostedFrom ?? this.repostedFrom,
+    pinned: pinned ?? this.pinned,
+    hashtags: hashtags ?? this.hashtags,
+    episodeRef: episodeRef ?? this.episodeRef,
+    reelFrames: reelFrames ?? this.reelFrames,
+    soundKey: soundKey ?? this.soundKey,
+    soundAuthorUid: soundAuthorUid ?? this.soundAuthorUid,
+    soundUsageCount: soundUsageCount ?? this.soundUsageCount,
+    videoBytes: videoBytes ?? this.videoBytes,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -251,6 +426,16 @@ class Post {
     if (category.isNotEmpty) 'category': category,
     if (soundTitle.isNotEmpty) 'soundTitle': soundTitle,
     if (repostedFrom.isNotEmpty) 'repostedFrom': repostedFrom,
+    'pinned': pinned,
+    if (hashtags.isNotEmpty) 'hashtags': hashtags,
+    if (episodeRef != null && episodeRef!.isNotEmpty)
+      'episodeRef': episodeRef!.toMap(),
+    if (reelFrames.isNotEmpty)
+      'reelFrames': reelFrames.map((frame) => frame.toMap()).toList(),
+    if (soundKey.isNotEmpty) 'soundKey': soundKey,
+    if (soundAuthorUid.isNotEmpty) 'soundAuthorUid': soundAuthorUid,
+    if (soundUsageCount > 0) 'soundUsageCount': soundUsageCount,
+    'videoBytes': videoBytes,
     'createdAt': FieldValue.serverTimestamp(),
     'updatedAt': FieldValue.serverTimestamp(),
   };
@@ -312,6 +497,28 @@ class Post {
       category: raw['category'] as String? ?? '',
       soundTitle: raw['soundTitle'] as String? ?? '',
       repostedFrom: raw['repostedFrom'] as String? ?? '',
+      pinned: raw['pinned'] == true,
+      hashtags: raw['hashtags'] is List
+          ? (raw['hashtags'] as List)
+                .whereType<String>()
+                .where((tag) => tag.isNotEmpty)
+                .take(10)
+                .toList(growable: false)
+          : const <String>[],
+      episodeRef: raw['episodeRef'] is Map
+          ? EpisodeRef.fromMap(raw['episodeRef'])
+          : null,
+      reelFrames: raw['reelFrames'] is List
+          ? (raw['reelFrames'] as List)
+                .map(ReelFrame.fromMap)
+                .where((frame) => frame.key.isNotEmpty)
+                .take(10)
+                .toList(growable: false)
+          : const <ReelFrame>[],
+      soundKey: raw['soundKey'] as String? ?? '',
+      soundAuthorUid: raw['soundAuthorUid'] as String? ?? '',
+      soundUsageCount: (raw['soundUsageCount'] as num?)?.toInt() ?? 0,
+      videoBytes: (raw['videoBytes'] as num?)?.toInt() ?? 0,
     );
   }
 }

@@ -18,6 +18,7 @@ import '../../features/admin/owner_message_screen.dart';
 import '../../features/auth/auth_screens.dart';
 import '../../features/auth/complete_profile_screen.dart';
 import '../../features/community/community_screen.dart';
+import '../../features/community/community_search_screen.dart';
 import '../../features/community/people_screen.dart';
 import '../../features/community/post_composer_screen.dart';
 import '../../features/community/reel_composer_screen.dart';
@@ -343,14 +344,49 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: RoutePaths.communitySearch,
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          CommunitySearchScreen(
+            initialQuery: state.uri.queryParameters['q'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/community/tag/:slug',
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          CommunitySearchScreen(
+            initialQuery:
+                '#${Uri.decodeComponent(state.pathParameters['slug'] ?? '')}',
+          ),
+        ),
+      ),
+      GoRoute(
         path: RoutePaths.communityCompose,
-        pageBuilder: (context, state) =>
-            _wingsPage(context, state, const PostComposerScreen()),
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          PostComposerScreen(
+            seed: state.extra is PostComposerSeed
+                ? state.extra! as PostComposerSeed
+                : null,
+          ),
+        ),
       ),
       GoRoute(
         path: RoutePaths.communityReelCompose,
-        pageBuilder: (context, state) =>
-            _wingsPage(context, state, const ReelComposerScreen()),
+        pageBuilder: (context, state) => _wingsPage(
+          context,
+          state,
+          ReelComposerScreen(
+            seed: state.extra is ReelComposerSeed
+                ? state.extra! as ReelComposerSeed
+                : null,
+          ),
+        ),
       ),
       GoRoute(
         path: RoutePaths.chats,

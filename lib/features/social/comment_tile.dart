@@ -132,11 +132,34 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                     ],
                   ),
                   const SizedBox(height: 3),
+                  if (comment.pinned)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(
+                            Icons.push_pin_rounded,
+                            size: 11,
+                            color: palette.primary,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            Tr.of(context, ar: 'مثبت', en: 'Pinned'),
+                            style: context.text.labelSmall?.copyWith(
+                              color: palette.primary,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   if (comment.text.isNotEmpty)
                     SocialText(
                       text: comment.text,
                       mentions: comment.mentions,
                       animeRefs: comment.animeRefs,
+                      hashtags: comment.hashtags,
                       showAnimeChips: false,
                       linkColor: palette.success,
                       style: context.text.bodySmall?.copyWith(

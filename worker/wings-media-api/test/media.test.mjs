@@ -114,7 +114,7 @@ test('upload requests validate purpose, post id, count, type and size', () => {
     () =>
       normalizeUploadRequest({
         postId: 'p1',
-        files: Array.from({ length: 5 }, () => file),
+        files: Array.from({ length: 11 }, () => file),
       }),
     /bad-file-count/,
   );
@@ -146,7 +146,7 @@ test('upload requests validate purpose, post id, count, type and size', () => {
 
 test('the image and video ceilings match the Flutter service', () => {
   assert.equal(limitFor('image/jpeg'), 5 * 1024 * 1024);
-  assert.equal(limitFor('video/mp4'), 50 * 1024 * 1024);
+  assert.equal(limitFor('video/mp4'), 100 * 1024 * 1024);
 });
 
 test('chat keys are namespaced by conversation and stay readable by their owner', () => {
