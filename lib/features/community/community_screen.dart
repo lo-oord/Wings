@@ -33,6 +33,9 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final uid = ref.watch(authProvider)?.id;
+    // Firebase restores a saved session asynchronously; never show the sign-in
+    // pitch during that first moment.
+    final authResolved = ref.watch(authResolvedProvider);
     final online = ref.watch(onlineProvider).value;
 
     return Scaffold(
@@ -96,7 +99,11 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
         ),
       ),
       body: uid == null
-          ? const _SignedOutCommunity()
+          ? (authResolved
+                ? const _SignedOutCommunity()
+                : const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ))
           : Column(
               children: <Widget>[
                 if (online == false)
