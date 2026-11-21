@@ -276,6 +276,87 @@ class _PostCardState extends ConsumerState<PostCard> {
                 ],
               ),
             ),
+          if (post.episodeRef case final episode? when episode.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.md,
+                Space.sm,
+                Space.md,
+                0,
+              ),
+              child: InkWell(
+                // The episode itself stays in the catalogue: the post only
+                // carries a reference, and play opens the real player with its
+                // servers and quality selection.
+                onTap: () => context.push(
+                  RoutePaths.watch(
+                    animeId: episode.animeId,
+                    episodeId: episode.episodeId,
+                  ),
+                ),
+                borderRadius: BorderRadius.circular(Radii.sm),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.sm + 2,
+                    vertical: Space.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: palette.surfaceAlt,
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                    border: Border.all(color: palette.border),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: palette.primary.withValues(alpha: 0.14),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          size: 20,
+                          color: palette.primary,
+                        ),
+                      ),
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              episode.displayTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.text.labelMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              Tr.of(
+                                context,
+                                ar: 'الحلقة ${episode.episodeNumber} · تشغيل من المجتمع',
+                                en: 'Episode ${episode.episodeNumber} · Play from the community',
+                              ),
+                              style: context.text.labelSmall?.copyWith(
+                                color: palette.textMuted,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_left_rounded,
+                        size: 18,
+                        color: palette.textMuted,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (post.hasVideo)
             Padding(
               padding: const EdgeInsets.fromLTRB(
