@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import 'community.dart';
 import 'user_profile.dart';
 
 enum ReactionType { like, dislike }
@@ -32,6 +33,8 @@ class EpisodeComment {
     required this.authorName,
     required this.text,
     this.stickerId,
+    this.mentions = const <MentionRef>[],
+    this.animeRefs = const <AnimeRef>[],
     required this.createdAt,
     required this.updatedAt,
     this.parentId,
@@ -55,6 +58,11 @@ class EpisodeComment {
   /// Id of a bundled sticker shown under the text, or null for a text-only
   /// comment. Only the id is stored; the artwork ships inside the app.
   final String? stickerId;
+
+  /// The accounts and anime the author picked while writing, so the green
+  /// `@handle` and `#title` links open the real profile or title.
+  final List<MentionRef> mentions;
+  final List<AnimeRef> animeRefs;
 
   final bool edited;
   final bool deleted;
@@ -86,6 +94,18 @@ class EpisodeComment {
           raw['stickerId'] is String && (raw['stickerId'] as String).isNotEmpty
           ? raw['stickerId'] as String
           : null,
+      mentions: (raw['mentions'] is List)
+          ? (raw['mentions'] as List)
+                .map(MentionRef.fromMap)
+                .where((item) => item.uid.isNotEmpty)
+                .toList(growable: false)
+          : const <MentionRef>[],
+      animeRefs: (raw['animeRefs'] is List)
+          ? (raw['animeRefs'] as List)
+                .map(AnimeRef.fromMap)
+                .where((item) => item.id.isNotEmpty)
+                .toList(growable: false)
+          : const <AnimeRef>[],
       edited: raw['edited'] == true,
       deleted: raw['deleted'] == true,
       replyCount: (raw['replyCount'] as num?)?.toInt() ?? 0,
@@ -99,6 +119,8 @@ class EpisodeComment {
     int? replyCount,
     String? text,
     bool? edited,
+    List<MentionRef>? mentions,
+    List<AnimeRef>? animeRefs,
   }) => EpisodeComment(
     id: id,
     episodeId: episodeId,
@@ -110,6 +132,8 @@ class EpisodeComment {
     photoVersion: photoVersion,
     text: text ?? this.text,
     stickerId: stickerId,
+    mentions: mentions ?? this.mentions,
+    animeRefs: animeRefs ?? this.animeRefs,
     edited: edited ?? this.edited,
     deleted: deleted ?? this.deleted,
     replyCount: replyCount ?? this.replyCount,

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/storage/local_store.dart';
+import '../models/community.dart';
 import '../models/social.dart';
 import '../models/sticker_catalog.dart';
 import '../models/user_profile.dart';
@@ -247,6 +248,8 @@ class SocialRepository {
     String text = '',
     String? parentId,
     String? stickerId,
+    List<MentionRef> mentions = const <MentionRef>[],
+    List<AnimeRef> animeRefs = const <AnimeRef>[],
   }) async {
     final trimmed = text.trim();
     final sticker = (stickerId ?? '').trim().isEmpty ? null : stickerId!.trim();
@@ -292,6 +295,10 @@ class SocialRepository {
       'photoVersion': author.photoVersion,
       'text': trimmed,
       'stickerId': ?sticker,
+      if (mentions.isNotEmpty)
+        'mentions': mentions.map((item) => item.toMap()).toList(),
+      if (animeRefs.isNotEmpty)
+        'animeRefs': animeRefs.map((item) => item.toMap()).toList(),
       'edited': false,
       'deleted': false,
       'replyCount': 0,

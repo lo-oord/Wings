@@ -652,7 +652,7 @@ class _CommentPreview extends ConsumerWidget {
                   comment: comments[index],
                   rank: ranks[comments[index].id],
                   maxReplyPreview: 1,
-                  onReply: (_, _) => onOpenAll(),
+                  onReply: (_, _, _, _) => onOpenAll(),
                 ),
                 if (index != comments.length - 1)
                   Divider(

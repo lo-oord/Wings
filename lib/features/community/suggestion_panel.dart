@@ -45,7 +45,7 @@ ActiveTrigger? detectTrigger(TextEditingController controller) {
   final text = controller.text;
   final before = text.substring(0, selection.start.clamp(0, text.length));
 
-  final mention = RegExp(r'(^|[\s\n])@([A-Za-z0-9_]{1,20})$')
+  final mention = RegExp(r'(^|[\s\n])@([A-Za-z0-9_]{0,20})$')
       .firstMatch(before);
   if (mention != null) {
     return ActiveTrigger(
@@ -122,9 +122,13 @@ final mentionSuggestionsProvider = FutureProvider.autoDispose
 final animeSuggestionsProvider = FutureProvider.autoDispose
     .family<List<Anime>, String>((ref, query) async {
       final text = query.trim();
-      if (text.isEmpty) return const <Anime>[];
       try {
-        final paged = await ref.watch(animeRepositoryProvider).search(text);
+        final repository = ref.watch(animeRepositoryProvider);
+        // A bare `#` still opens the picker with the newest titles instead of
+        // an empty card, so the gesture is discoverable.
+        final paged = text.isEmpty
+            ? await repository.browse(const BrowseQuery())
+            : await repository.search(text);
         return paged.items.take(6).toList(growable: false);
       } on Object {
         return const <Anime>[];
@@ -147,7 +151,6 @@ class SuggestionPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
-    if (trigger.query.trim().isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.only(top: Space.xs),
       constraints: const BoxConstraints(maxHeight: 260),

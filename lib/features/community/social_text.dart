@@ -21,6 +21,7 @@ class SocialText extends StatefulWidget {
     this.style,
     this.maxLines,
     this.showAnimeChips = true,
+    this.linkColor,
   });
 
   final String text;
@@ -29,6 +30,9 @@ class SocialText extends StatefulWidget {
   final TextStyle? style;
   final int? maxLines;
   final bool showAnimeChips;
+
+  /// Comments use the green mark; posts keep the app accent.
+  final Color? linkColor;
 
   @override
   State<SocialText> createState() => _SocialTextState();
@@ -139,7 +143,7 @@ class _SocialTextState extends State<SocialText> {
           color: palette.textPrimary,
         );
     final linkStyle = base?.copyWith(
-      color: palette.primary,
+      color: widget.linkColor ?? palette.primary,
       fontWeight: FontWeight.w600,
     );
 

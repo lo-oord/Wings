@@ -74,7 +74,7 @@ void main() {
             body: CommentComposer(
               controller: controller,
               sending: false,
-              onSend: (text, stickerId) async {
+              onSend: (text, stickerId, mentions, animeRefs) async {
                 sent.add((text, stickerId));
                 if (onSend != null) return onSend(text, stickerId);
                 return true;

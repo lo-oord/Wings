@@ -661,6 +661,8 @@ final class CommunityRepository {
     required UserProfile author,
     String text = '',
     String? parentId,
+    List<MentionRef> mentions = const <MentionRef>[],
+    List<AnimeRef> animeRefs = const <AnimeRef>[],
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) throw ArgumentError('empty comment');
@@ -680,6 +682,10 @@ final class CommunityRepository {
       'authorBadges': author.badges.toMap(),
       'photoVersion': author.photoVersion,
       'text': trimmed,
+      if (mentions.isNotEmpty)
+        'mentions': mentions.map((item) => item.toMap()).toList(),
+      if (animeRefs.isNotEmpty)
+        'animeRefs': animeRefs.map((item) => item.toMap()).toList(),
       'edited': false,
       'deleted': false,
       'replyCount': 0,
@@ -1093,15 +1099,17 @@ final class CommunityRepository {
   /// keystroke.
   Future<List<UserProfile>> suggestUsers(String prefix, {int limit = 8}) async {
     final normalized = prefix.trim().toLowerCase();
-    if (normalized.isEmpty) return const <UserProfile>[];
     try {
-      final snapshot = await _db
-          .collection('profiles')
-          .orderBy('normalizedUsername')
-          .startAt(<Object>[normalized])
-          .endAt(<Object>['$normalized\uf8ff'])
-          .limit(limit)
-          .get();
+      // A bare `@` shows the first handles alphabetically instead of nothing,
+      // which makes the picker obvious to anyone who has never used it.
+      final query = _db.collection('profiles').orderBy('normalizedUsername');
+      final snapshot = normalized.isEmpty
+          ? await query.limit(limit).get()
+          : await query
+                .startAt(<Object>[normalized])
+                .endAt(<Object>['$normalized\uf8ff'])
+                .limit(limit)
+                .get();
       return snapshot.docs
           .map((doc) => UserProfile.fromPublicMap(doc.id, doc.data()))
           .where((profile) => profile.username.isNotEmpty)

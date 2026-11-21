@@ -21,6 +21,7 @@ import '../admin/owner_guard.dart';
 import '../auth/sign_in_prompt.dart';
 import '../chat/share_to_chat_sheet.dart';
 import '../profile/avatar_view.dart';
+import '../social/comment_composer.dart';
 import '../social/user_handle.dart';
 import 'community_providers.dart';
 import 'community_video.dart';
@@ -43,12 +44,40 @@ class ReelsScreen extends ConsumerStatefulWidget {
 
 class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   final PageController _pages = PageController();
+  final TextEditingController _search = TextEditingController();
   int _index = 0;
+  bool _searching = false;
 
   @override
   void dispose() {
     _pages.dispose();
+    _search.dispose();
     super.dispose();
+  }
+
+  List<Post> _visible(List<Post> posts) {
+    final query = _search.text.trim().toLowerCase();
+    if (query.isEmpty) return posts;
+    return posts
+        .where((post) {
+          final haystack = <String>[
+            post.text,
+            post.authorUsername,
+            post.authorName,
+            post.soundTitle,
+            post.category,
+            ...post.animeRefs.map((ref) => ref.title),
+          ].join(' ').toLowerCase();
+          return haystack.contains(query);
+        })
+        .toList(growable: false);
+  }
+
+  void _onQueryChanged() {
+    setState(() => _index = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pages.hasClients) _pages.jumpToPage(0);
+    });
   }
 
   @override
@@ -56,6 +85,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
     final state = ref.watch(reelsProvider);
     final controller = ref.read(reelsProvider.notifier);
     final uid = ref.watch(authProvider)?.id;
+    final visible = _visible(state.posts);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -74,20 +104,31 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
               )
             else if (state.posts.isEmpty)
               _EmptyReels(onCreate: _create)
+            else if (visible.isEmpty)
+              Center(
+                child: Text(
+                  Tr.of(
+                    context,
+                    ar: 'لا نتائج لهذا البحث في الريلز المحمّلة.',
+                    en: 'No loaded Reels match this search.',
+                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              )
             else
               PageView.builder(
                 controller: _pages,
                 scrollDirection: Axis.vertical,
                 allowImplicitScrolling: true,
-                itemCount: state.posts.length,
+                itemCount: visible.length,
                 onPageChanged: (index) {
                   setState(() => _index = index);
-                  if (index >= state.posts.length - 2) {
+                  if (index >= visible.length - 2) {
                     unawaited(controller.loadMore());
                   }
                 },
                 itemBuilder: (context, index) {
-                  final post = state.posts[index];
+                  final post = visible[index];
                   if ((index - _index).abs() > 1) {
                     return const ColoredBox(color: Colors.black);
                   }
@@ -109,11 +150,76 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                 onTap: () => Navigator.of(context).maybePop(),
               ),
             ),
+            if (_searching)
+              PositionedDirectional(
+                top: 54,
+                start: Space.md,
+                end: Space.md,
+                child: TextField(
+                  controller: _search,
+                  autofocus: true,
+                  textInputAction: TextInputAction.search,
+                  onChanged: (_) => _onQueryChanged(),
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: Tr.of(
+                      context,
+                      ar: 'ابحث في الريلز: اسم، نص، أنمي…',
+                      en: 'Search Reels: name, caption, anime…',
+                    ),
+                    hintStyle: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 12,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: Colors.white70,
+                      size: 18,
+                    ),
+                    filled: true,
+                    fillColor: Colors.black.withValues(alpha: 0.55),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: Space.md,
+                      vertical: Space.sm,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                      borderSide: const BorderSide(color: Colors.white54),
+                    ),
+                  ),
+                ),
+              ),
             PositionedDirectional(
               top: Space.xs,
               end: Space.sm,
               child: Row(
                 children: <Widget>[
+                  _RoundButton(
+                    icon: _searching
+                        ? Icons.close_rounded
+                        : Icons.search_rounded,
+                    tooltip: Tr.of(context, ar: 'بحث', en: 'Search'),
+                    onTap: () {
+                      setState(() {
+                        _searching = !_searching;
+                        if (!_searching) _search.clear();
+                      });
+                      _onQueryChanged();
+                    },
+                  ),
+                  const SizedBox(width: Space.sm),
                   _RoundButton(
                     icon: Icons.autorenew_rounded,
                     tooltip: Tr.of(context, ar: 'تحديث', en: 'Refresh'),
@@ -1480,12 +1586,10 @@ class _CommentsSheet extends ConsumerStatefulWidget {
 
 class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
   final TextEditingController _controller = TextEditingController();
-  final FocusNode _focus = FocusNode();
 
   @override
   void dispose() {
     _controller.dispose();
-    _focus.dispose();
     super.dispose();
   }
 
@@ -1610,8 +1714,12 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
                                       ],
                                     ),
                                     const SizedBox(height: 2),
-                                    Text(
-                                      comment.text,
+                                    SocialText(
+                                      text: comment.text,
+                                      mentions: comment.mentions,
+                                      animeRefs: comment.animeRefs,
+                                      showAnimeChips: false,
+                                      linkColor: palette.success,
                                       style: context.text.bodySmall?.copyWith(
                                         height: 1.5,
                                       ),
@@ -1627,56 +1735,15 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
             ),
             SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Space.md,
-                  Space.sm,
-                  Space.md,
-                  Space.sm,
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focus,
-                        maxLength: 1000,
-                        minLines: 1,
-                        maxLines: 3,
-                        style: context.text.bodySmall,
-                        decoration: InputDecoration(
-                          hintText: Tr.of(
-                            context,
-                            ar: 'أضف تعليقًا…',
-                            en: 'Add a comment…',
-                          ),
-                          counterText: '',
-                          filled: true,
-                          fillColor: palette.surfaceAlt,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: Space.md,
-                            vertical: Space.sm,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(Radii.pill),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        onSubmitted: (_) => _send(controller),
-                      ),
-                    ),
-                    const SizedBox(width: Space.xs),
-                    IconButton(
-                      onPressed: state.sending ? null : () => _send(controller),
-                      icon: state.sending
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Icon(Icons.send_rounded, color: palette.primary),
-                    ),
-                  ],
+              child: CommentComposer(
+                controller: _controller,
+                sending: state.sending,
+                showStickers: false,
+                onSend: (text, _, mentions, animeRefs) => _send(
+                  controller,
+                  text: text,
+                  mentions: mentions,
+                  animeRefs: animeRefs,
                 ),
               ),
             ),
@@ -1686,14 +1753,22 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
     );
   }
 
-  Future<void> _send(PostCommentsController controller) async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    final sent = await controller.add(text);
-    if (!mounted) return;
+  Future<bool> _send(
+    PostCommentsController controller, {
+    String? text,
+    List<MentionRef> mentions = const <MentionRef>[],
+    List<AnimeRef> animeRefs = const <AnimeRef>[],
+  }) async {
+    final value = (text ?? _controller.text).trim();
+    if (value.isEmpty) return false;
+    final sent = await controller.add(
+      value,
+      mentions: mentions,
+      animeRefs: animeRefs,
+    );
+    if (!mounted) return sent;
     if (sent) {
       _controller.clear();
-      _focus.unfocus();
     } else if (ref.read(authProvider) == null) {
       context.showSnack(
         Tr.of(context, ar: 'سجّل الدخول للتعليق.', en: 'Sign in to comment.'),
@@ -1708,5 +1783,6 @@ class _CommentsSheetState extends ConsumerState<_CommentsSheet> {
         isError: true,
       );
     }
+    return sent;
   }
 }

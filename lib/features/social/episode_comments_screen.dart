@@ -11,6 +11,7 @@ import '../../core/services/app_feedback.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../data/models/community.dart';
 import '../../data/models/social.dart';
 import '../auth/sign_in_prompt.dart';
 import '../stickers/comment_draft.dart';
@@ -107,7 +108,13 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
     }
   }
 
-  Future<bool> _send(String text, {String? parentId, String? stickerId}) async {
+  Future<bool> _send(
+    String text, {
+    String? parentId,
+    String? stickerId,
+    List<MentionRef> mentions = const <MentionRef>[],
+    List<AnimeRef> animeRefs = const <AnimeRef>[],
+  }) async {
     final user = ref.read(authProvider);
     final profile = ref.read(profileProvider);
     if (user == null) {
@@ -132,7 +139,12 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
       );
       return false;
     }
-    final draft = CommentDraft(text: text, stickerId: stickerId);
+    final draft = CommentDraft(
+      text: text,
+      stickerId: stickerId,
+      mentions: mentions,
+      animeRefs: animeRefs,
+    );
     if (!draft.canSend) return false;
     setState(() => _sending = true);
     try {
@@ -144,6 +156,8 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
             text: draft.trimmedText,
             parentId: parentId,
             stickerId: draft.normalizedStickerId,
+            mentions: draft.mentions,
+            animeRefs: draft.animeRefs,
           );
       unawaited(AppFeedback.publish());
       if (!mounted) return false;
@@ -287,11 +301,14 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
                         CommentTile(
                           comment: comment,
                           rank: ranks[comment.id],
-                          onReply: (text, stickerId) => _send(
-                            text,
-                            parentId: comment.id,
-                            stickerId: stickerId,
-                          ),
+                          onReply: (text, stickerId, mentions, animeRefs) =>
+                              _send(
+                                text,
+                                parentId: comment.id,
+                                stickerId: stickerId,
+                                mentions: mentions,
+                                animeRefs: animeRefs,
+                              ),
                         ),
                         if (index != merged.length)
                           Divider(
@@ -338,7 +355,12 @@ class _EpisodeCommentsScreenState extends ConsumerState<EpisodeCommentsScreen> {
               child: CommentComposer(
                 controller: _composer,
                 sending: _sending,
-                onSend: (text, stickerId) => _send(text, stickerId: stickerId),
+                onSend: (text, stickerId, mentions, animeRefs) => _send(
+                  text,
+                  stickerId: stickerId,
+                  mentions: mentions,
+                  animeRefs: animeRefs,
+                ),
               ),
             ),
         ],

@@ -348,7 +348,12 @@ class PostCommentsController extends Notifier<PostCommentsState> {
     }
   }
 
-  Future<bool> add(String text, {String? parentId}) async {
+  Future<bool> add(
+    String text, {
+    String? parentId,
+    List<MentionRef> mentions = const <MentionRef>[],
+    List<AnimeRef> animeRefs = const <AnimeRef>[],
+  }) async {
     final uid = ref.read(authProvider);
     final profile = ref.read(profileProvider);
     if (uid == null || profile == null) return false;
@@ -361,6 +366,8 @@ class PostCommentsController extends Notifier<PostCommentsState> {
         author: profile,
         text: trimmed,
         parentId: parentId,
+        mentions: mentions,
+        animeRefs: animeRefs,
       );
       state = state.copyWith(sending: false);
       // The parent's reply count is rendered from a live stream, and the post

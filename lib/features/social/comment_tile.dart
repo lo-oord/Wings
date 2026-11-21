@@ -14,7 +14,9 @@ import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../admin/owner_guard.dart';
 import '../../data/models/admin_models.dart' show StaffRole;
+import '../../data/models/community.dart';
 import '../../data/models/social.dart';
+import '../community/social_text.dart';
 import '../admin/admin_providers.dart';
 import '../profile/avatar_view.dart';
 import '../stickers/comment_draft.dart';
@@ -35,8 +37,15 @@ class CommentTile extends ConsumerStatefulWidget {
 
   final EpisodeComment comment;
 
-  /// Called with the reply text and the optional sticker id.
-  final void Function(String text, String? stickerId) onReply;
+  /// Called with the reply text, the optional sticker id and the references
+  /// the author picked from the `@` and `#` lists.
+  final void Function(
+    String text,
+    String? stickerId,
+    List<MentionRef> mentions,
+    List<AnimeRef> animeRefs,
+  )
+  onReply;
 
   /// Position in the list, used for the medal on the first three comments.
   final int? rank;
@@ -124,8 +133,12 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                   ),
                   const SizedBox(height: 3),
                   if (comment.text.isNotEmpty)
-                    Text(
-                      comment.text,
+                    SocialText(
+                      text: comment.text,
+                      mentions: comment.mentions,
+                      animeRefs: comment.animeRefs,
+                      showAnimeChips: false,
+                      linkColor: palette.success,
                       style: context.text.bodySmall?.copyWith(
                         color: palette.textPrimary,
                         height: 1.55,
@@ -234,8 +247,12 @@ class _CommentTileState extends ConsumerState<CommentTile> {
                                               ),
                                             ),
                                             if (reply.text.isNotEmpty)
-                                              Text(
-                                                reply.text,
+                                              SocialText(
+                                                text: reply.text,
+                                                mentions: reply.mentions,
+                                                animeRefs: reply.animeRefs,
+                                                showAnimeChips: false,
+                                                linkColor: palette.success,
                                                 style: context.text.bodySmall
                                                     ?.copyWith(
                                                       color:
@@ -328,7 +345,12 @@ class _CommentTileState extends ConsumerState<CommentTile> {
       builder: (dialogContext) => const _ReplyDialog(),
     );
     if (draft != null && draft.canSend) {
-      widget.onReply(draft.trimmedText, draft.normalizedStickerId);
+      widget.onReply(
+        draft.trimmedText,
+        draft.normalizedStickerId,
+        draft.mentions,
+        draft.animeRefs,
+      );
     }
   }
 
@@ -515,8 +537,13 @@ class _ReplyDialogState extends State<_ReplyDialog> {
         child: CommentComposer(
           controller: _controller,
           sending: false,
-          onSend: (text, stickerId) async {
-            final draft = CommentDraft(text: text, stickerId: stickerId);
+          onSend: (text, stickerId, mentions, animeRefs) async {
+            final draft = CommentDraft(
+              text: text,
+              stickerId: stickerId,
+              mentions: mentions,
+              animeRefs: animeRefs,
+            );
             if (!draft.canSend) return false;
             Navigator.of(context).pop(draft);
             return true;

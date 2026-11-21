@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../data/models/community.dart';
+
 /// One comment being written: optional text plus an optional sticker.
 ///
 /// The three supported shapes are:
@@ -11,10 +13,17 @@ import 'package:flutter/foundation.dart';
 /// the repository so the composer, the reply dialog and Firestore agree.
 @immutable
 class CommentDraft {
-  const CommentDraft({this.text = '', this.stickerId});
+  const CommentDraft({
+    this.text = '',
+    this.stickerId,
+    this.mentions = const <MentionRef>[],
+    this.animeRefs = const <AnimeRef>[],
+  });
 
   final String text;
   final String? stickerId;
+  final List<MentionRef> mentions;
+  final List<AnimeRef> animeRefs;
 
   String get trimmedText => text.trim();
 

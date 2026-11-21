@@ -17,6 +17,7 @@ import '../admin/admin_providers.dart';
 import '../admin/owner_guard.dart';
 import '../profile/avatar_view.dart';
 import '../social/comment_composer.dart';
+import 'social_text.dart';
 import '../social/user_handle.dart';
 import 'community_providers.dart';
 import 'post_card.dart';
@@ -165,9 +166,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
               child: CommentComposer(
                 controller: _composer,
                 sending: comments.sending,
-                onSend: (text, _) => ref
+                onSend: (text, _, mentions, animeRefs) => ref
                     .read(postCommentsProvider(widget.postId).notifier)
-                    .add(text),
+                    .add(text, mentions: mentions, animeRefs: animeRefs),
               ),
             ),
         ],
@@ -257,8 +258,12 @@ class _PostCommentTileState extends ConsumerState<_PostCommentTile> {
                         ],
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        comment.text,
+                      SocialText(
+                        text: comment.text,
+                        mentions: comment.mentions,
+                        animeRefs: comment.animeRefs,
+                        showAnimeChips: false,
+                        linkColor: palette.success,
                         style: context.text.bodySmall?.copyWith(height: 1.55),
                       ),
                       const SizedBox(height: 4),
@@ -324,14 +329,19 @@ class _PostCommentTileState extends ConsumerState<_PostCommentTile> {
   }
 
   Future<void> _reply() async {
-    final text = await _askText(
+    final draft = await showCommentComposerDialog(
+      context,
       title: Tr.of(context, ar: 'رد على التعليق', en: 'Reply to the comment'),
-      confirm: Tr.of(context, ar: 'إرسال', en: 'Send'),
     );
-    if (text == null || !mounted) return;
+    if (draft == null || !mounted) return;
     final ok = await ref
         .read(postCommentsProvider(widget.postId).notifier)
-        .add(text, parentId: widget.comment.id);
+        .add(
+          draft.trimmedText,
+          parentId: widget.comment.id,
+          mentions: draft.mentions,
+          animeRefs: draft.animeRefs,
+        );
     if (!mounted) return;
     if (!ok) {
       context.showSnack(
@@ -541,8 +551,12 @@ class _Replies extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          reply.text,
+                        SocialText(
+                          text: reply.text,
+                          mentions: reply.mentions,
+                          animeRefs: reply.animeRefs,
+                          showAnimeChips: false,
+                          linkColor: palette.success,
                           style: context.text.bodySmall?.copyWith(height: 1.5),
                         ),
                       ],
