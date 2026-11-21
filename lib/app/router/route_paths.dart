@@ -26,6 +26,15 @@ abstract final class RoutePaths {
   static String live(String channelId) =>
       '/live/${Uri.encodeComponent(channelId)}';
 
+  /// Full-screen episode player opened from a community post. It is the same
+  /// catalogue player, but reached without leaving the feed's own route stack.
+  static String communityWatch({
+    required String animeId,
+    required String episodeId,
+  }) =>
+      '/community/watch/${Uri.encodeComponent(animeId)}/'
+      '${Uri.encodeComponent(episodeId)}';
+
   static String watch({required String animeId, required String episodeId}) =>
       '/watch/${Uri.encodeComponent(animeId)}/${Uri.encodeComponent(episodeId)}';
 

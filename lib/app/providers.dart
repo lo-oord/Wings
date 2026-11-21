@@ -48,6 +48,7 @@ import '../data/models/user_profile.dart';
 import '../core/services/community_media_service.dart';
 import '../data/repositories/avatar_repository.dart';
 import '../data/repositories/community_repository.dart';
+import '../data/repositories/community_draft_repository.dart';
 import '../data/repositories/cover_repository.dart';
 import '../data/repositories/social_repository.dart';
 import '../data/repositories/views_repository.dart';
@@ -738,6 +739,12 @@ final communityRepositoryProvider = Provider<CommunityRepository>(
   ),
 );
 
+/// Local, unpublished post drafts. Keeping them beside the published
+/// repository separates "content I am still writing" from "content I shared".
+final communityDraftProvider = Provider<CommunityDraftRepository>(
+  (ref) => CommunityDraftRepository(ref.watch(localStoreProvider)),
+);
+
 /// Signed upload/download URLs from the existing `wings-media-api` Worker.
 final communityMediaProvider = Provider<CommunityMediaService>(
   (ref) => CommunityMediaService(ref.watch(httpClientProvider)),
@@ -889,12 +896,17 @@ class AuthController extends Notifier<AuthUser?> {
     });
     final current = repository.currentUser;
     if (current != null) {
-      Future<void>.microtask(() => _refresh(current));
+      Future<void>.microtask(() {
+        ref.read(authResolvedProvider.notifier).markResolved();
+        return _refresh(current);
+      });
     }
     return current;
   }
 
   Future<void> _onAuthChanged(AuthUser? user) async {
+    // The first emission is the authoritative answer, even when it is null.
+    ref.read(authResolvedProvider.notifier).markResolved();
     if (user == null) {
       await _badgesSubscription?.cancel();
       _badgesSubscription = null;
@@ -951,6 +963,10 @@ class AuthController extends Notifier<AuthUser?> {
   }
 
   Future<void> _refresh(AuthUser user) async {
+    // Publish the session immediately. The profile document is an enrichment:
+    // waiting for its network read left `authProvider` null for a moment after
+    // a restore, and every screen that checks it asked for a second sign-in.
+    state = _withProviders(user);
     // Only a completed lookup may mark the account as "resolved": an offline
     // start must not be mistaken for an account without a profile.
     var resolved = false;
@@ -1353,6 +1369,27 @@ class AuthController extends Notifier<AuthUser?> {
 
 final authProvider = NotifierProvider<AuthController, AuthUser?>(
   AuthController.new,
+);
+
+/// True once the identity layer has produced a real answer.
+///
+/// Firebase restores a saved session asynchronously, so `authProvider` is
+/// legitimately null for a moment on every cold start. Screens must wait for
+/// this flag before deciding that the reader is signed out: treating that
+/// first null as a signed-out user is what asked signed-in members to sign in
+/// again when they opened the Reels studio.
+class AuthResolvedController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void markResolved() {
+    if (state) return;
+    state = true;
+  }
+}
+
+final authResolvedProvider = NotifierProvider<AuthResolvedController, bool>(
+  AuthResolvedController.new,
 );
 
 // ---------------------------------------------------------------------------

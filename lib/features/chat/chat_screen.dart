@@ -158,6 +158,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final uid = ref.watch(authProvider)?.id;
+    final authResolved = ref.watch(authResolvedProvider);
     final chatAsync = ref.watch(chatProvider(widget.chatId));
     final chat = chatAsync.value;
     final messages = ref.watch(chatMessagesProvider(widget.chatId));
@@ -178,9 +179,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           title: Text(Tr.of(context, ar: 'المحادثة', en: 'Chat')),
         ),
         body: Center(
-          child: Text(
-            Tr.of(context, ar: 'سجّل الدخول.', en: 'Please sign in.'),
-          ),
+          child: authResolved
+              ? Text(Tr.of(context, ar: 'سجّل الدخول.', en: 'Please sign in.'))
+              : const CircularProgressIndicator(strokeWidth: 2),
         ),
       );
     }

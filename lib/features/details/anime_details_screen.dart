@@ -702,6 +702,15 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
                       animeTitle: anime.title,
                       episodeTitle: episode.title ?? '',
                       episodeNumber: episode.number,
+                      season:
+                          int.tryParse(
+                            (anime.season ?? '').replaceAll(
+                              RegExp(r'[^0-9]'),
+                              '',
+                            ),
+                          ) ??
+                          0,
+                      coverUrl: anime.imageUrl ?? '',
                     ),
                   ),
                 );

@@ -183,21 +183,40 @@ final class ChatRepository {
     return result;
   }
 
+  /// Returns the one conversation of these two members, creating it if needed.
+  ///
+  /// The write runs in a transaction: when both members tap «مراسلة» at the
+  /// same moment the second one reads the document the first just wrote instead
+  /// of overwriting its summary, its unread counters or its last message.
   Future<String> ensureChat({
     required String uid,
     required String peerUid,
   }) async {
+    if (uid.isEmpty || peerUid.isEmpty) {
+      throw StateError('chat-members-missing');
+    }
+    if (uid == peerUid) throw StateError('chat-with-self');
     final id = chatIdFor(uid, peerUid);
     final ref = _chat(id);
-    final doc = await ref.get();
-    if (!doc.exists) {
-      await ref.set(<String, dynamic>{
+    await _db.runTransaction((transaction) async {
+      final doc = await transaction.get(ref);
+      if (doc.exists) {
+        final raw = doc.data()?['members'];
+        final members = raw is List
+            ? raw.whereType<String>().toSet()
+            : <String>{};
+        if (!members.contains(uid) || !members.contains(peerUid)) {
+          throw StateError('chat-members-mismatch');
+        }
+        return;
+      }
+      transaction.set(ref, <String, dynamic>{
         'members': <String>[uid, peerUid]..sort(),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'unread': <String, dynamic>{},
       });
-    }
+    });
     return id;
   }
 

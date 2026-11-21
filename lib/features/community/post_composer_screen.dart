@@ -20,6 +20,7 @@ import '../../data/models/community.dart';
 import '../../data/models/user_profile.dart';
 import '../../data/repositories/community_repository.dart';
 import 'community_video.dart';
+import 'photo_editor_screen.dart';
 import 'suggestion_panel.dart';
 
 /// Writes one post: text, pictures, a video, or a Reel.
@@ -60,6 +61,8 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
   EpisodeRef? _episodeRef;
 
   bool _publishing = false;
+  bool _draftRestored = false;
+  Timer? _draftTimer;
   String? _stage;
   double? _progress;
   String? _failure;
@@ -86,11 +89,128 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
       _category = seed.category;
     }
     _text.addListener(_onTextChanged);
+    if (seed == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _restoreDraft());
+    }
+  }
+
+  /// Restores the draft of the signed-in member, pictures included.
+  Future<void> _restoreDraft() async {
+    final uid = ref.read(authProvider)?.id;
+    if (uid == null || _draftRestored || !mounted) return;
+    final draft = ref.read(communityDraftProvider).load(uid);
+    _draftRestored = true;
+    if (draft == null) return;
+    final pictures = await ref
+        .read(communityDraftProvider)
+        .readPictures(draft.imagePaths);
+    if (!mounted) return;
+    setState(() {
+      if (_text.text.trim().isEmpty) _text.text = draft.text;
+      _mentions
+        ..clear()
+        ..addAll(draft.mentions);
+      _animeRefs
+        ..clear()
+        ..addAll(draft.animeRefs);
+      _episodeRef = draft.episodeRef;
+      if (draft.category.isNotEmpty) _category = draft.category;
+      _images
+        ..clear()
+        ..addAll(
+          pictures.map((bytes) => _DraftImage(bytes: bytes, file: File(''))),
+        );
+      _uploadedImages = const <String>[];
+    });
+    final restoredAt = draft.savedAt;
+    if (mounted && restoredAt != null) {
+      context.showSnack(
+        Tr.of(
+          context,
+          ar: 'تم استعادة مسودتك المحفوظة.',
+          en: 'Your saved draft was restored.',
+        ),
+      );
+    }
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted && !_publishing) unawaited(_saveDraft());
+    });
+  }
+
+  /// Writes the draft locally. It never uploads and never creates a document.
+  Future<void> _saveDraft({bool manual = false}) async {
+    final uid = ref.read(authProvider)?.id;
+    if (uid == null) return;
+    final paths = <String>[
+      for (final image in _images)
+        if (image.file.path.isNotEmpty) image.file.path,
+    ];
+    try {
+      await ref
+          .read(communityDraftProvider)
+          .save(
+            uid: uid,
+            text: _text.text,
+            sourcePaths: paths,
+            mentions: List<MentionRef>.unmodifiable(_mentions),
+            animeRefs: List<AnimeRef>.unmodifiable(_animeRefs),
+            episodeRef: _episodeRef,
+            category: _category,
+          );
+      if (manual && mounted) {
+        context.showSnack(
+          Tr.of(
+            context,
+            ar: 'حُفظت المسودة على هذا الجهاز.',
+            en: 'The draft was saved on this device.',
+          ),
+        );
+      }
+    } on Object {
+      if (manual && mounted) {
+        context.showSnack(
+          Tr.of(
+            context,
+            ar: 'تعذّر حفظ المسودة.',
+            en: 'The draft could not be saved.',
+          ),
+          isError: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _discardDraft() async {
+    final uid = ref.read(authProvider)?.id;
+    if (uid == null) return;
+    final draft = ref.read(communityDraftProvider).load(uid);
+    await ref.read(communityDraftProvider).clear(uid);
+    if (draft != null) {
+      await ref.read(communityDraftProvider).deletePictures(draft.imagePaths);
+    }
+    if (!mounted) return;
+    _draftTimer?.cancel();
+    _text.clear();
+    setState(() {
+      _images.clear();
+      _mentions.clear();
+      _animeRefs.clear();
+      _episodeRef = null;
+      _uploadedImages = const <String>[];
+    });
+    context.showSnack(
+      Tr.of(context, ar: 'حُذفت المسودة.', en: 'The draft was deleted.'),
+    );
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _draftTimer?.cancel();
     _text.removeListener(_onTextChanged);
     _text.dispose();
     _focus.dispose();
@@ -105,6 +225,7 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
       (!_reel || _hasVideo);
 
   void _onTextChanged() {
+    _scheduleDraftSave();
     final trigger = detectTrigger(_text);
     if (trigger == null) {
       _debounce?.cancel();
@@ -166,6 +287,28 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
         showBack: true,
         title: Text(Tr.of(context, ar: 'منشور جديد', en: 'New post')),
         actions: <Widget>[
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert_rounded, color: palette.textMuted),
+            onSelected: (value) {
+              if (value == 'save') {
+                unawaited(_saveDraft(manual: true));
+              } else if (value == 'delete') {
+                unawaited(_discardDraft());
+              }
+            },
+            itemBuilder: (context) => <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'save',
+                child: Text(Tr.of(context, ar: 'حفظ كمسودة', en: 'Save draft')),
+              ),
+              PopupMenuItem<String>(
+                value: 'delete',
+                child: Text(
+                  Tr.of(context, ar: 'حذف المسودة', en: 'Delete draft'),
+                ),
+              ),
+            ],
+          ),
           Padding(
             padding: const EdgeInsetsDirectional.only(end: Space.sm),
             child: TextButton(
@@ -369,6 +512,7 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
                     onRemove: _publishing
                         ? null
                         : () => setState(() => _images.removeAt(index)),
+                    onEdit: _publishing ? null : () => _editImage(index),
                   ),
               ],
             ),
@@ -732,13 +876,55 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
     return null;
   }
 
+  /// Opens the Wings editor on one selected picture and keeps its position.
+  Future<void> _editImage(int index) async {
+    final edited = await openPhotoEditor(context, bytes: _images[index].bytes);
+    if (edited == null || !mounted) return;
+    setState(() {
+      _images[index] = _DraftImage(bytes: edited.bytes, file: edited.file);
+      // The edited bytes must reach storage again.
+      _uploadedImages = const <String>[];
+    });
+  }
+
+  /// The draft is consumed once the post really exists.
+  Future<void> _afterPublished() async {
+    final uid = ref.read(authProvider)?.id;
+    _draftTimer?.cancel();
+    if (uid != null) {
+      final draft = ref.read(communityDraftProvider).load(uid);
+      await ref.read(communityDraftProvider).clear(uid);
+      if (draft != null) {
+        await ref.read(communityDraftProvider).deletePictures(draft.imagePaths);
+      }
+    }
+  }
+
   Future<void> _publish() async {
     if (_publishing) return;
-    final profile = ref.read(profileProvider);
+    var profile = ref.read(profileProvider);
     final uid = ref.read(authProvider)?.id;
-    if (profile == null || uid == null) {
+    if (uid == null) {
       context.showSnack(
         Tr.of(context, ar: 'سجّل الدخول أولًا.', en: 'Sign in first.'),
+        isError: true,
+      );
+      return;
+    }
+    // The session can be valid while the profile document is still being
+    // fetched (or was skipped offline). Reload before declaring a problem.
+    if (profile == null) {
+      await ref.read(profileProvider.notifier).reload();
+      if (!mounted) return;
+      profile = ref.read(profileProvider);
+    }
+    if (profile == null) {
+      context.showSnack(
+        Tr.of(
+          context,
+          ar: 'أكمل ملفك الشخصي قبل النشر.',
+          en: 'Complete your profile before publishing.',
+        ),
         isError: true,
       );
       return;
@@ -853,6 +1039,7 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
           episodeRef: _episodeRef,
         );
         final post = await repo.fetchPost(id);
+        await _afterPublished();
         if (!mounted) return;
         Navigator.of(context).pop(post);
         return;
@@ -908,6 +1095,7 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
         episodeRef: _episodeRef,
       );
       final post = await repo.fetchPost(id);
+      await _afterPublished();
       if (!mounted) return;
       Navigator.of(context).pop(post);
     } on Object catch (error) {
@@ -1058,10 +1246,11 @@ class _RefChip extends StatelessWidget {
 }
 
 class _PreviewTile extends StatelessWidget {
-  const _PreviewTile({required this.image, this.onRemove});
+  const _PreviewTile({required this.image, this.onRemove, this.onEdit});
 
   final _DraftImage image;
   final VoidCallback? onRemove;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -1072,6 +1261,27 @@ class _PreviewTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(Radii.sm),
           child: Image.memory(image.bytes, fit: BoxFit.cover),
         ),
+        if (onEdit != null)
+          PositionedDirectional(
+            bottom: 4,
+            start: 4,
+            child: Material(
+              color: Colors.black.withValues(alpha: 0.6),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onEdit,
+                child: const Padding(
+                  padding: EdgeInsets.all(5),
+                  child: Icon(
+                    Icons.tune_rounded,
+                    size: 15,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
         if (onRemove != null)
           PositionedDirectional(
             top: 4,

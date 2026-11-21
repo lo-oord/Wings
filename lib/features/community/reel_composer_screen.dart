@@ -20,6 +20,7 @@ import '../../data/models/community.dart';
 import '../../data/models/user_profile.dart';
 import '../../data/repositories/community_repository.dart';
 import 'community_video.dart';
+import 'photo_editor_screen.dart';
 import 'suggestion_panel.dart';
 
 /// A publishing studio that is deliberately different from the community
@@ -53,7 +54,9 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
 
   /// A picture Reel: each frame stays [_frameMs] on screen.
   final List<_DraftImage> _frames = <_DraftImage>[];
+  final List<int> _frameDurationsMs = <int>[];
   int _frameMs = 2500;
+  int _activeFrame = 0;
   _SoundDraft? _soundFile;
   String? _soundKey;
   String _soundAuthorUid = '';
@@ -461,6 +464,8 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
       if (!mounted) return;
       setState(() {
         _frames.addAll(frames);
+        _frameDurationsMs.addAll(List<int>.filled(frames.length, _frameMs));
+        _activeFrame = _frames.length - 1;
         _video = null;
       });
     } on Object catch (error) {
@@ -543,6 +548,8 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
                 ? null
                 : () => setState(() {
                     _frames.clear();
+                    _frameDurationsMs.clear();
+                    _activeFrame = 0;
                     _cover = null;
                   }),
           ),
@@ -565,21 +572,51 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
                   Text(
                     Tr.of(
                       context,
-                      ar: 'مدة كل صورة ${(_frameMs / 1000).toStringAsFixed(1)} ث',
-                      en: 'Each picture: ${(_frameMs / 1000).toStringAsFixed(1)}s',
+                      ar:
+                          'مدة الصورة ${_activeFrame + 1}: '
+                          '${((_frameDurationsMs.isEmpty ? _frameMs : _frameDurationsMs[_activeFrame.clamp(0, _frameDurationsMs.length - 1)]) / 1000).toStringAsFixed(1)} ث',
+                      en:
+                          'Picture ${_activeFrame + 1}: '
+                          '${((_frameDurationsMs.isEmpty ? _frameMs : _frameDurationsMs[_activeFrame.clamp(0, _frameDurationsMs.length - 1)]) / 1000).toStringAsFixed(1)}s',
                     ),
                     style: const TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    Tr.of(
+                      context,
+                      ar: 'اضغط صورة لاختيارها، واضغط مطولًا لتعديلها',
+                      en: 'Tap a picture to select it, long-press to edit',
+                    ),
+                    style: const TextStyle(color: Colors.white38, fontSize: 8),
                   ),
                 ],
               ),
               Slider(
-                value: _frameMs.toDouble(),
+                value:
+                    (_frameDurationsMs.isEmpty
+                            ? _frameMs
+                            : _frameDurationsMs[_activeFrame.clamp(
+                                0,
+                                _frameDurationsMs.length - 1,
+                              )])
+                        .toDouble(),
                 min: 1000,
                 max: 5000,
                 divisions: 8,
                 onChanged: _publishing
                     ? null
-                    : (value) => setState(() => _frameMs = value.round()),
+                    : (value) => setState(() {
+                        if (_frameDurationsMs.isEmpty) {
+                          _frameMs = value.round();
+                          return;
+                        }
+                        _frameDurationsMs[_activeFrame.clamp(
+                          0,
+                          _frameDurationsMs.length - 1,
+                        )] = value
+                            .round();
+                      }),
               ),
               SizedBox(
                 height: 54,
@@ -587,13 +624,51 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
                   scrollDirection: Axis.horizontal,
                   itemCount: _frames.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 6),
-                  itemBuilder: (context, index) => ClipRRect(
-                    borderRadius: BorderRadius.circular(Radii.xs),
-                    child: Image.memory(
-                      _frames[index].bytes,
-                      width: 42,
-                      height: 54,
-                      fit: BoxFit.cover,
+                  itemBuilder: (context, index) => GestureDetector(
+                    onTap: _publishing
+                        ? null
+                        : () => setState(() => _activeFrame = index),
+                    onLongPress: _publishing ? null : () => _editFrame(index),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(Radii.xs),
+                        border: Border.all(
+                          color: _activeFrame == index
+                              ? Colors.white
+                              : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(Radii.xs),
+                        child: Stack(
+                          children: <Widget>[
+                            Image.memory(
+                              _frames[index].bytes,
+                              width: 42,
+                              height: 54,
+                              fit: BoxFit.cover,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
+                              child: Container(
+                                color: Colors.black54,
+                                padding: const EdgeInsets.all(2),
+                                child: Text(
+                                  '${((index < _frameDurationsMs.length ? _frameDurationsMs[index] : _frameMs) / 1000).toStringAsFixed(1)}s',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -603,6 +678,15 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _editFrame(int index) async {
+    final edited = await openPhotoEditor(context, bytes: _frames[index].bytes);
+    if (edited == null || !mounted) return;
+    setState(() {
+      _frames[index] = _DraftImage(bytes: edited.bytes, file: edited.file);
+      _uploadedCoverKey = null;
+    });
   }
 
   Widget _overlayButton({
@@ -933,12 +1017,31 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
 
   Future<void> _publish() async {
     if (_publishing) return;
-    final profile = ref.read(profileProvider);
+    var profile = ref.read(profileProvider);
     final uid = ref.read(authProvider)?.id;
     final video = _video;
-    if (profile == null || uid == null) {
+    if (uid == null) {
       context.showSnack(
         Tr.of(context, ar: 'سجّل الدخول أولًا.', en: 'Sign in first.'),
+        isError: true,
+      );
+      return;
+    }
+    // `authProvider` is published before the profile finishes loading, so a
+    // null profile here is not a signed-out session. Reload it once, then tell
+    // the member the real problem if it is still missing.
+    if (profile == null) {
+      await ref.read(profileProvider.notifier).reload();
+      if (!mounted) return;
+      profile = ref.read(profileProvider);
+    }
+    if (profile == null) {
+      context.showSnack(
+        Tr.of(
+          context,
+          ar: 'أكمل ملفك الشخصي قبل نشر الريل.',
+          en: 'Complete your profile before publishing a reel.',
+        ),
         isError: true,
       );
       return;
@@ -1027,7 +1130,13 @@ class _ReelComposerScreenState extends ConsumerState<ReelComposerScreen> {
           kind: PostKind.reel,
           videoThumbnailKey: keys.isEmpty ? null : keys.first,
           reelFrames: <ReelFrame>[
-            for (final key in keys) ReelFrame(key: key, durationMs: _frameMs),
+            for (var index = 0; index < keys.length; index++)
+              ReelFrame(
+                key: keys[index],
+                durationMs: index < _frameDurationsMs.length
+                    ? _frameDurationsMs[index]
+                    : _frameMs,
+              ),
           ],
           mentions: List<MentionRef>.unmodifiable(_mentions),
           animeRefs: List<AnimeRef>.unmodifiable(_animeRefs),

@@ -81,6 +81,8 @@ class EpisodeRef {
     this.episodeNumber = 0,
     this.coverKey = '',
     this.animeCoverKey = '',
+    this.coverUrl = '',
+    this.season = 0,
     this.durationMs = 0,
   });
 
@@ -91,6 +93,11 @@ class EpisodeRef {
   final int episodeNumber;
   final String coverKey;
   final String animeCoverKey;
+
+  /// Public cover URL captured at share time. The post stays readable even when
+  /// the catalogue is unreachable or the title was removed.
+  final String coverUrl;
+  final int season;
   final int durationMs;
 
   bool get isNotEmpty => animeId.isNotEmpty && episodeId.isNotEmpty;
@@ -107,6 +114,8 @@ class EpisodeRef {
     'episodeNumber': episodeNumber,
     if (coverKey.isNotEmpty) 'coverKey': coverKey,
     if (animeCoverKey.isNotEmpty) 'animeCoverKey': animeCoverKey,
+    if (coverUrl.isNotEmpty) 'coverUrl': coverUrl,
+    if (season > 0) 'season': season,
     if (durationMs > 0) 'durationMs': durationMs,
   };
 
@@ -122,6 +131,8 @@ class EpisodeRef {
       episodeNumber: (raw['episodeNumber'] as num?)?.toInt() ?? 0,
       coverKey: raw['coverKey'] as String? ?? '',
       animeCoverKey: raw['animeCoverKey'] as String? ?? '',
+      coverUrl: raw['coverUrl'] as String? ?? '',
+      season: (raw['season'] as num?)?.toInt() ?? 0,
       durationMs: (raw['durationMs'] as num?)?.toInt() ?? 0,
     );
   }

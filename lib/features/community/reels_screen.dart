@@ -95,6 +95,9 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
     final state = ref.watch(reelsProvider);
     final controller = ref.read(reelsProvider.notifier);
     final uid = ref.watch(authProvider)?.id;
+    // A restored session is asynchronous: only a real signed-out answer may
+    // show the sign-in screen.
+    final authResolved = ref.watch(authResolvedProvider);
     final visible = _visible(state.posts);
 
     return Scaffold(
@@ -103,7 +106,9 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
         bottom: false,
         child: Stack(
           children: <Widget>[
-            if (uid == null)
+            if (uid == null && !authResolved)
+              const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            else if (uid == null)
               _SignedOutReels()
             else if (state.loading && state.posts.isEmpty)
               const Center(child: CircularProgressIndicator(strokeWidth: 2))
@@ -283,6 +288,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   }
 
   Future<void> _create() async {
+    if (!ref.read(authResolvedProvider)) return;
     if (ref.read(authProvider) == null) {
       showSignInPrompt(
         context,

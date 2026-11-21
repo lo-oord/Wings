@@ -275,6 +275,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/community/watch/:animeId/:episodeId',
+        pageBuilder: (context, state) => MaterialPage(
+          fullscreenDialog: true,
+          child: PlayerScreen(
+            animeId: Uri.decodeComponent(state.pathParameters['animeId'] ?? ''),
+            episodeId: Uri.decodeComponent(
+              state.pathParameters['episodeId'] ?? '',
+            ),
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/watch/:animeId/:episodeId',
         pageBuilder: (context, state) => _wingsPage(
           context,

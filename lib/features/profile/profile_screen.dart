@@ -22,6 +22,7 @@ import '../social/username_text.dart';
 import 'account_deletion_overlay.dart';
 import 'account_security_section.dart';
 import 'avatar_view.dart';
+import '../community/photo_editor_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -423,8 +424,16 @@ class ProfileScreen extends ConsumerWidget {
       imageQuality: 90,
     );
     if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!context.mounted) return;
+    final edited = await openPhotoEditor(
+      context,
+      bytes: bytes,
+      title: 'تعديل صورة الحساب',
+    );
+    if (edited == null || !context.mounted) return;
     try {
-      await ref.read(authProvider.notifier).saveAvatar(file.path);
+      await ref.read(authProvider.notifier).saveAvatar(edited.file.path);
       if (context.mounted) {
         context.showSnack(
           Tr.of(context, ar: 'تم تحديث الصورة', en: 'Picture updated'),
@@ -511,8 +520,16 @@ class ProfileScreen extends ConsumerWidget {
       imageQuality: 92,
     );
     if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!context.mounted) return;
+    final edited = await openPhotoEditor(
+      context,
+      bytes: bytes,
+      title: 'تعديل الغلاف',
+    );
+    if (edited == null || !context.mounted) return;
     try {
-      await ref.read(authProvider.notifier).saveCover(file.path);
+      await ref.read(authProvider.notifier).saveCover(edited.file.path);
       if (context.mounted) {
         context.showSnack(
           Tr.of(context, ar: 'تم تحديث الغلاف', en: 'Cover updated'),

@@ -20,6 +20,8 @@ import '../community/community_providers.dart';
 import '../community/post_card.dart';
 import '../community/profile_posts_section.dart';
 import '../community/report_sheet.dart';
+import '../chat/chat_providers.dart';
+import '../auth/sign_in_prompt.dart';
 import '../social/username_text.dart';
 import 'avatar_view.dart';
 
@@ -60,36 +62,41 @@ class PublicProfileScreen extends ConsumerWidget {
       appBar: WingsAppBar(
         showBack: true,
         title: Text(l10n.profileTitle),
-        actions: canModerate
-            ? <Widget>[
-                PopupMenuButton<String>(
-                  icon: Icon(
-                    Icons.more_horiz_rounded,
-                    size: 20,
-                    color: palette.textMuted,
+        actions: <Widget>[
+          if (viewerUid != null && viewerUid != uid)
+            IconButton(
+              tooltip: Tr.of(context, ar: 'مراسلة', en: 'Message'),
+              onPressed: () => _openChat(context, ref),
+              icon: Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 20,
+                color: palette.textMuted,
+              ),
+            ),
+          if (canModerate)
+            PopupMenuButton<String>(
+              icon: Icon(
+                Icons.more_horiz_rounded,
+                size: 20,
+                color: palette.textMuted,
+              ),
+              onSelected: (value) => _profileMenu(context, ref, value),
+              itemBuilder: (context) => <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(
+                  value: 'report',
+                  child: Text(
+                    Tr.of(context, ar: 'إبلاغ عن الحساب', en: 'Report account'),
                   ),
-                  onSelected: (value) => _profileMenu(context, ref, value),
-                  itemBuilder: (context) => <PopupMenuEntry<String>>[
-                    PopupMenuItem<String>(
-                      value: 'report',
-                      child: Text(
-                        Tr.of(
-                          context,
-                          ar: 'إبلاغ عن الحساب',
-                          en: 'Report account',
-                        ),
-                      ),
-                    ),
-                    PopupMenuItem<String>(
-                      value: 'block',
-                      child: Text(
-                        Tr.of(context, ar: 'حظر المستخدم', en: 'Block user'),
-                      ),
-                    ),
-                  ],
                 ),
-              ]
-            : null,
+                PopupMenuItem<String>(
+                  value: 'block',
+                  child: Text(
+                    Tr.of(context, ar: 'حظر المستخدم', en: 'Block user'),
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -136,6 +143,54 @@ class PublicProfileScreen extends ConsumerWidget {
       ),
       backgroundColor: palette.background,
     );
+  }
+
+  /// Opens the one conversation with this member, creating it when needed.
+  ///
+  /// The privacy and block checks run before the write, and the profile keeps
+  /// its scroll because the chat is pushed on top of it.
+  Future<void> _openChat(BuildContext context, WidgetRef ref) async {
+    final viewer = ref.read(authProvider)?.id;
+    if (viewer == null) {
+      await showSignInPrompt(
+        context,
+        message: Tr.of(
+          context,
+          ar: 'سجّل الدخول لمراسلة الأعضاء.',
+          en: 'Sign in to message members.',
+        ),
+      );
+      return;
+    }
+    if (viewer == uid) return;
+    final following =
+        ref.read(followingIdsProvider(viewer)).value ?? const <String>{};
+    final repo = ref.read(chatRepositoryProvider);
+    try {
+      final allowed = await repo.canMessage(
+        uid: viewer,
+        peerUid: uid,
+        following: following.contains(uid),
+      );
+      if (!context.mounted) return;
+      if (!allowed) {
+        context.showSnack(
+          Tr.of(
+            context,
+            ar: 'لا يمكن مراسلة هذا الحساب وفق إعدادات الخصوصية أو الحظر.',
+            en: 'This account cannot be messaged because of privacy settings or a block.',
+          ),
+          isError: true,
+        );
+        return;
+      }
+      final chatId = await repo.ensureChat(uid: viewer, peerUid: uid);
+      if (!context.mounted) return;
+      await context.push(RoutePaths.chat(chatId));
+    } on Object catch (error) {
+      if (!context.mounted) return;
+      context.showSnack(userFacingError(context, error), isError: true);
+    }
   }
 
   Future<void> _profileMenu(

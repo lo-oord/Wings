@@ -289,7 +289,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                 // carries a reference, and play opens the real player with its
                 // servers and quality selection.
                 onTap: () => context.push(
-                  RoutePaths.watch(
+                  RoutePaths.communityWatch(
                     animeId: episode.animeId,
                     episodeId: episode.episodeId,
                   ),
@@ -307,17 +307,36 @@ class _PostCardState extends ConsumerState<PostCard> {
                   ),
                   child: Row(
                     children: <Widget>[
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: palette.primary.withValues(alpha: 0.14),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          size: 20,
-                          color: palette.primary,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(Radii.xs),
+                        child: SizedBox(
+                          width: 46,
+                          height: 62,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: <Widget>[
+                              WingsImage(
+                                url: episode.coverUrl,
+                                borderRadius: BorderRadius.circular(Radii.xs),
+                              ),
+                              Align(
+                                alignment: Alignment.center,
+                                child: Container(
+                                  width: 26,
+                                  height: 26,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xCC000000),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.play_arrow_rounded,
+                                    size: 18,
+                                    color: palette.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(width: Space.sm),
@@ -326,7 +345,9 @@ class _PostCardState extends ConsumerState<PostCard> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              episode.displayTitle,
+                              episode.animeTitle.trim().isEmpty
+                                  ? episode.displayTitle
+                                  : episode.animeTitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: context.text.labelMedium?.copyWith(
@@ -334,14 +355,43 @@ class _PostCardState extends ConsumerState<PostCard> {
                               ),
                             ),
                             Text(
-                              Tr.of(
-                                context,
-                                ar: 'الحلقة ${episode.episodeNumber} · تشغيل من المجتمع',
-                                en: 'Episode ${episode.episodeNumber} · Play from the community',
+                              episode.displayTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.text.labelSmall?.copyWith(
+                                color: palette.textSecondary,
+                                fontSize: 10,
                               ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              <String>[
+                                if (episode.season > 0)
+                                  Tr.of(
+                                    context,
+                                    ar: 'الموسم ${episode.season}',
+                                    en: 'Season ${episode.season}',
+                                  ),
+                                Tr.of(
+                                  context,
+                                  ar: 'الحلقة ${episode.episodeNumber}',
+                                  en: 'Episode ${episode.episodeNumber}',
+                                ),
+                                if (episode.durationMs > 0)
+                                  formatDuration(
+                                    Duration(milliseconds: episode.durationMs),
+                                  ),
+                                Tr.of(
+                                  context,
+                                  ar: 'تشغيل من المجتمع',
+                                  en: 'Play in the community',
+                                ),
+                              ].join(' · '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: context.text.labelSmall?.copyWith(
                                 color: palette.textMuted,
-                                fontSize: 10,
+                                fontSize: 9,
                               ),
                             ),
                           ],
