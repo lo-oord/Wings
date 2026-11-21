@@ -6,7 +6,9 @@ import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/errors/user_facing_error.dart';
 import '../../core/utils/tr.dart';
+import '../../core/widgets/wings_layout.dart';
 import '../../data/models/community.dart';
+import '../admin/owner_guard.dart';
 
 /// One report flow for posts, comments and profiles.
 ///
@@ -29,10 +31,24 @@ Future<void> showReportSheet(
     );
     return;
   }
-  final result = await showModalBottomSheet<String>(
+  if (targetUid != null &&
+      await ref.read(ownerUidProvider.future) == targetUid) {
+    if (context.mounted) {
+      context.showSnack(
+        Tr.of(
+          context,
+          ar: 'لا يمكن الإبلاغ عن حساب المالك.',
+          en: 'The owner account cannot be reported.',
+        ),
+        isError: true,
+      );
+    }
+    return;
+  }
+  if (!context.mounted) return;
+  final result = await WingsPopup.show<String>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
+    heightFactor: 0.8,
     builder: (context) =>
         _ReportSheet(targetType: targetType, targetId: targetId),
   );
@@ -82,8 +98,13 @@ class _ReportSheetState extends State<_ReportSheet> {
     final palette = context.palette;
     final arabic = Localizations.localeOf(context).languageCode == 'ar';
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          Space.lg,
+          Space.lg,
+          Space.lg,
+          Space.lg,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -18,6 +18,7 @@ import '../../data/models/community.dart';
 import '../../data/models/admin_models.dart' show StaffRole;
 import '../../data/models/chat.dart';
 import '../admin/admin_providers.dart';
+import '../admin/owner_guard.dart';
 import '../chat/share_to_chat_sheet.dart';
 import '../profile/avatar_view.dart';
 import '../social/user_handle.dart';
@@ -102,8 +103,15 @@ class _PostCardState extends ConsumerState<PostCard> {
           ? null
           : BoxDecoration(
               color: palette.surface,
-              borderRadius: BorderRadius.circular(Radii.md),
+              borderRadius: BorderRadius.circular(Radii.lg),
               border: Border.all(color: palette.border),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: palette.overlay.withValues(alpha: 0.05),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
+                ),
+              ],
             ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,43 +283,58 @@ class _PostCardState extends ConsumerState<PostCard> {
               ),
               child: _PostImages(post: post),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
+          Container(
+            margin: const EdgeInsets.fromLTRB(
               Space.sm,
               Space.xs + 2,
               Space.sm,
               Space.xs,
             ),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            decoration: BoxDecoration(
+              color: palette.surfaceAlt.withValues(alpha: 0.42),
+              borderRadius: BorderRadius.circular(Radii.pill),
+              border: Border.all(color: palette.border.withValues(alpha: 0.55)),
+            ),
             child: Row(
               children: <Widget>[
-                _ActionButton(
-                  icon: liked
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  label: formatCount(count),
-                  color: liked ? palette.danger : palette.textSecondary,
-                  onTap: () => _toggleLike(liked, count),
+                Expanded(
+                  child: _ActionButton(
+                    icon: liked
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    label: formatCount(count),
+                    color: liked ? palette.danger : palette.textSecondary,
+                    onTap: () => _toggleLike(liked, count),
+                  ),
                 ),
                 if (post.allowComments)
-                  _ActionButton(
-                    icon: Icons.mode_comment_outlined,
-                    label: formatCount(post.commentCount),
-                    onTap: () =>
-                        context.push(RoutePaths.communityPost(post.id)),
+                  Expanded(
+                    child: _ActionButton(
+                      icon: Icons.chat_bubble_rounded,
+                      label: formatCount(post.commentCount),
+                      onTap: () =>
+                          context.push(RoutePaths.communityPost(post.id)),
+                    ),
                   ),
-                _ActionButton(
-                  icon: Icons.ios_share_rounded,
-                  label: '',
-                  onTap: _share,
+                Expanded(
+                  child: _ActionButton(
+                    icon: Icons.share_rounded,
+                    label: Tr.of(context, ar: 'مشاركة', en: 'Share'),
+                    onTap: _share,
+                  ),
                 ),
-                const Spacer(),
-                _ActionButton(
-                  icon: saved
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_border_rounded,
-                  label: '',
-                  color: saved ? palette.primary : palette.textSecondary,
-                  onTap: () => _toggleSaved(saved),
+                Expanded(
+                  child: _ActionButton(
+                    icon: saved
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
+                    label: saved
+                        ? Tr.of(context, ar: 'محفوظ', en: 'Saved')
+                        : Tr.of(context, ar: 'حفظ', en: 'Save'),
+                    color: saved ? palette.primary : palette.textSecondary,
+                    onTap: () => _toggleSaved(saved),
+                  ),
                 ),
               ],
             ),
@@ -353,9 +376,9 @@ class _PostCardState extends ConsumerState<PostCard> {
       route: RoutePaths.communityPost(post.id),
       extraId: post.authorUid,
     );
-    await showModalBottomSheet<void>(
+    await WingsPopup.show<void>(
       context: shareContext,
-      showDragHandle: true,
+      heightFactor: 0.72,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -513,6 +536,7 @@ class _PostCardState extends ConsumerState<PostCard> {
   }
 
   Widget _menu(BuildContext context, String? uid) {
+    final isOwnerAuthor = ref.watch(isOwnerAccountProvider(post.authorUid));
     final savedIds = uid == null
         ? const <String>{}
         : ref.watch(savedPostIdsProvider(uid)).value ?? const <String>{};
@@ -562,12 +586,12 @@ class _PostCardState extends ConsumerState<PostCard> {
             value: 'hide',
             child: Text(Tr.of(context, ar: 'إخفاء المنشور', en: 'Hide post')),
           ),
-        if (!_mine)
+        if (!_mine && !isOwnerAuthor)
           PopupMenuItem<String>(
             value: 'report',
             child: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
           ),
-        if (!_mine)
+        if (!_mine && !isOwnerAuthor)
           PopupMenuItem<String>(
             value: 'block',
             child: Text(Tr.of(context, ar: 'حظر المستخدم', en: 'Block user')),
@@ -675,7 +699,9 @@ class _PostCardState extends ConsumerState<PostCard> {
           }
         }
       case 'report':
-        if (uid == null) return;
+        if (uid == null || ref.read(isOwnerAccountProvider(post.authorUid))) {
+          return;
+        }
         await showReportSheet(
           context,
           ref,
@@ -685,7 +711,9 @@ class _PostCardState extends ConsumerState<PostCard> {
           preview: post.text,
         );
       case 'block':
-        if (uid == null) return;
+        if (uid == null || ref.read(isOwnerAccountProvider(post.authorUid))) {
+          return;
+        }
         final confirmed = await WingsDialog.confirm(
           context,
           title: Tr.of(context, ar: 'حظر المستخدم؟', en: 'Block this user?'),
@@ -791,21 +819,34 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final tint = color ?? palette.textSecondary;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(Radii.sm),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.sm,
-          vertical: Space.xs + 2,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 18, color: tint),
-            const SizedBox(width: 5),
-            Text(label, style: context.text.labelSmall?.copyWith(color: tint)),
-          ],
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.pill),
+        child: SizedBox(
+          height: 36,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, size: 17, color: tint),
+              if (label.isNotEmpty) ...<Widget>[
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.text.labelSmall?.copyWith(
+                      color: tint,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

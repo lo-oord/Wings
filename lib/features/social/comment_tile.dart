@@ -12,6 +12,7 @@ import '../../app/theme/context_ext.dart';
 import '../../core/services/app_feedback.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../admin/owner_guard.dart';
 import '../../data/models/admin_models.dart' show StaffRole;
 import '../../data/models/social.dart';
 import '../admin/admin_providers.dart';
@@ -332,37 +333,41 @@ class _CommentTileState extends ConsumerState<CommentTile> {
   }
 
   Future<void> _showActions(bool mine, {bool staff = false}) async {
-    final action = await showModalBottomSheet<String>(
+    final isOwner = ref.read(isOwnerAccountProvider(widget.comment.authorUid));
+    final action = await WingsPopup.show<String>(
       context: context,
+      heightFactor: 0.72,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (widget.comment.text.isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.copy_rounded),
-                title: Text(Tr.of(context, ar: 'نسخ النص', en: 'Copy text')),
-                onTap: () => Navigator.of(sheetContext).pop('copy'),
-              ),
-            if (mine)
-              ListTile(
-                leading: const Icon(Icons.edit_outlined),
-                title: Text(Tr.of(context, ar: 'تعديل', en: 'Edit')),
-                onTap: () => Navigator.of(sheetContext).pop('edit'),
-              ),
-            if (mine || staff)
-              ListTile(
-                leading: const Icon(Icons.delete_outline_rounded),
-                title: Text(Tr.of(context, ar: 'حذف', en: 'Delete')),
-                onTap: () => Navigator.of(sheetContext).pop('delete'),
-              ),
-            if (!mine)
-              ListTile(
-                leading: const Icon(Icons.flag_outlined),
-                title: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
-                onTap: () => Navigator.of(sheetContext).pop('report'),
-              ),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (widget.comment.text.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.copy_rounded),
+                  title: Text(Tr.of(context, ar: 'نسخ النص', en: 'Copy text')),
+                  onTap: () => Navigator.of(sheetContext).pop('copy'),
+                ),
+              if (mine)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: Text(Tr.of(context, ar: 'تعديل', en: 'Edit')),
+                  onTap: () => Navigator.of(sheetContext).pop('edit'),
+                ),
+              if (mine || staff)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded),
+                  title: Text(Tr.of(context, ar: 'حذف', en: 'Delete')),
+                  onTap: () => Navigator.of(sheetContext).pop('delete'),
+                ),
+              if (!mine && !isOwner)
+                ListTile(
+                  leading: const Icon(Icons.flag_outlined),
+                  title: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
+                  onTap: () => Navigator.of(sheetContext).pop('report'),
+                ),
+            ],
+          ),
         ),
       ),
     );

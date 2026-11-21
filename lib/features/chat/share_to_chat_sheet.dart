@@ -9,6 +9,7 @@ import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/errors/user_facing_error.dart';
 import '../../core/utils/tr.dart';
+import '../../core/widgets/wings_layout.dart';
 import '../../data/models/chat.dart';
 import '../../data/models/user_profile.dart';
 import '../auth/sign_in_prompt.dart';
@@ -37,10 +38,9 @@ Future<void> shareToChats(
     );
     return;
   }
-  await showModalBottomSheet<void>(
+  await WingsPopup.show<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
+    heightFactor: 0.9,
     builder: (context) => _ShareSheet(share: share),
   );
 }

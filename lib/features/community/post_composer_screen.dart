@@ -48,6 +48,8 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
   final bool _reel = false;
   String _category = '';
   bool _allowComments = true;
+  bool _allowDownload = true;
+  bool _allowRepost = true;
   _DraftVideo? _video;
   _DraftImage? _cover;
 
@@ -396,6 +398,38 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
                 onSelected: _publishing
                     ? null
                     : (value) => setState(() => _allowComments = value),
+                visualDensity: VisualDensity.compact,
+              ),
+              FilterChip(
+                avatar: Icon(
+                  Icons.download_rounded,
+                  size: 14,
+                  color: _allowDownload ? palette.primary : palette.textMuted,
+                ),
+                label: Text(
+                  Tr.of(context, ar: 'السماح بالتنزيل', en: 'Allow download'),
+                  style: const TextStyle(fontSize: 10),
+                ),
+                selected: _allowDownload,
+                onSelected: _publishing
+                    ? null
+                    : (value) => setState(() => _allowDownload = value),
+                visualDensity: VisualDensity.compact,
+              ),
+              FilterChip(
+                avatar: Icon(
+                  Icons.repeat_rounded,
+                  size: 14,
+                  color: _allowRepost ? palette.primary : palette.textMuted,
+                ),
+                label: Text(
+                  Tr.of(context, ar: 'إعادة النشر', en: 'Repost'),
+                  style: const TextStyle(fontSize: 10),
+                ),
+                selected: _allowRepost,
+                onSelected: _publishing
+                    ? null
+                    : (value) => setState(() => _allowRepost = value),
                 visualDensity: VisualDensity.compact,
               ),
               if (!_hasVideo && !_reel)
@@ -787,6 +821,8 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
           animeRefs: List<AnimeRef>.unmodifiable(_animeRefs),
           category: _category,
           allowComments: _allowComments,
+          allowDownload: _allowDownload,
+          allowRepost: _allowRepost,
         );
         final post = await repo.fetchPost(id);
         if (!mounted) return;
@@ -839,6 +875,8 @@ class _PostComposerScreenState extends ConsumerState<PostComposerScreen> {
         animeRefs: List<AnimeRef>.unmodifiable(_animeRefs),
         category: _category,
         allowComments: _allowComments,
+        allowDownload: _allowDownload,
+        allowRepost: _allowRepost,
       );
       final post = await repo.fetchPost(id);
       if (!mounted) return;

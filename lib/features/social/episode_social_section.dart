@@ -12,6 +12,7 @@ import '../../core/services/app_feedback.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
+import '../../core/widgets/wings_layout.dart';
 import '../../data/models/admin_models.dart';
 import '../../data/models/chat.dart';
 import '../../data/models/social.dart';
@@ -165,9 +166,9 @@ class _EpisodeSocialSectionState extends ConsumerState<EpisodeSocialSection> {
       return;
     }
     final shareContext = context;
-    await showModalBottomSheet<void>(
+    await WingsPopup.show<void>(
       context: shareContext,
-      showDragHandle: true,
+      heightFactor: 0.68,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,

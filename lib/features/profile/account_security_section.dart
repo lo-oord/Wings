@@ -179,14 +179,14 @@ class AccountSecuritySection extends ConsumerWidget {
   }
 
   Future<void> _linkEmail(BuildContext context, WidgetRef ref) async {
-    final form = await showModalBottomSheet<_EmailLinkForm>(
+    final form = await WingsPopup.show<_EmailLinkForm>(
       context: context,
-      isScrollControlled: true,
+      heightFactor: 0.8,
       builder: (sheetContext) => Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
         ),
-        child: const _EmailLinkSheet(),
+        child: const SingleChildScrollView(child: _EmailLinkSheet()),
       ),
     );
     if (form == null || !context.mounted) return;

@@ -23,6 +23,7 @@ import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/chat.dart';
 import '../../data/models/user_profile.dart';
+import '../admin/owner_guard.dart';
 import '../community/community_providers.dart';
 import '../community/community_video.dart';
 import '../community/report_sheet.dart';
@@ -166,6 +167,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ? null
         : ref.watch(presenceProvider(peerUid)).value;
     final profile = ref.watch(profileProvider);
+    final peerIsOwner = peerUid.isNotEmpty
+        ? ref.watch(isOwnerAccountProvider(peerUid))
+        : false;
 
     if (uid == null) {
       return Scaffold(
@@ -309,14 +313,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         Tr.of(context, ar: 'الخصوصية', en: 'Privacy'),
                       ),
                     ),
-                    PopupMenuItem<String>(
-                      value: 'report',
-                      child: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
-                    ),
-                    PopupMenuItem<String>(
-                      value: 'block',
-                      child: Text(Tr.of(context, ar: 'حظر', en: 'Block')),
-                    ),
+                    if (!peerIsOwner) ...<PopupMenuEntry<String>>[
+                      PopupMenuItem<String>(
+                        value: 'report',
+                        child: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'block',
+                        child: Text(Tr.of(context, ar: 'حظر', en: 'Block')),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -550,9 +556,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _attach(Chat? chat, UserProfile? author, String uid) async {
     if (chat == null || author == null) return;
-    final choice = await showModalBottomSheet<String>(
+    final choice = await WingsPopup.show<String>(
       context: context,
-      showDragHandle: true,
+      heightFactor: 0.58,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -964,9 +970,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       return;
     }
-    final selected = await showModalBottomSheet<Chat>(
+    final selected = await WingsPopup.show<Chat>(
       context: context,
-      showDragHandle: true,
+      heightFactor: 0.8,
       builder: (context) => SafeArea(
         child: ListView(
           shrinkWrap: true,
@@ -1049,6 +1055,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case 'privacy':
         await context.push(RoutePaths.chatPrivacy);
       case 'report':
+        if (ref.read(isOwnerAccountProvider(chat.peerOf(uid)))) return;
         await showReportSheet(
           context,
           ref,
@@ -1058,6 +1065,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           preview: chat.lastMessageText,
         );
       case 'block':
+        if (ref.read(isOwnerAccountProvider(chat.peerOf(uid)))) return;
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -1101,10 +1109,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               item.type == ChatMessageType.file,
         )
         .toList(growable: false);
-    await showModalBottomSheet<void>(
+    await WingsPopup.show<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
+      heightFactor: 0.8,
       builder: (context) => SafeArea(
         child: SizedBox(
           height: MediaQuery.sizeOf(context).height * 0.7,
@@ -1495,9 +1502,9 @@ class _MessageBubble extends StatelessWidget {
   }
 
   Future<void> _menu(BuildContext context) async {
-    final action = await showModalBottomSheet<String>(
+    final action = await WingsPopup.show<String>(
       context: context,
-      showDragHandle: true,
+      heightFactor: 0.72,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,

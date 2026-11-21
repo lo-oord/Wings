@@ -44,12 +44,12 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
         ),
         actions: <Widget>[
           WingsIconButton(
-            icon: Icons.movie_filter_outlined,
+            icon: Icons.movie_filter_rounded,
             tooltip: Tr.of(context, ar: 'ريلز', en: 'Reels'),
             onPressed: () => context.push(RoutePaths.communityReels),
           ),
           WingsIconButton(
-            icon: Icons.refresh_rounded,
+            icon: Icons.autorenew_rounded,
             tooltip: Tr.of(context, ar: 'تحديث', en: 'Refresh'),
             onPressed: () => ref
                 .read(communityFeedProvider(_tab).notifier)
@@ -57,7 +57,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
           ),
           const SizedBox(width: Space.xs),
           WingsIconButton(
-            icon: Icons.bookmark_border_rounded,
+            icon: Icons.bookmark_rounded,
             tooltip: Tr.of(context, ar: 'المحفوظة', en: 'Saved'),
             onPressed: () {
               if (uid == null) {
@@ -81,7 +81,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
         onPressed: () => _compose(context),
         backgroundColor: palette.primary,
         foregroundColor: palette.onPrimary,
-        icon: const Icon(Icons.edit_outlined, size: 20),
+        icon: const Icon(Icons.edit_rounded, size: 20),
         label: Text(
           Tr.of(context, ar: 'منشور', en: 'Post'),
           style: context.text.labelMedium?.copyWith(

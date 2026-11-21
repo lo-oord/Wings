@@ -5,6 +5,7 @@ import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
+import '../../core/widgets/wings_layout.dart';
 import '../../data/models/sticker_catalog.dart';
 import 'sticker_providers.dart';
 import 'sticker_view.dart';
@@ -12,11 +13,9 @@ import 'sticker_view.dart';
 /// Opens the sticker shelf from the bottom of the screen and returns the
 /// chosen sticker, or null when the sheet is dismissed.
 Future<Sticker?> showStickerPicker(BuildContext context) {
-  return showModalBottomSheet<Sticker>(
+  return WingsPopup.show<Sticker>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: context.palette.surface,
+    heightFactor: 0.86,
     builder: (sheetContext) => const StickerPickerSheet(),
   );
 }

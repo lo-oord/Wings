@@ -92,6 +92,19 @@ service cloud.firestore {
         );
     }
 
+    // The single protected owner account. `config/owner` is a one-field public
+    // document so every client can hide block/report for it; writes are limited
+    // to an account whose staff role is `owner`.
+    function ownerUid() {
+      return exists(/databases/$(database)/documents/config/owner)
+        ? get(/databases/$(database)/documents/config/owner).data.get('uid', '')
+        : '';
+    }
+
+    function isOwnerAccount(uid) {
+      return uid is string && uid != '' && uid == ownerUid();
+    }
+
     // ------------------------------------------------- identity denylists
     //
     // A blocked address is one document whose id is the lower-cased email.
@@ -518,7 +531,9 @@ service cloud.firestore {
       // The two sides of a follow relationship. The follower writes both, and
       // the followed account may remove either side when it blocks somebody.
       match /following/{targetUid} {
-        allow read: if isSelf(uid);
+        // Following lists are public to signed-in members, exactly like the
+        // followers list, so another profile's «يتابع» page can open.
+        allow read: if signedIn();
         allow create: if isSelf(uid)
           && targetUid != uid
           && request.resource.data.uid == targetUid
@@ -545,6 +560,7 @@ service cloud.firestore {
         allow read: if isSelf(uid);
         allow create: if isSelf(uid)
           && targetUid != uid
+          && !isOwnerAccount(targetUid)
           && request.resource.data.uid == targetUid
           && request.resource.data.createdAt is timestamp;
         allow delete: if isSelf(uid);
@@ -1187,6 +1203,9 @@ service cloud.firestore {
         && (!('targetId' in request.resource.data)
             || (request.resource.data.targetId is string
                 && request.resource.data.targetId.size() <= 160))
+        // The owner account is never reportable.
+        && (!('targetUid' in request.resource.data)
+            || !isOwnerAccount(request.resource.data.targetUid))
         // A restricted or banned account cannot use the report form.
         && !accountLocked(request.auth.uid)
         && !featureRestricted(request.auth.uid, 'restrictReport');
@@ -1632,6 +1651,15 @@ service cloud.firestore {
     // can never read or write it, so the admin allowlist stays private.
     match /config/{docId} {
       allow read, write: if false;
+    }
+
+    // Public owner pointer, used only to hide block/report for that account.
+    // It contains no role list and no private data.
+    match /config/owner {
+      allow get: if signedIn();
+      allow create, update: if isOwner()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
     }
 
     // Anything not matched above stays closed.

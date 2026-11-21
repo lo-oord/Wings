@@ -14,8 +14,10 @@ import '../../app/theme/context_ext.dart';
 import '../../core/errors/user_facing_error.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
+import '../../core/widgets/wings_layout.dart';
 import '../../data/models/chat.dart';
 import '../../data/models/community.dart';
+import '../admin/owner_guard.dart';
 import '../auth/sign_in_prompt.dart';
 import '../chat/share_to_chat_sheet.dart';
 import '../profile/avatar_view.dart';
@@ -101,8 +103,9 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
               start: Space.xs,
               child: _RoundButton(
                 icon: context.isRtl
-                    ? Icons.arrow_forward_rounded
-                    : Icons.arrow_back_rounded,
+                    ? Icons.arrow_forward_ios_rounded
+                    : Icons.arrow_back_ios_new_rounded,
+                tooltip: Tr.of(context, ar: 'رجوع', en: 'Back'),
                 onTap: () => Navigator.of(context).maybePop(),
               ),
             ),
@@ -112,10 +115,11 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
               child: Row(
                 children: <Widget>[
                   _RoundButton(
-                    icon: Icons.refresh_rounded,
+                    icon: Icons.autorenew_rounded,
+                    tooltip: Tr.of(context, ar: 'تحديث', en: 'Refresh'),
                     onTap: () => controller.load(refresh: true),
                   ),
-                  const SizedBox(width: Space.xs),
+                  const SizedBox(width: Space.sm),
                   _RoundButton(
                     icon: Icons.add_rounded,
                     tooltip: Tr.of(context, ar: 'ريل جديد', en: 'New reel'),
@@ -332,8 +336,25 @@ class _ReelPageState extends ConsumerState<ReelPage> {
   bool? _following;
   bool _busy = false;
   double _speed = 1;
+  bool _burst = false;
+  Timer? _burstTimer;
 
   Post get post => widget.post;
+
+  @override
+  void dispose() {
+    _burstTimer?.cancel();
+    super.dispose();
+  }
+
+  void _doubleTapLike(bool liked) {
+    unawaited(_toggleLike(liked));
+    _burstTimer?.cancel();
+    setState(() => _burst = true);
+    _burstTimer = Timer(const Duration(milliseconds: 650), () {
+      if (mounted) setState(() => _burst = false);
+    });
+  }
 
   String? get _uid => ref.read(authProvider)?.id;
 
@@ -405,39 +426,66 @@ class _ReelPageState extends ConsumerState<ReelPage> {
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        ColoredBox(
-          color: Colors.black,
-          child: _failed
-              ? const SizedBox.shrink()
-              : _url == null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const CircularProgressIndicator(strokeWidth: 2),
-                      const SizedBox(height: Space.sm),
-                      Text(
-                        Tr.of(context, ar: 'جارٍ التحميل…', en: 'Loading…'),
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 11,
+        GestureDetector(
+          onDoubleTap: () => _doubleTapLike(liked),
+          child: ColoredBox(
+            color: Colors.black,
+            child: _failed
+                ? const SizedBox.shrink()
+                : _url == null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const CircularProgressIndicator(strokeWidth: 2),
+                        const SizedBox(height: Space.sm),
+                        Text(
+                          Tr.of(context, ar: 'جارٍ التحميل…', en: 'Loading…'),
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 11,
+                          ),
                         ),
-                      ),
+                      ],
+                    ),
+                  )
+                : CommunityVideo(
+                    url: _url,
+                    posterUrl: _poster,
+                    active: widget.active,
+                    loop: true,
+                    showChrome: false,
+                    fit: BoxFit.contain,
+                    aspectRatio: post.videoAspectRatio ?? 9 / 16,
+                    rate: _speed,
+                    onPlayedThreeSeconds: _countView,
+                  ),
+          ),
+        ),
+        if (_burst)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Center(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0.55, end: 1),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutBack,
+                  builder: (context, value, child) => Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0, 1), child: child),
+                  ),
+                  child: Icon(
+                    Icons.favorite_rounded,
+                    size: 96,
+                    color: Colors.white.withValues(alpha: 0.92),
+                    shadows: const <Shadow>[
+                      Shadow(color: Colors.black45, blurRadius: 18),
                     ],
                   ),
-                )
-              : CommunityVideo(
-                  url: _url,
-                  posterUrl: _poster,
-                  active: widget.active,
-                  loop: true,
-                  showChrome: false,
-                  fit: BoxFit.contain,
-                  aspectRatio: post.videoAspectRatio ?? 9 / 16,
-                  rate: _speed,
-                  onPlayedThreeSeconds: _countView,
                 ),
-        ),
+              ),
+            ),
+          ),
         if (_failed)
           Center(
             child: Column(
@@ -648,8 +696,8 @@ class _ReelPageState extends ConsumerState<ReelPage> {
           ),
         ),
         PositionedDirectional(
-          end: Space.sm,
-          bottom: MediaQuery.paddingOf(context).bottom + Space.xl,
+          end: Space.md,
+          bottom: MediaQuery.paddingOf(context).bottom + Space.xxl,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
@@ -662,12 +710,12 @@ class _ReelPageState extends ConsumerState<ReelPage> {
                 onTap: () => _toggleLike(liked),
               ),
               _ReelAction(
-                icon: Icons.mode_comment_outlined,
+                icon: Icons.chat_bubble_rounded,
                 label: formatCount(post.commentCount),
                 onTap: post.allowComments ? _openComments : null,
               ),
               _ReelAction(
-                icon: Icons.ios_share_rounded,
+                icon: Icons.share_rounded,
                 label: Tr.of(context, ar: 'مشاركة', en: 'Share'),
                 onTap: _share,
               ),
@@ -785,13 +833,32 @@ class _ReelPageState extends ConsumerState<ReelPage> {
       route: RoutePaths.communityPost(post.id),
       extraId: post.authorUid,
     );
-    await showModalBottomSheet<void>(
+    await WingsPopup.show<void>(
       context: shareContext,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
+      heightFactor: 0.72,
+      builder: (sheetContext) => SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.all(Space.lg),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      Tr.of(sheetContext, ar: 'مشاركة الريل', en: 'Share reel'),
+                      style: sheetContext.text.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                  ),
+                ],
+              ),
+            ),
             ListTile(
               leading: const Icon(Icons.chat_bubble_outline_rounded),
               title: Text(
@@ -848,20 +915,21 @@ class _ReelPageState extends ConsumerState<ReelPage> {
   }
 
   Future<void> _openComments() async {
-    await showModalBottomSheet<void>(
+    await WingsPopup.show<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      heightFactor: 0.86,
       builder: (context) => _CommentsSheet(post: post),
     );
   }
 
   Future<void> _openSettings(bool isMine) async {
-    await showModalBottomSheet<void>(
+    final isOwner = ref.read(isOwnerAccountProvider(post.authorUid));
+    await WingsPopup.show<void>(
       context: context,
-      showDragHandle: true,
+      heightFactor: 0.88,
       builder: (context) => _ReelSettingsSheet(
         post: post,
+        isOwner: isOwner,
         speed: _speed,
         onSpeed: (value) {
           Navigator.of(context).pop();
@@ -1113,26 +1181,48 @@ class _ReelAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: Space.md),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.sm),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, color: onTap == null ? Colors.white38 : color, size: 26),
-            if (label.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Semantics(
+        button: true,
+        label: label,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(99),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: 0.38),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  color: onTap == null ? Colors.white38 : color,
+                  size: 21,
                 ),
               ),
+              if (label.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1149,13 +1239,15 @@ class _RoundButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final button = Material(
-      color: Colors.black45,
-      shape: const CircleBorder(),
+      color: Colors.black.withValues(alpha: 0.36),
+      shape: CircleBorder(
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+      ),
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(9),
           child: Icon(icon, size: 18, color: Colors.white),
         ),
       ),
@@ -1170,6 +1262,7 @@ class _RoundButton extends StatelessWidget {
 class _ReelSettingsSheet extends StatelessWidget {
   const _ReelSettingsSheet({
     required this.post,
+    required this.isOwner,
     required this.speed,
     required this.onSpeed,
     required this.onDownload,
@@ -1182,6 +1275,7 @@ class _ReelSettingsSheet extends StatelessWidget {
   });
 
   final Post post;
+  final bool isOwner;
   final double speed;
   final ValueChanged<double> onSpeed;
   final VoidCallback onDownload;
@@ -1347,22 +1441,24 @@ class _ReelSettingsSheet extends StatelessWidget {
                   onHide();
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.flag_outlined),
-                title: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  onReport();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.block_rounded),
-                title: Text(Tr.of(context, ar: 'حظر', en: 'Block')),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  onBlock();
-                },
-              ),
+              if (!isOwner) ...<Widget>[
+                ListTile(
+                  leading: const Icon(Icons.flag_outlined),
+                  title: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onReport();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.block_rounded),
+                  title: Text(Tr.of(context, ar: 'حظر', en: 'Block')),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onBlock();
+                  },
+                ),
+              ],
             ],
           ],
         ),

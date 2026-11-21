@@ -18,6 +18,7 @@ import '../../data/models/library.dart';
 import '../../data/models/user_profile.dart';
 import '../auth/auth_screens.dart' show kCountries;
 import '../auth/username_field.dart';
+import '../community/profile_posts_section.dart';
 import '../social/username_text.dart';
 import 'account_deletion_overlay.dart';
 import 'account_security_section.dart';
@@ -93,8 +94,10 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: user == null ? null : () => _pickAvatar(context, ref),
                   child: ProfileAvatarFrame(
                     badges: profile?.badges ?? ProfileBadges.none,
+                    sealSize: 22,
                     child: UserAvatar(
                       uid: user?.id ?? '',
+                      showBadgeFrame: false,
                       photoVersion: profile?.photoVersion ?? 0,
                       name: user?.displayName ?? '',
                       size: 72,
@@ -223,6 +226,10 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: Space.lg),
+          if (user != null) ...<Widget>[
+            ProfilePostsSection(uid: user.id),
+            const SizedBox(height: Space.lg),
+          ],
           if (user == null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.lg),
@@ -436,8 +443,9 @@ class ProfileScreen extends ConsumerWidget {
   /// Cover actions: pick a new banner or remove the current one. The image is
   /// compressed into Firestore bytes, never uploaded to Storage.
   Future<void> _coverSheet(BuildContext context, WidgetRef ref) async {
-    await showModalBottomSheet<void>(
+    await WingsPopup.show<void>(
       context: context,
+      heightFactor: 0.6,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -749,9 +757,9 @@ class ProfileScreen extends ConsumerWidget {
     final profile = ref.read(profileProvider);
     if (profile == null) return;
     var privacy = profile.privacy;
-    await showModalBottomSheet<void>(
+    await WingsPopup.show<void>(
       context: context,
-      isScrollControlled: true,
+      heightFactor: 0.86,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setState) => SafeArea(
           child: Column(

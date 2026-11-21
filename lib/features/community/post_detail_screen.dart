@@ -14,6 +14,7 @@ import '../../core/widgets/wings_layout.dart';
 import '../../data/models/admin_models.dart' show StaffRole;
 import '../../data/models/social.dart';
 import '../admin/admin_providers.dart';
+import '../admin/owner_guard.dart';
 import '../profile/avatar_view.dart';
 import '../social/comment_composer.dart';
 import '../social/user_handle.dart';
@@ -343,46 +344,51 @@ class _PostCommentTileState extends ConsumerState<_PostCommentTile> {
   }
 
   Future<void> _actions(bool mine, bool staff) async {
-    final choice = await showModalBottomSheet<String>(
+    final isOwner = ref.read(isOwnerAccountProvider(widget.comment.authorUid));
+    final choice = await WingsPopup.show<String>(
       context: context,
-      showDragHandle: true,
+      heightFactor: 0.72,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.person_outline_rounded),
-              title: Text(Tr.of(context, ar: 'عرض الملف', en: 'View profile')),
-              onTap: () => Navigator.of(context).pop('profile'),
-            ),
-            if (mine)
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
               ListTile(
-                leading: const Icon(Icons.edit_outlined),
-                title: Text(Tr.of(context, ar: 'تعديل', en: 'Edit')),
-                onTap: () => Navigator.of(context).pop('edit'),
-              ),
-            if (mine)
-              ListTile(
-                leading: const Icon(Icons.delete_outline_rounded),
-                title: Text(Tr.of(context, ar: 'حذف', en: 'Delete')),
-                onTap: () => Navigator.of(context).pop('delete'),
-              ),
-            if (!mine)
-              ListTile(
-                leading: const Icon(Icons.flag_outlined),
-                title: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
-                onTap: () => Navigator.of(context).pop('report'),
-              ),
-            if (!mine && staff)
-              ListTile(
-                leading: const Icon(Icons.gavel_rounded),
+                leading: const Icon(Icons.person_outline_rounded),
                 title: Text(
-                  Tr.of(context, ar: 'إزالة (إدارة)', en: 'Remove (staff)'),
+                  Tr.of(context, ar: 'عرض الملف', en: 'View profile'),
                 ),
-                onTap: () => Navigator.of(context).pop('staff-delete'),
+                onTap: () => Navigator.of(context).pop('profile'),
               ),
-            const SizedBox(height: Space.sm),
-          ],
+              if (mine)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: Text(Tr.of(context, ar: 'تعديل', en: 'Edit')),
+                  onTap: () => Navigator.of(context).pop('edit'),
+                ),
+              if (mine)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded),
+                  title: Text(Tr.of(context, ar: 'حذف', en: 'Delete')),
+                  onTap: () => Navigator.of(context).pop('delete'),
+                ),
+              if (!mine && !isOwner)
+                ListTile(
+                  leading: const Icon(Icons.flag_outlined),
+                  title: Text(Tr.of(context, ar: 'إبلاغ', en: 'Report')),
+                  onTap: () => Navigator.of(context).pop('report'),
+                ),
+              if (!mine && staff)
+                ListTile(
+                  leading: const Icon(Icons.gavel_rounded),
+                  title: Text(
+                    Tr.of(context, ar: 'إزالة (إدارة)', en: 'Remove (staff)'),
+                  ),
+                  onTap: () => Navigator.of(context).pop('staff-delete'),
+                ),
+              const SizedBox(height: Space.sm),
+            ],
+          ),
         ),
       ),
     );

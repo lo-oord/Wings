@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../data/models/user_profile.dart';
+import '../social/username_text.dart';
 
 /// Profile picture with a local-first cache.
 ///
@@ -21,6 +23,7 @@ class UserAvatar extends ConsumerStatefulWidget {
     this.size = 44,
     this.name = '',
     this.localPath,
+    this.showBadgeFrame = true,
   });
 
   final String uid;
@@ -28,6 +31,11 @@ class UserAvatar extends ConsumerStatefulWidget {
   final double size;
   final String name;
   final String? localPath;
+
+  /// The gold/blue official frame is drawn here by default, so every avatar in
+  /// the community, chat and comment lists carries the same mark. The two
+  /// profile headers that wrap the avatar themselves turn it off.
+  final bool showBadgeFrame;
 
   @override
   ConsumerState<UserAvatar> createState() => _UserAvatarState();
@@ -184,13 +192,24 @@ class _UserAvatarState extends ConsumerState<UserAvatar> {
       );
     }
 
-    return Container(
+    final avatar = Container(
       width: widget.size,
       height: widget.size,
       decoration: decoration,
       clipBehavior: Clip.antiAlias,
       alignment: Alignment.center,
       child: child,
+    );
+    if (!widget.showBadgeFrame || widget.uid.isEmpty) return avatar;
+    final badges =
+        ref.watch(publicProfileProvider(widget.uid)).value?.badges ??
+        ProfileBadges.none;
+    if (!badges.any) return avatar;
+    return ProfileAvatarFrame(
+      badges: badges,
+      padding: (widget.size * 0.035).clamp(1.5, 3.5),
+      sealSize: (widget.size * 0.34).clamp(11.0, 22.0),
+      child: avatar,
     );
   }
 

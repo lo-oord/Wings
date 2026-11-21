@@ -9,15 +9,16 @@ import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/errors/user_facing_error.dart';
 import '../../core/utils/tr.dart';
-import '../../core/widgets/wings_feedback.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import '../../data/models/admin_models.dart' show StaffRole;
 import '../../data/models/user_profile.dart';
 import '../../data/models/community.dart';
 import '../admin/admin_providers.dart';
+import '../admin/owner_guard.dart';
 import '../community/community_providers.dart';
 import '../community/post_card.dart';
+import '../community/profile_posts_section.dart';
 import '../community/report_sheet.dart';
 import '../social/username_text.dart';
 import 'avatar_view.dart';
@@ -52,7 +53,8 @@ class PublicProfileScreen extends ConsumerWidget {
     final revealed = ref.watch(_staffProfileProvider(uid)).value;
 
     final viewerUid = ref.watch(authProvider)?.id;
-    final canModerate = viewerUid != null && viewerUid != uid;
+    final isOwner = ref.watch(isOwnerAccountProvider(uid));
+    final canModerate = viewerUid != null && viewerUid != uid && !isOwner;
 
     return Scaffold(
       appBar: WingsAppBar(
@@ -143,6 +145,7 @@ class PublicProfileScreen extends ConsumerWidget {
   ) async {
     final viewer = ref.read(authProvider)?.id;
     if (viewer == null) return;
+    if (ref.read(isOwnerAccountProvider(uid))) return;
     if (value == 'report') {
       await showReportSheet(
         context,
@@ -249,7 +252,7 @@ class _Body extends ConsumerWidget {
           ],
           if (_showCommunity) ...<Widget>[
             const SizedBox(height: Space.xl),
-            _ProfilePosts(profile: profile),
+            ProfilePostsSection(uid: profile.uid),
           ],
         ],
       ],
@@ -435,113 +438,6 @@ class _CountTile extends StatelessWidget {
 /// The account's posts, inside the same public profile page. There is no
 /// separate community profile: this pages the same `posts` collection the feed
 /// reads, with the same [PostCard] and the same like/comment/save state.
-class _ProfilePosts extends ConsumerWidget {
-  const _ProfilePosts({required this.profile});
-
-  final UserProfile profile;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final palette = context.palette;
-    final key = 'user:${profile.uid}';
-    final state = ref.watch(postsPageProvider(key));
-    final controller = ref.read(postsPageProvider(key).notifier);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(
-            Space.lg,
-            0,
-            Space.lg,
-            Space.md,
-          ),
-          child: Row(
-            children: <Widget>[
-              Icon(Icons.forum_outlined, size: 17, color: palette.primary),
-              const SizedBox(width: 6),
-              Text(
-                Tr.of(context, ar: 'المنشورات', en: 'Posts'),
-                style: context.text.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (state.loading)
-          const Padding(
-            padding: EdgeInsets.all(Space.lg),
-            child: WingsLoading(),
-          )
-        else if (state.error != null && state.posts.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  loadFailedText(context),
-                  style: context.text.labelSmall?.copyWith(
-                    color: palette.textMuted,
-                  ),
-                ),
-                TextButton(
-                  onPressed: controller.load,
-                  child: Text(
-                    Tr.of(context, ar: 'إعادة المحاولة', en: 'Retry'),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else if (state.posts.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-            child: Text(
-              Tr.of(context, ar: 'لا منشورات بعد.', en: 'No posts yet.'),
-              style: context.text.labelSmall?.copyWith(
-                color: palette.textMuted,
-              ),
-            ),
-          )
-        else ...<Widget>[
-          for (final post in state.posts)
-            PostCard(
-              key: ValueKey<String>(post.id),
-              post: post,
-              flat: true,
-              onChanged: controller.replace,
-              onDeleted: () => controller.remove(post.id),
-            ),
-          if (state.hasMore)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Space.lg,
-                0,
-                Space.lg,
-                Space.lg,
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: state.loadingMore ? null : controller.loadMore,
-                  child: state.loadingMore
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(Tr.of(context, ar: 'عرض المزيد', en: 'Load more')),
-                ),
-              ),
-            ),
-        ],
-      ],
-    );
-  }
-}
-
 /// Cover, avatar, handle, name and the marks that make this account official.
 class _Hero extends StatelessWidget {
   const _Hero({required this.profile});
@@ -628,7 +524,9 @@ class _Hero extends StatelessWidget {
                   child: ProfileAvatarFrame(
                     badges: profile.badges,
                     padding: 3,
+                    sealSize: 26,
                     child: UserAvatar(
+                      showBadgeFrame: false,
                       uid: profile.uid,
                       photoVersion: profile.photoVersion,
                       name: name,

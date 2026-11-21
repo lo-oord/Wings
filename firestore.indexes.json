@@ -75,6 +75,20 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "authorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+    {
+      "collectionGroup": "posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "kind",
           "order": "ASCENDING"
         },

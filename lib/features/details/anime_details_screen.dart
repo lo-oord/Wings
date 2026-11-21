@@ -564,9 +564,9 @@ class _AnimeDetailsScreenState extends ConsumerState<AnimeDetailsScreen> {
       imageUrl: anime.posterUrl ?? '',
       route: RoutePaths.anime(anime.id),
     );
-    await showModalBottomSheet<void>(
+    await WingsPopup.show<void>(
       context: shareContext,
-      showDragHandle: true,
+      heightFactor: 0.68,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,

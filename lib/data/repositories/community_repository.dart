@@ -207,49 +207,15 @@ final class CommunityRepository {
       return _postsOnly(_page(snapshot));
     } on FirebaseException catch (error) {
       if (error.code != 'failed-precondition') rethrow;
-      return _scanPosts(
+      // A missing composite index must never hide an account's posts. The
+      // equality filter alone uses the automatic index; the page is sorted on
+      // the device and Reels are removed here.
+      return _filteredPage(
+        _posts.where('authorUid', isEqualTo: uid),
         after: after,
         limit: limit,
-        keep: (post) => post.authorUid == uid,
       );
     }
-  }
-
-  /// Raw page scan used when a composite index is missing or still building.
-  /// It never reads more than four bounded pages at a time.
-  Future<PostPage> _scanPosts({
-    DateTime? after,
-    int limit = pageSize,
-    required bool Function(Post post) keep,
-  }) async {
-    final collected = <Post>[];
-    DateTime? cursor = after;
-    DocumentSnapshot<Map<String, dynamic>>? last;
-    var hasMore = false;
-    for (var page = 0; page < 4 && collected.length < limit; page++) {
-      var query = _posts.orderBy('createdAt', descending: true);
-      if (cursor != null) {
-        query = query.startAfter(<Object>[Timestamp.fromDate(cursor)]);
-      }
-      final snapshot = await query.limit(pageSize).get();
-      if (snapshot.docs.isEmpty) {
-        hasMore = false;
-        break;
-      }
-      last = snapshot.docs.last;
-      cursor = _createdAt(last);
-      hasMore = snapshot.docs.length == pageSize;
-      for (final doc in snapshot.docs) {
-        final post = Post.fromDoc(doc.id, doc.data());
-        if (!post.isReel && keep(post)) collected.add(post);
-      }
-      if (!hasMore) break;
-    }
-    return PostPage(
-      items: collected.take(limit).toList(growable: false),
-      cursor: last,
-      hasMore: hasMore,
-    );
   }
 
   /// Posts that mention the anime, newest first.
@@ -269,12 +235,36 @@ final class CommunityRepository {
       return _postsOnly(_page(snapshot));
     } on FirebaseException catch (error) {
       if (error.code != 'failed-precondition') rethrow;
-      return _scanPosts(
+      return _filteredPage(
+        _posts.where('animeIds', arrayContains: animeId),
         after: after,
         limit: limit,
-        keep: (post) => post.animeIds.contains(animeId),
       );
     }
+  }
+
+  /// Sorts one equality-filtered page on the device. Used only when the
+  /// composite index is missing or still building, so a profile never shows
+  /// «لا منشورات بعد» just because an index was not deployed yet.
+  Future<PostPage> _filteredPage(
+    Query<Map<String, dynamic>> query, {
+    required int limit,
+    DateTime? after,
+  }) async {
+    final snapshot = await query.limit(limit * 3).get();
+    final posts =
+        snapshot.docs
+            .map((doc) => Post.fromDoc(doc.id, doc.data()))
+            .where((post) => !post.isReel)
+            .where((post) => after == null || post.createdAt.isBefore(after))
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final kept = posts.take(limit).toList(growable: false);
+    return PostPage(
+      items: kept,
+      cursor: kept.isEmpty ? null : snapshot.docs.last,
+      hasMore: false,
+    );
   }
 
   /// Reels, newest first. The screen re-ranks the bounded page it receives on
@@ -965,8 +955,23 @@ final class CommunityRepository {
   // ------------------------------------------------------------------ blocks
 
   /// Blocks [target] and drops any follow relationship in both directions.
+  /// The owner account is never blockable. The public `config/owner` document
+  /// is checked here as well as in the UI, so an old build cannot bypass it.
+  Future<bool> isOwnerAccount(String uid) async {
+    if (uid.isEmpty) return false;
+    try {
+      final doc = await _db.collection('config').doc('owner').get();
+      return (doc.data()?['uid'] as String? ?? '') == uid;
+    } on Object {
+      return false;
+    }
+  }
+
   Future<void> block({required String uid, required String target}) async {
     if (uid == target) throw StateError('self-block');
+    if (await isOwnerAccount(target)) {
+      throw StateError('owner-protected');
+    }
     final batch = _db.batch();
     batch.set(_blocked(uid).doc(target), <String, dynamic>{
       'uid': target,
@@ -992,6 +997,9 @@ final class CommunityRepository {
     String? targetUid,
     String? targetPreview,
   }) async {
+    if (targetUid != null && await isOwnerAccount(targetUid)) {
+      throw StateError('owner-protected');
+    }
     await _db.collection('reports').add(<String, dynamic>{
       'reporterUid': reporterUid,
       'targetType': targetType,

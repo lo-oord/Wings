@@ -6,6 +6,7 @@ import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_buttons.dart';
+import '../../core/widgets/wings_layout.dart';
 
 /// The floating gate shown when a guest taps something that needs an account.
 ///
@@ -15,12 +16,11 @@ Future<void> showSignInPrompt(
   BuildContext context, {
   required String message,
 }) async {
-  final choice = await showModalBottomSheet<String>(
+  final choice = await WingsPopup.show<String>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: context.palette.surface,
-    shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-    builder: (sheetContext) => _SignInSheet(message: message),
+    heightFactor: 0.7,
+    builder: (sheetContext) =>
+        SingleChildScrollView(child: _SignInSheet(message: message)),
   );
   if (!context.mounted) return;
   if (choice == 'login') context.push(RoutePaths.login);

@@ -605,6 +605,51 @@ class WingsSettingsGroup extends StatelessWidget {
   }
 }
 
+/// The app's one modal surface. Everything that used to slide up from the
+/// bottom is shown as a centred card here, so sheets, pickers and action menus
+/// share the same rounded frame, max width and height on every screen.
+abstract final class WingsPopup {
+  static Future<T?> show<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    double heightFactor = 0.82,
+    bool dismissible = true,
+  }) {
+    final palette = context.palette;
+    final size = MediaQuery.sizeOf(context);
+    return showDialog<T>(
+      context: context,
+      useSafeArea: true,
+      barrierDismissible: dismissible,
+      barrierColor: Colors.black.withValues(alpha: 0.6),
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: Space.lg,
+          vertical: Space.xl,
+        ),
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 460,
+            maxHeight: (size.height * heightFactor).clamp(260.0, 720.0),
+          ),
+          child: Material(
+            color: palette.surface,
+            surfaceTintColor: Colors.transparent,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Radii.lg),
+              side: BorderSide(color: palette.border),
+            ),
+            child: builder(dialogContext),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 abstract final class WingsSheet {
   /// Shows a compact card in the middle of the screen rather than a sheet.
   static Future<T?> show<T>(
@@ -614,71 +659,45 @@ abstract final class WingsSheet {
     bool scrollable = false,
   }) {
     final palette = context.palette;
-    // A sheet taller than the viewport used to clip its own close button on
-    // short phones and with the keyboard open.
-    final maxHeight = (MediaQuery.sizeOf(context).height * 0.8).clamp(
-      280.0,
-      560.0,
-    );
-    return showDialog<T>(
+    return WingsPopup.show<T>(
       context: context,
-      useSafeArea: true,
-      barrierColor: Colors.black.withValues(alpha: 0.55),
       builder: (dialogContext) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: Space.xl,
-            vertical: Space.xxl,
-          ),
-          backgroundColor: palette.surface,
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Radii.lg),
-            side: BorderSide(color: palette.border),
-          ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 420, maxHeight: maxHeight),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.lg,
-                    Space.md,
-                    Space.sm,
-                    Space.xs,
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.lg,
+                Space.md,
+                Space.sm,
+                Space.xs,
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(title, style: dialogContext.text.titleMedium),
                   ),
-                  child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: dialogContext.text.titleMedium,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 18),
-                        color: palette.textMuted,
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                      ),
-                    ],
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    color: palette.textMuted,
+                    onPressed: () => Navigator.of(dialogContext).pop(),
                   ),
-                ),
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(
-                      Space.md,
-                      Space.xs,
-                      Space.md,
-                      Space.md,
-                    ),
-                    child: builder(dialogContext),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.md,
+                  Space.xs,
+                  Space.md,
+                  Space.md,
+                ),
+                child: builder(dialogContext),
+              ),
+            ),
+          ],
         );
       },
     );
