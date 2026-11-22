@@ -17,7 +17,6 @@ import datetime
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import urllib.error
@@ -81,9 +80,6 @@ def restore_previous(index: dict) -> None:
 def main() -> None:
     version, build = read_version()
     tag = f"v{version}"
-    folder = os.path.join(DOWNLOADS, tag)
-    os.makedirs(folder, exist_ok=True)
-
     index: dict = {"releases": []}
     if os.path.exists(INDEX):
         try:
@@ -93,20 +89,16 @@ def main() -> None:
     restore_previous(index)
 
     files: dict[str, str] = {}
+    sizes: dict[str, int] = {}
     for abi, artifact in ABIS.items():
         source = os.path.join(ROOT, "build", "app", "outputs", "flutter-apk", artifact)
         if not os.path.exists(source):
             print(f"missing build output: {artifact}")
             continue
         target_name = f"wings-{version}-{abi}.apk"
-        shutil.copy2(source, os.path.join(folder, target_name))
-        files[abi] = f"/downloads/{tag}/{target_name}"
+        files[abi] = f"https://github.com/lo-oord/Wings/releases/download/{tag}/{target_name}"
+        sizes[abi] = os.path.getsize(source)
         print(f"packaged {target_name} ({os.path.getsize(source) // 1024} KiB)")
-
-    sizes = {
-        abi: os.path.getsize(os.path.join(folder, os.path.basename(path)))
-        for abi, path in files.items()
-    }
 
     releases = [r for r in index.get("releases", []) if r.get("version") != version]
     releases.insert(
@@ -132,7 +124,7 @@ def main() -> None:
             "version": version,
             "build": build,
             "apk_url": files.get("universal", ""),
-            "apk_urls": {abi: f"{SITE_URL}{path}" for abi, path in files.items()},
+            "apk_urls": files,
             "page_url": f"{SITE_URL}/download",
         }
     )
