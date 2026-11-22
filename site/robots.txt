@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /open
+Sitemap: https://wingsapp.vercel.app/sitemap.xml

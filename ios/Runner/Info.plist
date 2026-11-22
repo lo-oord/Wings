@@ -70,5 +70,18 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>app.wings.links</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>wings</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

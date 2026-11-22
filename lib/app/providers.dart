@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 import '../core/network/http_client.dart';
 import '../core/services/chat_local_store.dart';
 import '../core/services/app_feedback.dart';
+import '../core/services/app_update_service.dart';
 import '../core/services/connectivity_service.dart';
 import '../core/services/download_service.dart';
 import '../core/services/in_app_notifications.dart';
@@ -71,6 +72,11 @@ final httpClientProvider = Provider<Dio>((ref) {
   ref.onDispose(dio.close);
   return dio;
 });
+
+/// Reads the release manifest published on the Wings website.
+final appUpdateServiceProvider = Provider<AppUpdateService>(
+  (ref) => AppUpdateService(ref.watch(httpClientProvider)),
+);
 
 final firestoreClientProvider = Provider<FirestoreClient>(
   (ref) => FirestoreClient(ref.watch(httpClientProvider)),

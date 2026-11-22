@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>فتح في Wings</title>
+<meta name="description" content="افتح رابط Wings في التطبيق، أو حمّله إن لم يكن مثبتًا.">
+<meta name="theme-color" content="#08090a">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080a09'/%3E%3Cpath d='M6 21c5-1 9-5 10-11 1 6 5 10 10 11-4 3-8 4-10 4s-6-1-10-4z' fill='%232ecc87'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body data-deeplink>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span> Wings</a>
+    <nav class="nav" aria-label="التنقل">
+      <a href="/">الرئيسية</a>
+      <a href="/download">التحميل</a>
+      <a href="/support">الدعم</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="section">
+    <div class="wrap" style="max-width:640px">
+      <div class="card" style="text-align:center;padding:40px 28px">
+        <span class="brand-mark" style="margin:0 auto 18px;width:64px;height:64px;border-radius:18px" aria-hidden="true"></span>
+        <h1 style="font-size:30px">فتح الرابط في Wings</h1>
+        <p class="lead" style="margin-inline:auto">نحاول فتح التطبيق تلقائيًا. إن لم يفتح، اضغط الزر أدناه.</p>
+        <div class="hero-actions" style="justify-content:center">
+          <a id="open-app" class="btn btn--primary" href="wings://" hidden>فتح في التطبيق</a>
+          <a class="btn btn--ghost" href="/download">تحميل Wings</a>
+        </div>
+        <p class="muted" id="open-state" style="margin-top:8px">جارٍ التحويل…</p>
+        <p class="muted" style="margin-top:18px;font-size:12.5px;word-break:break-all">الرابط: <span id="target">—</span></p>
+      </div>
+      <p class="note" style="margin-top:20px">روابط Wings تعمل على أندرويد. على الأجهزة الأخرى، افتح التطبيق وابحث عن المحتوى بالاسم.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-bottom" style="margin-top:0;border-top:0">
+      <span>© <span data-year>2026</span> Wings</span>
+      <span><a href="/privacy">الخصوصية</a> · <a href="/terms">الشروط</a></span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js" defer></script>
+</body>
+</html>

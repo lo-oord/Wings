@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wings — أنمي ومجتمع في تطبيق واحد</title>
+<meta name="description" content="Wings تطبيق عربي لمشاهدة الأنمي: مكتبة ضخمة، مشغّل متقدم، مجتمع تفاعلي، وتنزيلات للمشاهدة دون اتصال. حمّل الإصدار 1.0 الآن.">
+<meta name="theme-color" content="#08090a">
+<meta property="og:title" content="Wings — أنمي ومجتمع في تطبيق واحد">
+<meta property="og:description" content="مكتبة أنمي، مشغّل متقدم، مجتمع، وتنزيلات. الإصدار 1.0 متاح الآن لأندرويد.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://wingsapp.vercel.app/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080a09'/%3E%3Cpath d='M6 21c5-1 9-5 10-11 1 6 5 10 10 11-4 3-8 4-10 4s-6-1-10-4z' fill='%232ecc87'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span> Wings</a>
+    <button class="nav-toggle" aria-label="القائمة" aria-expanded="false">☰</button>
+    <nav class="nav" aria-label="التنقل">
+      <a href="/#features">المميزات</a>
+      <a href="/#screens">داخل التطبيق</a>
+      <a href="/download">التحميل</a>
+      <a href="/changelog">التحديثات</a>
+      <a href="/support">الدعم</a>
+      <a class="btn btn--primary btn--small" href="/download">حمّل الآن</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="reveal">
+        <span class="eyebrow"><span class="dot"></span> الإصدار 1.0 متاح الآن</span>
+        <h1>أنمي، <span>مجتمع</span>،<br>ومشاهدة بلا حدود.</h1>
+        <p class="lead">Wings تطبيق عربي خفيف يجمع مكتبة الأنمي، مشغّل حلقات متقدم، ومجتمعًا حيًّا في مكان واحد — بتصميم أخضر هادئ وسرعة استجابة عالية.</p>
+        <div class="hero-actions">
+          <a class="btn btn--primary" href="https://github.com/lo-oord/Wings/releases/download/v1.0.0/wings-1.0.0.apk">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+            تحميل APK مباشر
+          </a>
+          <a class="btn btn--ghost" href="/#features">استكشف المميزات</a>
+        </div>
+        <div class="hero-meta">
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg> أندرويد 6.0+</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> مجاني بالكامل</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M5 8h14"/><path d="M7 21h10"/></svg> عربي وإنجليزي</span>
+        </div>
+      </div>
+
+      <div class="phone-stage reveal" aria-hidden="true">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-top">
+              <span class="brand-mark"></span>
+              <span class="phone-pill">Wings 1.0</span>
+            </div>
+            <div class="phone-banner">
+              <b>موسم جديد</b>
+              <small>تابع أحدث الحلقات فور نزولها</small>
+            </div>
+            <div class="phone-row">
+              <div class="poster poster--1"><span>الموسم الثاني</span></div>
+              <div class="poster poster--2"><span>حلقة 12</span></div>
+              <div class="poster poster--3"><span>الأكثر مشاهدة</span></div>
+            </div>
+            <div class="phone-list">
+              <div class="phone-item">
+                <div class="thumb poster--2"></div>
+                <div><b>أحدث الحلقات</b><small>محدّثة الآن</small></div>
+              </div>
+              <div class="phone-item">
+                <div class="thumb poster--4"></div>
+                <div><b>مكتبتك</b><small>متابعة من حيث توقفت</small></div>
+              </div>
+              <div class="phone-item">
+                <div class="thumb poster--1"></div>
+                <div><b>المجتمع</b><small>منشورات وريلز</small></div>
+              </div>
+            </div>
+            <div class="phone-nav">
+              <span class="on">الأحدث</span><span>المجتمع</span><span>استكشف</span><span>مكتبتي</span>
+            </div>
+          </div>
+        </div>
+        <div class="float-chip chip-a">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 9 9H2l6 4-2 7 6-4 6 4-2-7 6-4h-7z"/></svg>
+          جودات متعددة
+        </div>
+        <div class="float-chip chip-b">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m8 15 4-6 4 4 4-7"/></svg>
+          تحميل بلا اتصال
+        </div>
+        <div class="float-chip chip-c">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9"/><path d="m9 12 2 2 4-4"/></svg>
+          مجتمع نشط
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight">
+    <div class="wrap stats reveal">
+      <div class="stat"><b>1.0</b><span>الإصدار المستقر</span></div>
+      <div class="stat"><b>4</b><span>جودات تشغيل</span></div>
+      <div class="stat"><b>0</b><span>إعلانات مزعجة</span></div>
+      <div class="stat"><b>24/7</b><span>مجتمع ودعم</span></div>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow"><span class="dot"></span> كل ما تحتاجه</span>
+        <h2>مصمّم ليكون خفيفًا وسريعًا</h2>
+        <p class="lead">كل ميزة في Wings بُنيت لتعمل بسلاسة على الأجهزة الضعيفة والمتوسطة، دون التضحية بالجمال.</p>
+      </div>
+      <div class="grid grid--3">
+        <article class="card reveal">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 4v16"/><path d="M12 9h5"/><path d="M12 13h5"/></svg></div>
+          <h3>مكتبة أنمي منظّمة</h3>
+          <p>الأحدث، الاستكشاف، التصنيفات والبحث الذكي — مع تفاصيل كاملة لكل عمل ومواسمه وحلقاته.</p>
+        </article>
+        <article class="card reveal">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></svg></div>
+          <h3>مشغّل بجودات متعددة</h3>
+          <p>اختر الجودة المناسبة لاتصالك، مع نافذة تشغيل عائمة تُكمل المشاهدة أثناء تصفّح التطبيق.</p>
+        </article>
+        <article class="card reveal">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1-4a8 8 0 1 1 17-6z"/><path d="M8 11h8"/><path d="M8 15h5"/></svg></div>
+          <h3>مجتمع حقيقي</h3>
+          <p>انشر، علّق، أعجب، شارك الريلز، وتابع أصدقاءك في خلاصة مصمّمة للاكتشاف لا للضوضاء.</p>
+        </article>
+        <article class="card reveal">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg></div>
+          <h3>تنزيلات دون اتصال</h3>
+          <p>نزّل الحلقات وشاهدها في الطريق، مع إيقاف واستكمال وحفظ تلقائي للحالة.</p>
+        </article>
+        <article class="card reveal">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 8v4l3 2"/></svg></div>
+          <h3>تحديثات داخل التطبيق</h3>
+          <p>نافذة تحديث أنيقة: اضغط، شاهد شريط تنزيل حقيقي، ثم ثبّت الإصدار الجديد مباشرة.</p>
+        </article>
+        <article class="card reveal">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <h3>خصوصية وأمان</h3>
+          <p>حسابك محمي، بياناتك لا تُباع، وقواعد وصول صارمة تحمي منشوراتك ومحادثاتك.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="screens">
+    <div class="wrap split">
+      <div class="reveal">
+        <span class="eyebrow"><span class="dot"></span> داخل التطبيق</span>
+        <h2>ثلاث تجارب في تطبيق واحد</h2>
+        <p class="lead">صُمّمت كل شاشة لتخدم هدفًا واحدًا بوضوح، مع لغة بصرية موحّدة وحركات هادئة.</p>
+        <ul class="checklist">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> تصفّح سريع مع صور محسّنة وذاكرة تخزين ذكية.</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> مشغّل يحترم موارد جهازك: فيديو واحد فقط في كل مرة.</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> محرر صور مدمج لقص وتدوير وتحسين منشوراتك.</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> روابط مشاركة تفتح التطبيق مباشرة عند تثبيته.</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> وضع داكن وفاتح، ودعم «تقليل الحركة» في النظام.</li>
+        </ul>
+        <div class="hero-actions">
+          <a class="btn btn--primary" href="/download">جرّب Wings الآن</a>
+        </div>
+      </div>
+      <div class="grid grid--2 reveal">
+        <div class="card">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4z"/><path d="M4 10h16"/></svg></div>
+          <h3>الأحدث</h3>
+          <p>حلقات جديدة أولًا، مع بانر موسمي واقتراحات مبنية على مكتبتك.</p>
+        </div>
+        <div class="card">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+          <h3>استكشف</h3>
+          <p>بحث فوري، تصنيفات، وترتيب حسب التقييم أو الشهرة أو الأحدث.</p>
+        </div>
+        <div class="card">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V6a2 2 0 0 1 2-2h9l5 5v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 4v6h6"/></svg></div>
+          <h3>مكتبتي</h3>
+          <p>المفضلة، سجل المشاهدة، والتنزيلات — كلها في مكان واحد.</p>
+        </div>
+        <div class="card">
+          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 4.6-7 9-7 9z"/></svg></div>
+          <h3>المجتمع</h3>
+          <p>ريلز، منشورات، هاشتاجات، ومحادثات خاصة آمنة.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight">
+    <div class="wrap">
+      <div class="download-card reveal">
+        <div class="split">
+          <div>
+            <span class="eyebrow"><span class="dot"></span> الإصدار 1.0.0</span>
+            <h2>حمّل Wings وابدأ المشاهدة</h2>
+            <p class="lead">حزمة APK موقّعة، بحجم صغير، تعمل على أندرويد 6.0 وما فوق. لا تحتاج حسابًا لمشاهدة المكتبة.</p>
+            <div class="hero-actions">
+              <a class="btn btn--primary" href="https://github.com/lo-oord/Wings/releases/download/v1.0.0/wings-1.0.0.apk">تحميل APK</a>
+              <a class="btn btn--ghost" href="/download">تفاصيل التثبيت</a>
+            </div>
+            <p class="note">التحديثات القادمة تصل داخل التطبيق مع شريط تنزيل ومثبّت مباشر — دون مغادرة Wings.</p>
+          </div>
+          <ol class="steps">
+            <li>نزّل ملف APK من الزر المجاور.</li>
+            <li>افتح الملف واسمح بتثبيت التطبيقات من هذا المصدر إن طُلب منك.</li>
+            <li>ثبّت Wings، ثم سجّل الدخول أو تابع كزائر.</li>
+            <li>استمتع بالمكتبة والمجتمع، وفعّل التنزيلات للمشاهدة دون اتصال.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow"><span class="dot"></span> أسئلة شائعة</span>
+        <h2>كل ما تريد معرفته</h2>
+      </div>
+      <details class="faq reveal">
+        <summary>هل Wings مجاني؟</summary>
+        <p>نعم، التطبيق مجاني بالكامل. لا اشتراكات ولا إعلانات مزعجة، وكل الميزات الأساسية متاحة للجميع.</p>
+      </details>
+      <details class="faq reveal">
+        <summary>كيف أثبّت التطبيق على أندرويد؟</summary>
+        <p>حمّل ملف APK، افتحه من إشعار التنزيل، وإن ظهرت رسالة تحذير اختر «السماح من هذا المصدر» ثم «تثبيت». هذا طبيعي لأي تطبيق خارج متجر Play.</p>
+      </details>
+      <details class="faq reveal">
+        <summary>هل يمكن المشاهدة دون اتصال؟</summary>
+        <p>نعم. نزّل الحلقة من صفحتها، وستظهر في «مكتبتي ← التنزيلات». يمكنك الإيقاف والاستكمال لاحقًا.</p>
+      </details>
+      <details class="faq reveal">
+        <summary>كيف أحصل على التحديثات؟</summary>
+        <p>عند نشر إصدار جديد تظهر نافذة داخل التطبيق مع ملاحظات الإصدار بالعربية، واضغط «تحديث الآن» لتنزيل الحزمة ومتابعة شريط التقدم حتى التثبيت.</p>
+      </details>
+      <details class="faq reveal">
+        <summary>ماذا يحدث لبياناتي؟</summary>
+        <p>نحتفظ فقط بما يلزم لتشغيل حسابك ومنشوراتك. لا نبيع بياناتك، ويمكنك طلب حذف حسابك وبياناتك في أي وقت عبر صفحة الدعم.</p>
+      </details>
+      <details class="faq reveal">
+        <summary>لماذا لا يوجد التطبيق على Google Play؟</summary>
+        <p>Wings يُوزّع حاليًا كملف APK مباشر ليبقى متاحًا للجميع دون قيود المتاجر. سيُعلن عن أي قناة توزيع جديدة في صفحة التحديثات.</p>
+      </details>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span> Wings</a>
+        <p class="muted" style="margin-top:14px;max-width:34ch">تطبيق أنمي عربي خفيف، صُنع بعناية ليعمل بسلاسة على كل الأجهزة.</p>
+      </div>
+      <div>
+        <h4>التطبيق</h4>
+        <a href="/download">التحميل</a>
+        <a href="/changelog">سجل التحديثات</a>
+        <a href="/#features">المميزات</a>
+        <a href="https://github.com/lo-oord/Wings">المصدر على GitHub</a>
+      </div>
+      <div>
+        <h4>القانوني</h4>
+        <a href="/privacy">سياسة الخصوصية</a>
+        <a href="/security">الأمان</a>
+        <a href="/terms">شروط الاستخدام</a>
+      </div>
+      <div>
+        <h4>المساعدة</h4>
+        <a href="/support">الدعم والأسئلة</a>
+        <a href="/open">فتح رابط في التطبيق</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> Wings. جميع الحقوق محفوظة.</span>
+      <span>صُنع بشغف للأنمي العربي 🕊️</span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js" defer></script>
+</body>
+</html>

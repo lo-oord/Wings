@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "build": 1,
+  "published_at": "2026-11-22",
+  "apk_url": "https://github.com/lo-oord/Wings/releases/download/v1.0.0/wings-1.0.0.apk",
+  "page_url": "https://wingsapp.vercel.app/download",
+  "mandatory": false,
+  "welcome": "أهلاً بك في Wings — رحلتك مع الأنمي تبدأ من هنا.",
+  "notes_ar": [
+    "الإصدار الأول: مكتبة أنمي كاملة مع الأحدث والاستكشاف والبحث.",
+    "مشغّل حلقات بجودات متعددة ونافذة تشغيل عائمة.",
+    "المجتمع: منشورات وريلز وتعليقات ومحادثات.",
+    "تنزيلات للمشاهدة دون اتصال، ومحرر صور مدمج.",
+    "تحسينات في السرعة والحركة واستهلاك الذاكرة."
+  ],
+  "notes_en": [
+    "First release: a full anime catalogue with latest, explore and search.",
+    "Episode player with multiple qualities and a floating mini player.",
+    "Community: posts, reels, comments and direct messages.",
+    "Offline downloads and a built-in photo editor.",
+    "Faster screens, smoother motion and lower memory use."
+  ]
+}

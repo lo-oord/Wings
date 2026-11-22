@@ -10,6 +10,7 @@ import '../../app/providers.dart';
 import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/constants/app_links.dart';
 import '../../core/errors/user_facing_error.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
@@ -1118,8 +1119,7 @@ class _ActionButton extends StatelessWidget {
 /// The stable, human-facing link of a post. It always points at the post id,
 /// never at a signed media URL, and opening it inside Wings respects privacy,
 /// blocking and the account state exactly like the in-app route.
-String postShareLink(String postId) =>
-    'https://wings.app${RoutePaths.communityPost(postId)}';
+String postShareLink(String postId) => AppLinks.post(postId);
 
 /// Video inside a normal post: resolved from the private bucket and paused
 /// while it is out of view.

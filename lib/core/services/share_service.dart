@@ -1,6 +1,7 @@
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/models/anime.dart';
+import '../constants/app_links.dart';
 
 class ShareService {
   /// Shares arbitrary text (episode titles, invite copy) through the platform
@@ -27,6 +28,9 @@ class ShareService {
     if (anime.rating != null) {
       buffer.writeln('★ ${anime.rating!.toStringAsFixed(1)}');
     }
+    buffer
+      ..writeln()
+      ..writeln(AppLinks.anime(anime.id));
     if (footer != null) {
       buffer
         ..writeln()

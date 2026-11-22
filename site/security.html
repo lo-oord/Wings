@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>الأمان — Wings</title>
+<meta name="description" content="كيف يحمي Wings حسابك وبياناتك: تشفير النقل، قواعد وصول صارمة، ومساحة تخزين خاصة للمحتوى.">
+<meta name="theme-color" content="#08090a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080a09'/%3E%3Cpath d='M6 21c5-1 9-5 10-11 1 6 5 10 10 11-4 3-8 4-10 4s-6-1-10-4z' fill='%232ecc87'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span> Wings</a>
+    <button class="nav-toggle" aria-label="القائمة" aria-expanded="false">☰</button>
+    <nav class="nav" aria-label="التنقل">
+      <a href="/">الرئيسية</a>
+      <a href="/privacy">الخصوصية</a>
+      <a href="/terms">الشروط</a>
+      <a href="/support">الدعم</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="page-hero">
+    <div class="wrap">
+      <span class="eyebrow"><span class="dot"></span> الأمان</span>
+      <h1>مركز الأمان</h1>
+      <p class="updated">آخر تحديث: 22 نوفمبر 2026</p>
+      <p class="lead">نحمي حسابك ومحتواك بطبقات متعددة: مصادقة موثوقة، قواعد وصول على مستوى الخادم، ومساحة تخزين خاصة لكل ملف.</p>
+    </div>
+  </section>
+
+  <section class="section section--tight">
+    <div class="wrap prose">
+      <div class="callout"><p><strong>قاعدة ذهبية:</strong> لا تشارك كلمة مرورك أو رمز التحقق مع أي شخص، ولا مع من يزعم أنه من فريق Wings. لن نطلبها منك أبدًا.</p></div>
+
+      <h2>1. حماية الحساب</h2>
+      <ul>
+        <li>تسجيل الدخول عبر البريد وكلمة المرور أو حساب Google، عبر خدمة مصادقة Firebase.</li>
+        <li>كلمات المرور تُخزَّن مجزّأة (hashed) على الخادم، ولا نستطيع قراءتها.</li>
+        <li>البريد الجديد يحتاج تأكيدًا قبل استخدام الحساب في المجتمع.</li>
+        <li>الجلسات تُربط بالجهاز، ويمكنك تسجيل الخروج من كل الأجهزة من الإعدادات.</li>
+      </ul>
+
+      <h2>2. حماية البيانات</h2>
+      <ul>
+        <li>كل الاتصالات مشفّرة عبر TLS بين التطبيق والخادم.</li>
+        <li>قواعد Firestore تمنع قراءة أو تعديل بيانات مستخدم آخر، وتُتحقَّق على الخادم لا في التطبيق فقط.</li>
+        <li>الصور والفيديوهات تُخزَّن بمفاتيح خاصة، وتُقدَّم عبر روابط موقّعة قصيرة العمر.</li>
+        <li>إدارة المحتوى الإداري محصورة بحسابات موثوقة، وكل إجراء إداري يُسجَّل.</li>
+      </ul>
+
+      <h2>3. حماية المجتمع</h2>
+      <ul>
+        <li>إبلاغ عن أي منشور أو تعليق أو حساب من داخل التطبيق.</li>
+        <li>حظر المستخدمين وإخفاء منشوراتهم فورًا من خلاصتك.</li>
+        <li>مراجعة البلاغات ومعالجة المحتوى المخالف.</li>
+      </ul>
+
+      <h2>4. أمان التحديثات</h2>
+      <p>تُبنى إصدارات Wings على GitHub Actions من الكود المصدري في المستودع الرسمي، وتُوقّع الحزم بمفتاح التطبيق. التحديث داخل التطبيق يُنزَّل من إصدار GitHub الرسمي فقط، ويُمرَّر إلى مثبّت أندرويد الرسمي — لا نستخدم مثبّتًا خارجيًا.</p>
+      <p>إن ظهرت نافذة تحديث من مصدر آخر أو رابط خارجي، فأغلقها وأبلغنا.</p>
+
+      <h2>5. توصياتنا لك</h2>
+      <ul>
+        <li>استخدم كلمة مرور فريدة طويلة، أو سجّل عبر Google.</li>
+        <li>لا تثبّت APK من مواقع غير رسمية؛ المصدر الرسمي هو <a href="/download">صفحة التحميل</a> أو <a href="https://github.com/lo-oord/Wings/releases">إصدارات GitHub</a>.</li>
+        <li>راجع الأجهزة المسجّلة في حسابك من الإعدادات، واخرج من الأجهزة التي لا تعرفها.</li>
+        <li>حدّث التطبيق عند وصول إشعار التحديث.</li>
+      </ul>
+
+      <h2>6. الإبلاغ عن ثغرة</h2>
+      <p>إن اكتشفت ثغرة أمنية، أخبرنا بشكل مسؤول عبر <a href="https://github.com/lo-oord/Wings/issues">GitHub Issues</a> مع وصف الخطوات والأثر، دون نشر تفاصيل قابلة للاستغلال. نراجع كل تقرير ونرد في أقرب وقت، ونقدّر مساعدتك في حماية المستخدمين.</p>
+      <p>لا تُختبر الثغرات على حسابات الآخرين أو بياناتهم.</p>
+
+      <h2>7. ماذا نفعل عند حدوث اختراق؟</h2>
+      <p>نعالج المشكلة فورًا، ونبطل الجلسات المتأثرة، وننشر إشعارًا داخل التطبيق للمستخدمين المعنيين عند الحاجة، مع توضيح ما يجب فعله.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-bottom" style="margin-top:0;border-top:0">
+      <span>© <span data-year>2026</span> Wings</span>
+      <span><a href="/privacy">الخصوصية</a> · <a href="/security">الأمان</a> · <a href="/terms">الشروط</a> · <a href="/support">الدعم</a></span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js" defer></script>
+</body>
+</html>

@@ -7,6 +7,9 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../../core/constants/app_links.dart';
+import '../../core/utils/tr.dart';
+import '../../core/widgets/update_prompt.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
 import 'settings_screen.dart';
@@ -69,11 +72,62 @@ class AboutScreen extends ConsumerWidget {
                 onTap: () => context.push(RoutePaths.legal('terms')),
               ),
               WingsSettingsTile(
+                icon: Icons.verified_user_outlined,
+                title: Tr.of(context, ar: 'مركز الأمان', en: 'Security centre'),
+                subtitle: Tr.of(
+                  context,
+                  ar: 'كيف نحمي حسابك وبياناتك',
+                  en: 'How your account and data are protected',
+                ),
+                showChevron: true,
+                onTap: () => launchUrl(
+                  Uri.parse(AppLinks.security),
+                  mode: LaunchMode.externalApplication,
+                ),
+              ),
+              WingsSettingsTile(
+                icon: Icons.help_outline_rounded,
+                title: Tr.of(
+                  context,
+                  ar: 'الدعم والأسئلة',
+                  en: 'Support & FAQ',
+                ),
+                showChevron: true,
+                onTap: () => launchUrl(
+                  Uri.parse(AppLinks.support),
+                  mode: LaunchMode.externalApplication,
+                ),
+              ),
+              WingsSettingsTile(
                 icon: Icons.public_rounded,
+                title: Tr.of(
+                  context,
+                  ar: 'الموقع الرسمي',
+                  en: 'Official website',
+                ),
+                subtitle: 'wingsapp.vercel.app',
+                showChevron: true,
+                onTap: () => launchUrl(
+                  Uri.parse(AppLinks.site),
+                  mode: LaunchMode.externalApplication,
+                ),
+              ),
+              WingsSettingsTile(
+                icon: Icons.system_update_alt_rounded,
+                title: Tr.of(
+                  context,
+                  ar: 'التحقق من التحديثات',
+                  en: 'Check for updates',
+                ),
+                showChevron: true,
+                onTap: () => checkForUpdates(context, ref, manual: true),
+              ),
+              WingsSettingsTile(
+                icon: Icons.code_rounded,
                 title: l10n.settingsOpenSource,
                 showChevron: true,
                 onTap: () => launchUrl(
-                  Uri.parse('https://github.com/looooooooord/Wings'),
+                  Uri.parse(AppLinks.github),
                   mode: LaunchMode.externalApplication,
                 ),
               ),

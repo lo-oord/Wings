@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/services/deep_link_service.dart';
 import '../core/services/notification_actions.dart';
 import '../core/storage/local_store.dart';
 import '../data/models/social_notification.dart';
+import '../core/widgets/update_prompt.dart';
 import '../core/widgets/wings_feedback.dart';
 import '../features/player/mini_player.dart';
 import '../features/player/playback_session.dart';
@@ -29,11 +32,14 @@ class _WingsAppState extends ConsumerState<WingsApp>
   GoRouter? _router;
   ProviderSubscription<AsyncValue<List<SocialNotification>>>? _traySub;
   String? _trayUid;
+  StreamSubscription<Uri>? _linkSub;
+  String? _pendingLink;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _bindDeepLinks();
     final notifications = ref.read(notificationServiceProvider);
     notifications.taps.listen(_openPayload);
     final cold = notifications.takeColdPayload();
@@ -163,8 +169,40 @@ class _WingsAppState extends ConsumerState<WingsApp>
     }
   }
 
+  /// Listens for links that open Wings: a shared post, an anime or a profile.
+  /// One that arrives before the router exists (cold start) is kept and
+  /// applied on the first frame instead of being dropped.
+  void _bindDeepLinks() {
+    final links = AppLinks();
+    links.getInitialLink().then((uri) {
+      if (uri != null) _handleLink(uri);
+    }, onError: (Object _) {});
+    _linkSub = links.uriLinkStream.listen(_handleLink, onError: (Object _) {});
+  }
+
+  void _handleLink(Uri uri) {
+    final route = DeepLinks.routeFor(uri);
+    if (route == null) return;
+    final router = _router;
+    if (router == null || ref.read(authProvider) == null) {
+      _pendingLink = route;
+      return;
+    }
+    router.go(route);
+  }
+
+  void _applyPendingLink() {
+    final route = _pendingLink;
+    if (route == null || _router == null || ref.read(authProvider) == null) {
+      return;
+    }
+    _pendingLink = null;
+    _router!.go(route);
+  }
+
   @override
   void dispose() {
+    _linkSub?.cancel();
     _traySub?.close();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -208,6 +246,9 @@ class _WingsAppState extends ConsumerState<WingsApp>
     // rescheduled whenever the user changes the interval in settings.
     ref.watch(syncSchedulerProvider);
     _router = router;
+    if (_pendingLink != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _applyPendingLink());
+    }
 
     return MaterialApp.router(
       title: 'Wings',
@@ -232,7 +273,9 @@ class _WingsAppState extends ConsumerState<WingsApp>
           data: media.copyWith(textScaler: scale),
           // The floating player sits above every route so leaving an episode
           // never stops the video.
-          child: MiniPlayerHost(child: child ?? const WingsLoading()),
+          child: UpdateGate(
+            child: MiniPlayerHost(child: child ?? const WingsLoading()),
+          ),
         );
       },
     );
