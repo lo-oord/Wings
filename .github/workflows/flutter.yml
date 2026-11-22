@@ -123,6 +123,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: team_zfz99e7XHbZN4gBAKjtwMAxY
           VERCEL_PROJECT_ID: prj_fbgunqJHd1uualYMqHKONn7GzRd6
+        working-directory: site
         run: |
           set -euo pipefail
           if [ -z "${VERCEL_TOKEN:-}" ]; then
