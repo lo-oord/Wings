@@ -123,11 +123,15 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: team_zfz99e7XHbZN4gBAKjtwMAxY
           VERCEL_PROJECT_ID: prj_fbgunqJHd1uualYMqHKONn7GzRd6
-        working-directory: site
         run: |
           set -euo pipefail
           if [ -z "${VERCEL_TOKEN:-}" ]; then
             echo "::warning::VERCEL_TOKEN is missing; the website and APK downloads were not published."
             exit 0
           fi
+          deploy_dir="$RUNNER_TEMP/wings-vercel"
+          rm -rf "$deploy_dir"
+          mkdir -p "$deploy_dir"
+          cp -R site/. "$deploy_dir/"
+          cd "$deploy_dir"
           npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
