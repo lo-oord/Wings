@@ -5,7 +5,7 @@ Run from the repository root after `flutter build` (CI does this):
 
     python3 tools/site_release.py
 
-It copies the four release packages into `site/downloads/v<version>/`, restores
+It copies the three release packages into `site/downloads/v<version>/`, restores
 the packages of previous releases from the live website so every old version
 stays downloadable, merges `site/downloads/index.json`, and points
 `site/updates/latest.json` at the new files while keeping its release notes.
@@ -33,7 +33,6 @@ SITE_URL = "https://wingsapp.vercel.app"
 ABIS = {
     "arm64-v8a": "app-arm64-v8a-release.apk",
     "armeabi-v7a": "app-armeabi-v7a-release.apk",
-    "x86_64": "app-x86_64-release.apk",
     "universal": "app-release.apk",
 }
 
@@ -63,6 +62,8 @@ def restore_previous(index: dict) -> None:
     """
     for release in index.get("releases", []):
         for name, path in (release.get("files") or {}).items():
+            if str(path).startswith(("http://", "https://")):
+                continue
             relative = path.lstrip("/")
             target = os.path.join(SITE, relative)
             if os.path.exists(target):

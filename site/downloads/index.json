@@ -5,10 +5,9 @@
       "build": 1,
       "date": "2026-11-22",
       "files": {
-        "universal": "/downloads/v1.0.0/wings-1.0.0-universal.apk",
-        "arm64-v8a": "/downloads/v1.0.0/wings-1.0.0-arm64-v8a.apk",
-        "armeabi-v7a": "/downloads/v1.0.0/wings-1.0.0-armeabi-v7a.apk",
-        "x86_64": "/downloads/v1.0.0/wings-1.0.0-x86_64.apk"
+        "universal": "https://github.com/lo-oord/Wings/releases/download/v1.0.0/wings-1.0-universal.apk",
+        "arm64-v8a": "https://github.com/lo-oord/Wings/releases/download/v1.0.0/wings-1.0-arm64-v8a.apk",
+        "armeabi-v7a": "https://github.com/lo-oord/Wings/releases/download/v1.0.0/wings-1.0-armeabi-v7a.apk"
       }
     }
   ]
