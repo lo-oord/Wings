@@ -123,11 +123,11 @@ class AboutScreen extends ConsumerWidget {
                 onTap: () => checkForUpdates(context, ref, manual: true),
               ),
               WingsSettingsTile(
-                icon: Icons.code_rounded,
-                title: l10n.settingsOpenSource,
+                icon: Icons.new_releases_outlined,
+                title: Tr.of(context, ar: 'كل الإصدارات', en: 'All releases'),
                 showChevron: true,
                 onTap: () => launchUrl(
-                  Uri.parse(AppLinks.github),
+                  Uri.parse('${AppLinks.site}/versions'),
                   mode: LaunchMode.externalApplication,
                 ),
               ),

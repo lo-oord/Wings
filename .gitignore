@@ -61,3 +61,4 @@ app.*.map.json
 # Kotlin build cache
 android/.kotlin/
 deploy/
+site/downloads/v*/

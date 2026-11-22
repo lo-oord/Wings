@@ -4,6 +4,7 @@ class AppUpdate {
     required this.version,
     required this.build,
     required this.apkUrl,
+    this.apkUrls = const <String, String>{},
     this.pageUrl = '',
     this.mandatory = false,
     this.welcome = '',
@@ -13,7 +14,13 @@ class AppUpdate {
 
   final String version;
   final int build;
+
+  /// Universal package, used when the device ABI is unknown.
   final String apkUrl;
+
+  /// Per-architecture packages keyed by `arm64-v8a`, `armeabi-v7a`,
+  /// `x86_64` and `universal`.
+  final Map<String, String> apkUrls;
   final String pageUrl;
   final bool mandatory;
 
@@ -23,6 +30,20 @@ class AppUpdate {
   final List<String> notesEn;
 
   String get id => '$version+$build';
+
+  /// The smallest package that runs on this device.
+  ///
+  /// The device reports its ABIs in preference order, so the first match wins;
+  /// an unknown or unsupported device falls back to the universal build.
+  String urlForAbi(Iterable<String> abis) {
+    for (final abi in abis) {
+      final match = apkUrls[abi.toLowerCase().trim()];
+      if (match != null && match.isNotEmpty) return match;
+    }
+    final universal = apkUrls['universal'];
+    if (universal != null && universal.isNotEmpty) return universal;
+    return apkUrl;
+  }
 
   /// True when this release is newer than the running build.
   bool isNewerThan({
@@ -63,10 +84,19 @@ class AppUpdate {
       return const <String>[];
     }
 
+    final rawUrls = json['apk_urls'] ?? json['apkUrls'];
+    final apkUrls = <String, String>{
+      if (rawUrls is Map)
+        for (final entry in rawUrls.entries)
+          if (entry.value.toString().trim().isNotEmpty)
+            entry.key.toString().toLowerCase(): entry.value.toString().trim(),
+    };
+
     return AppUpdate(
       version: version,
       build: (json['build'] as num?)?.toInt() ?? 1,
       apkUrl: apkUrl,
+      apkUrls: apkUrls,
       pageUrl: (json['page_url'] ?? json['pageUrl'] ?? '').toString(),
       mandatory: json['mandatory'] == true,
       welcome: (json['welcome'] ?? '').toString(),

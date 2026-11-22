@@ -7,9 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -116,25 +113,21 @@ jobs:
           path: build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
-      # The in-app updater downloads the APK from this release, so the release
-      # is created (or refreshed) for every version published on main.
-      - name: Publish GitHub release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # The website hosts every package and the manifest the app checks, so a
+      # release never points users at the source repository.
+      - name: Collect website downloads
+        run: python3 tools/site_release.py
+
+      - name: Deploy website and downloads to Vercel
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_zfz99e7XHbZN4gBAKjtwMAxY
+          VERCEL_PROJECT_ID: prj_fbgunqJHd1uualYMqHKONn7GzRd6
+        working-directory: site
         run: |
           set -euo pipefail
-          VERSION="$(awk '/^version:/{print $2}' pubspec.yaml | cut -d+ -f1)"
-          TAG="v$VERSION"
-          NOTES="docs/release-notes/$TAG.md"
-          APK="build/app/outputs/flutter-apk/app-release.apk"
-          test -f "$APK"
-          cp "$APK" "wings-$VERSION.apk"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "Wings $VERSION" --notes-file "$NOTES"
-          elif [ -f "$NOTES" ]; then
-            gh release create "$TAG" --title "Wings $VERSION" --notes-file "$NOTES"
-          else
-            gh release create "$TAG" --title "Wings $VERSION" --generate-notes
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::warning::VERCEL_TOKEN is missing; the website and APK downloads were not published."
+            exit 0
           fi
-          gh release upload "$TAG" "wings-$VERSION.apk" --clobber
+          npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"

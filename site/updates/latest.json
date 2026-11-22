@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "build": 1,
   "published_at": "2026-11-22",
-  "apk_url": "https://github.com/lo-oord/Wings/releases/download/v1.0.0/wings-1.0.0.apk",
+  "apk_url": "https://wingsapp.vercel.app/downloads/v1.0.0/wings-1.0.0-universal.apk",
   "page_url": "https://wingsapp.vercel.app/download",
   "mandatory": false,
   "welcome": "أهلاً بك في Wings — رحلتك مع الأنمي تبدأ من هنا.",
@@ -19,5 +19,11 @@
     "Community: posts, reels, comments and direct messages.",
     "Offline downloads and a built-in photo editor.",
     "Faster screens, smoother motion and lower memory use."
-  ]
+  ],
+  "apk_urls": {
+    "universal": "https://wingsapp.vercel.app/downloads/v1.0.0/wings-1.0.0-universal.apk",
+    "arm64-v8a": "https://wingsapp.vercel.app/downloads/v1.0.0/wings-1.0.0-arm64-v8a.apk",
+    "armeabi-v7a": "https://wingsapp.vercel.app/downloads/v1.0.0/wings-1.0.0-armeabi-v7a.apk",
+    "x86_64": "https://wingsapp.vercel.app/downloads/v1.0.0/wings-1.0.0-x86_64.apk"
+  }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -46,8 +47,9 @@ class AppUpdateService {
     final file = File('${folder.path}/wings-${update.version}.apk');
     if (file.existsSync()) file.deleteSync();
 
+    final url = await _urlForDevice(update);
     await _dio.download(
-      update.apkUrl,
+      url,
       file.path,
       cancelToken: cancelToken,
       onReceiveProgress: (received, total) {
@@ -67,6 +69,18 @@ class AppUpdateService {
       throw const FileSystemException('The downloaded package is empty.');
     }
     return file;
+  }
+
+  /// Picks the APK that matches this device, so the update is a 20 MB
+  /// download instead of the universal package when the ABI is known.
+  Future<String> _urlForDevice(AppUpdate update) async {
+    if (update.apkUrls.isEmpty) return update.apkUrl;
+    try {
+      final info = await DeviceInfoPlugin().androidInfo;
+      return update.urlForAbi(info.supportedAbis);
+    } on Object {
+      return update.urlForAbi(const <String>['universal']);
+    }
   }
 
   Future<OpenResult> install(File file) => OpenFilex.open(

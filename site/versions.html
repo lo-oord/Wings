@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>كل إصدارات Wings — أرشيف التحميل</title>
+<meta name="description" content="أرشيف إصدارات Wings: كل نسخة وحزمها الأربع (arm64-v8a، armeabi-v7a، x86_64، universal) متاحة للتحميل.">
+<meta name="theme-color" content="#08090a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080a09'/%3E%3Cpath d='M6 21c5-1 9-5 10-11 1 6 5 10 10 11-4 3-8 4-10 4s-6-1-10-4z' fill='%232ecc87'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span> Wings</a>
+    <button class="nav-toggle" aria-label="القائمة" aria-expanded="false">☰</button>
+    <nav class="nav" aria-label="التنقل">
+      <a href="/">الرئيسية</a>
+      <a href="/download">التحميل</a>
+      <a href="/changelog">ما الجديد</a>
+      <a href="/support">الدعم</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="page-hero">
+    <div class="wrap">
+      <span class="eyebrow"><span class="dot"></span> الأرشيف</span>
+      <h1>كل إصدارات Wings</h1>
+      <p class="lead">كل إصدار يبقى متاحًا بعد صدور ما بعده. لكل نسخة أربع حزم: ثلاث حسب معمارية الجهاز وحزمة Universal.</p>
+      <div class="hero-actions">
+        <a class="btn btn--primary" href="/download">أحدث إصدار</a>
+        <a class="btn btn--ghost" href="/changelog">ما الجديد</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight">
+    <div class="wrap">
+      <div id="release-list" class="grid" aria-live="polite">
+        <div class="card">
+          <h3>جارٍ تحميل قائمة الإصدارات…</h3>
+          <p>إن لم تظهر القائمة، استخدم روابط الإصدار الحالي من <a href="/download">صفحة التحميل</a>.</p>
+        </div>
+      </div>
+      <noscript>
+        <div class="card">
+          <h3>الإصدار 1.0.0</h3>
+          <p>
+            <a href="/downloads/v1.0.0/wings-1.0.0-universal.apk">Universal</a> ·
+            <a href="/downloads/v1.0.0/wings-1.0.0-arm64-v8a.apk">arm64-v8a</a> ·
+            <a href="/downloads/v1.0.0/wings-1.0.0-armeabi-v7a.apk">armeabi-v7a</a> ·
+            <a href="/downloads/v1.0.0/wings-1.0.0-x86_64.apk">x86_64</a>
+          </p>
+        </div>
+      </noscript>
+      <p class="note" style="margin-top:22px">
+        كل الحزم موقّعة بنفس مفتاح الإصدار. عند الترقية استخدم نفس المعمارية أو Universal لتجنّب خطأ «التطبيق غير مثبّت».
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-bottom" style="margin-top:0;border-top:0">
+      <span>© <span data-year>2026</span> Wings</span>
+      <span><a href="/privacy">الخصوصية</a> · <a href="/security">الأمان</a> · <a href="/terms">الشروط</a> · <a href="/support">الدعم</a></span>
+    </div>
+  </div>
+</footer>
+<script src="/app.js" defer></script>
+<script>
+(function () {
+  var labels = {
+    'universal': 'Universal (كل الأجهزة)',
+    'arm64-v8a': 'arm64-v8a',
+    'armeabi-v7a': 'armeabi-v7a',
+    'x86_64': 'x86_64'
+  };
+  var order = ['universal', 'arm64-v8a', 'armeabi-v7a', 'x86_64'];
+  function size(bytes) {
+    if (!bytes) return '';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' م.ب';
+  }
+  function render(data) {
+    var host = document.getElementById('release-list');
+    if (!host) return;
+    var releases = (data && data.releases) || [];
+    if (!releases.length) return;
+    host.innerHTML = releases.map(function (release, index) {
+      var files = release.files || {};
+      var sizes = release.sizes || {};
+      var links = order.filter(function (abi) { return files[abi]; }).map(function (abi) {
+        return '<a class="btn ' + (abi === 'universal' ? 'btn--primary' : 'btn--ghost') +
+          ' btn--small" style="margin:4px" href="' + files[abi] + '">' + labels[abi] +
+          (sizes[abi] ? ' · ' + size(sizes[abi]) : '') + '</a>';
+      }).join('');
+      return '<article class="card">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">' +
+          '<h3 style="margin:0">Wings ' + release.version + (index === 0 ? ' — الأحدث' : '') + '</h3>' +
+          '<span class="muted">' + (release.date || '') + '</span>' +
+        '</div>' +
+        '<p style="margin:12px 0 6px">اختر الحزمة المناسبة لمعمارية جهازك، أو Universal إن لم تكن متأكدًا.</p>' +
+        '<div>' + links + '</div>' +
+      '</article>';
+    }).join('');
+  }
+  fetch('/downloads/index.json', { cache: 'no-cache' })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(render)
+    .catch(function () {});
+})();
+</script>
+</body>
+</html>
