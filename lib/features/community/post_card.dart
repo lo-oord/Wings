@@ -15,6 +15,8 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../core/widgets/wings_motion.dart';
+import '../../core/services/app_feedback.dart';
 import '../../data/models/community.dart';
 import '../../data/models/admin_models.dart' show StaffRole;
 import '../../data/models/chat.dart';
@@ -657,6 +659,11 @@ class _PostCardState extends ConsumerState<PostCard> {
     }
     if (_busyLike || profile == null) return;
     _busyLike = true;
+    if (liked) {
+      unawaited(AppFeedback.reactionRemoved());
+    } else {
+      unawaited(AppFeedback.reaction());
+    }
     // Optimistic: the heart and the counter move before the write returns.
     final next = !liked;
     setState(() {
@@ -1084,7 +1091,7 @@ class _ActionButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon, size: 17, color: tint),
+              WingsAnimatedIcon(icon: icon, size: 17, color: tint),
               if (label.isNotEmpty) ...<Widget>[
                 const SizedBox(width: 5),
                 Flexible(

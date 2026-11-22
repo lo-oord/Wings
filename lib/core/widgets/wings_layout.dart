@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router/route_paths.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import '../services/app_feedback.dart';
 import '../../app/localization/app_localizations.dart';
 import '../utils/tr.dart';
 import 'wings_image.dart';
@@ -318,7 +321,11 @@ class WingsBottomNav extends StatelessWidget {
                       activeIcon: destinations[index].$2,
                       label: destinations[index].$3,
                       selected: index == currentIndex,
-                      onTap: () => onSelect(index),
+                      onTap: () {
+                        if (index == currentIndex) return;
+                        unawaited(AppFeedback.hapticLight());
+                        onSelect(index);
+                      },
                     ),
                   ),
               ],

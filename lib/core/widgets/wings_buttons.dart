@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
+import 'wings_motion.dart';
 
 enum WingsButtonVariant { primary, tonal, outline, ghost }
 
@@ -94,17 +95,11 @@ class WingsButton extends StatelessWidget {
       button: true,
       enabled: enabled,
       label: label,
-      child: Material(
-        color: Colors.transparent,
+      child: WingsPressable(
         borderRadius: BorderRadius.circular(Radii.sm),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(Radii.sm),
-          onTap: enabled ? onPressed : null,
-          child: SizedBox(
-            width: expand ? double.infinity : null,
-            child: button,
-          ),
-        ),
+        haptic: variant != WingsButtonVariant.ghost,
+        onTap: enabled ? onPressed : null,
+        child: SizedBox(width: expand ? double.infinity : null, child: button),
       ),
     );
   }
@@ -131,20 +126,23 @@ class WingsIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final button = SizedBox(
-      width: size,
-      height: size,
-      child: Material(
-        color: filled ? palette.surfaceHigh : Colors.transparent,
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          child: Icon(
-            icon,
-            size: size * 0.52,
-            color: color ?? palette.textPrimary,
-          ),
+    final button = WingsPressable(
+      borderRadius: BorderRadius.circular(Radii.pill),
+      haptic: false,
+      onTap: onPressed,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: filled ? palette.surfaceHigh : Colors.transparent,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          size: size * 0.52,
+          color: onPressed == null
+              ? palette.textMuted
+              : (color ?? palette.textPrimary),
         ),
       ),
     );
@@ -172,7 +170,9 @@ class WingsFilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final foreground = selected ? palette.onPrimary : palette.textSecondary;
-    return GestureDetector(
+    return WingsPressable(
+      borderRadius: BorderRadius.circular(Radii.pill),
+      haptic: false,
       onTap: onTap,
       child: AnimatedContainer(
         duration: Motion.fast,

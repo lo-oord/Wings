@@ -4,6 +4,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/theme/app_tokens.dart';
 import '../../app/theme/context_ext.dart';
 import '../errors/app_failure.dart';
+import 'wings_motion.dart';
 
 /// Animated shimmer used for loading placeholders.
 class WingsSkeleton extends StatefulWidget {
@@ -192,46 +193,48 @@ class WingsEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.xxl,
-          vertical: Space.xxxl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: palette.surfaceAlt,
-                border: Border.all(color: palette.border),
-              ),
-              child: Icon(icon, color: palette.primary, size: 26),
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: context.text.titleMedium,
-            ),
-            if (message != null) ...<Widget>[
-              const SizedBox(height: Space.sm),
-              Text(
-                message!,
-                textAlign: TextAlign.center,
-                style: context.text.bodySmall?.copyWith(
-                  color: palette.textSecondary,
+    return WingsFadeIn(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.xxl,
+            vertical: Space.xxxl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: palette.surfaceAlt,
+                  border: Border.all(color: palette.border),
                 ),
+                child: Icon(icon, color: palette.primary, size: 26),
               ),
-            ],
-            if (actionLabel != null && onAction != null) ...<Widget>[
               const SizedBox(height: Space.lg),
-              TextButton(onPressed: onAction, child: Text(actionLabel!)),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: context.text.titleMedium,
+              ),
+              if (message != null) ...<Widget>[
+                const SizedBox(height: Space.sm),
+                Text(
+                  message!,
+                  textAlign: TextAlign.center,
+                  style: context.text.bodySmall?.copyWith(
+                    color: palette.textSecondary,
+                  ),
+                ),
+              ],
+              if (actionLabel != null && onAction != null) ...<Widget>[
+                const SizedBox(height: Space.lg),
+                TextButton(onPressed: onAction, child: Text(actionLabel!)),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

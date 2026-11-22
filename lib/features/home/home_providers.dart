@@ -49,6 +49,11 @@ class HomeFeedController extends AsyncNotifier<HomeFeed> {
   bool _loadingMore = false;
   bool _disposed = false;
 
+  /// When the feed was last confirmed by the network. A tab switch must not
+  /// re-send five catalogue requests; the manual refresh always bypasses this.
+  DateTime? _lastNetworkAt;
+  static const Duration _networkFloor = Duration(minutes: 2);
+
   /// Last successful feed, so a cold start paints real content on the first
   /// frame instead of holding a skeleton for as long as the network needs.
   static const String _cacheKey = 'home_feed_v1';
@@ -68,6 +73,11 @@ class HomeFeedController extends AsyncNotifier<HomeFeed> {
   }
 
   Future<void> _refreshFromNetwork() async {
+    final last = _lastNetworkAt;
+    if (last != null && DateTime.now().difference(last) < _networkFloor) {
+      return;
+    }
+    _lastNetworkAt = DateTime.now();
     try {
       final fresh = await _fetch();
       if (_disposed) return;
@@ -170,6 +180,7 @@ class HomeFeedController extends AsyncNotifier<HomeFeed> {
 
   Future<void> refresh() async {
     final previous = state;
+    _lastNetworkAt = DateTime.now();
     final result = await AsyncValue.guard(_fetch);
     if (result.hasValue) {
       state = result;

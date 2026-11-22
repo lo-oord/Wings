@@ -24,6 +24,31 @@ class AnimeRepository {
       <String, _MemoryEntry<Object>>{};
   final Random _random = Random();
 
+  /// Requests currently on the wire, keyed by method and arguments.
+  ///
+  /// Home, Explore and the details screen can ask for the same page in the same
+  /// frame (a cold start, a tab switch); the second caller now awaits the first
+  /// request instead of sending a duplicate. A caller that passes a
+  /// [CancelToken] is never shared, because cancelling one screen must not
+  /// cancel another.
+  final Map<String, Future<dynamic>> _inFlight = <String, Future<dynamic>>{};
+
+  Future<T> _dedupe<T>(
+    String key,
+    Future<T> Function() request,
+    CancelToken? cancelToken,
+  ) {
+    if (cancelToken != null) return request();
+    final existing = _inFlight[key];
+    if (existing != null) return existing as Future<T>;
+    final future = request();
+    _inFlight[key] = future;
+    future.whenComplete(() {
+      if (identical(_inFlight[key], future)) _inFlight.remove(key);
+    });
+    return future;
+  }
+
   static const Duration _cacheTtl = Duration(minutes: 15);
   static const Duration _detailsTtl = Duration(hours: 6);
   static const Duration _genresTtl = Duration(hours: 12);
@@ -31,50 +56,47 @@ class AnimeRepository {
   Future<Paged<LatestEpisode>> latest({
     int page = 0,
     CancelToken? cancelToken,
-  }) async {
+  }) {
     const ttl = _cacheTtl;
     final key = 'latest:$page';
-    try {
-      final result = await _source.latestEpisodes(
-        page: page,
-        cancelToken: cancelToken,
-      );
-      await _store.putCache(
-        key,
-        result.items.map(_latestToJson).toList(),
-        ttl: ttl,
-      );
-      return result;
-    } on Object catch (error) {
-      final cached = _cachedPaged<LatestEpisode>(key, _latestFromJson);
-      if (cached != null) return cached;
-      throw _failure(error);
-    }
+    return _dedupe<Paged<LatestEpisode>>(key, () async {
+      try {
+        final result = await _source.latestEpisodes(page: page);
+        await _store.putCache(
+          key,
+          result.items.map(_latestToJson).toList(),
+          ttl: ttl,
+        );
+        return result;
+      } on Object catch (error) {
+        final cached = _cachedPaged<LatestEpisode>(key, _latestFromJson);
+        if (cached != null) return cached;
+        throw _failure(error);
+      }
+    }, cancelToken);
   }
 
   Future<Paged<Anime>> browse(
     BrowseQuery query, {
     int page = 0,
     CancelToken? cancelToken,
-  }) async {
+  }) {
     final key = 'browse:${query.sort.name}:${query.genre ?? '-'}:$page';
-    try {
-      final result = await _source.browse(
-        query,
-        page: page,
-        cancelToken: cancelToken,
-      );
-      await _store.putCache(
-        key,
-        result.items.map((a) => a.toJson()).toList(),
-        ttl: _cacheTtl,
-      );
-      return result;
-    } on Object catch (error) {
-      final cached = _cachedPaged<Anime>(key, Anime.fromJson);
-      if (cached != null) return cached;
-      throw _failure(error);
-    }
+    return _dedupe<Paged<Anime>>(key, () async {
+      try {
+        final result = await _source.browse(query, page: page);
+        await _store.putCache(
+          key,
+          result.items.map((a) => a.toJson()).toList(),
+          ttl: _cacheTtl,
+        );
+        return result;
+      } on Object catch (error) {
+        final cached = _cachedPaged<Anime>(key, Anime.fromJson);
+        if (cached != null) return cached;
+        throw _failure(error);
+      }
+    }, cancelToken);
   }
 
   Future<Paged<Anime>> search(
@@ -115,29 +137,30 @@ class AnimeRepository {
     }
   }
 
-  Future<List<AnimeEpisode>> episodes(
-    Anime anime, {
-    CancelToken? cancelToken,
-  }) async {
+  Future<List<AnimeEpisode>> episodes(Anime anime, {CancelToken? cancelToken}) {
     final key = 'episodes:${anime.id}';
-    try {
-      final list = await _source.episodes(anime, cancelToken: cancelToken);
-      await _store.putCache(
-        key,
-        list.map((e) => e.toJson()).toList(),
-        ttl: _cacheTtl,
-      );
-      return list;
-    } on Object catch (error) {
-      final cached = _store.readCache(key, allowStale: true);
-      if (cached is List) {
-        return cached
-            .whereType<Map>()
-            .map((json) => AnimeEpisode.fromJson(json.cast<String, dynamic>()))
-            .toList(growable: false);
+    return _dedupe<List<AnimeEpisode>>(key, () async {
+      try {
+        final list = await _source.episodes(anime);
+        await _store.putCache(
+          key,
+          list.map((e) => e.toJson()).toList(),
+          ttl: _cacheTtl,
+        );
+        return list;
+      } on Object catch (error) {
+        final cached = _store.readCache(key, allowStale: true);
+        if (cached is List) {
+          return cached
+              .whereType<Map>()
+              .map(
+                (json) => AnimeEpisode.fromJson(json.cast<String, dynamic>()),
+              )
+              .toList(growable: false);
+        }
+        throw _failure(error);
       }
-      throw _failure(error);
-    }
+    }, cancelToken);
   }
 
   Future<List<StreamServer>> servers(

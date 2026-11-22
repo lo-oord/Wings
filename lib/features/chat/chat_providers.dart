@@ -28,17 +28,19 @@ final chatsProvider = StreamProvider<List<Chat>>((ref) {
   return ref.watch(chatRepositoryProvider).watchChats(uid);
 });
 
-final chatProvider = StreamProvider.family<Chat?, String>(
+final chatProvider = StreamProvider.autoDispose.family<Chat?, String>(
   (ref, chatId) => ref.watch(chatRepositoryProvider).watchChat(chatId),
 );
 
-final chatPrivacyProvider = StreamProvider.family<ChatPrivacy, String>(
-  (ref, uid) => ref.watch(chatRepositoryProvider).watchPrivacy(uid),
-);
+final chatPrivacyProvider = StreamProvider.autoDispose
+    .family<ChatPrivacy, String>(
+      (ref, uid) => ref.watch(chatRepositoryProvider).watchPrivacy(uid),
+    );
 
-final presenceProvider = StreamProvider.family<ChatPresence, String>(
-  (ref, uid) => ref.watch(chatRepositoryProvider).watchPresence(uid),
-);
+final presenceProvider = StreamProvider.autoDispose
+    .family<ChatPresence, String>(
+      (ref, uid) => ref.watch(chatRepositoryProvider).watchPresence(uid),
+    );
 
 final unreadMessagesProvider = Provider<int>((ref) {
   final uid = ref.watch(authProvider)?.id;

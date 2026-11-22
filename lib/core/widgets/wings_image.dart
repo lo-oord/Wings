@@ -33,28 +33,45 @@ class WingsImage extends StatelessWidget {
     }
 
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final cacheWidth = width != null && width!.isFinite && width! > 0
-        ? (width! * pixelRatio).round()
-        : null;
+    final fade = context.motionDuration(Motion.imageFade);
 
-    return ClipRRect(
-      borderRadius: radius,
-      child: CachedNetworkImage(
-        imageUrl: source,
-        fit: fit,
-        width: width,
-        height: height,
-        alignment: alignment,
-        memCacheWidth: cacheWidth,
-        fadeInDuration: Motion.imageFade,
-        fadeOutDuration: Duration.zero,
-        placeholder: (context, _) => WingsSkeleton(
-          width: width,
-          height: height,
-          borderRadius: BorderRadius.zero,
-        ),
-        errorWidget: (context, _, _) => _fallback(context),
-      ),
+    // Decode at the width the picture actually occupies. Without this a 44 px
+    // avatar and a 160 px poster both decoded the full artwork, which is the
+    // single largest source of image memory on a long feed.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final available = width != null && width!.isFinite && width! > 0
+            ? width
+            : (constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                  ? constraints.maxWidth
+                  : null);
+        final decodeWidth = available == null
+            ? null
+            : (available * pixelRatio).round().clamp(64, 1600);
+
+        return RepaintBoundary(
+          child: ClipRRect(
+            borderRadius: radius,
+            child: CachedNetworkImage(
+              imageUrl: source,
+              fit: fit,
+              width: width,
+              height: height,
+              alignment: alignment,
+              memCacheWidth: decodeWidth,
+              maxWidthDiskCache: decodeWidth,
+              fadeInDuration: fade,
+              fadeOutDuration: Duration.zero,
+              placeholder: (context, _) => WingsSkeleton(
+                width: width,
+                height: height,
+                borderRadius: BorderRadius.zero,
+              ),
+              errorWidget: (context, _, _) => _fallback(context),
+            ),
+          ),
+        );
+      },
     );
   }
 

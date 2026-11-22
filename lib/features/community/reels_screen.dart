@@ -17,6 +17,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/tr.dart';
 import '../../core/widgets/wings_image.dart';
 import '../../core/widgets/wings_layout.dart';
+import '../../core/widgets/wings_motion.dart';
 import '../../data/models/chat.dart';
 import '../../data/models/community.dart';
 import '../admin/owner_guard.dart';
@@ -1465,8 +1466,8 @@ class _ReelAction extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.14),
                   ),
                 ),
-                child: Icon(
-                  icon,
+                child: WingsAnimatedIcon(
+                  icon: icon,
                   color: onTap == null ? Colors.white38 : color,
                   size: 21,
                 ),

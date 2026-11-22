@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 
 import '../core/network/http_client.dart';
 import '../core/services/chat_local_store.dart';
+import '../core/services/app_feedback.dart';
 import '../core/services/connectivity_service.dart';
 import '../core/services/download_service.dart';
 import '../core/services/in_app_notifications.dart';
@@ -227,13 +228,25 @@ final onlineProvider = StreamProvider<bool>(
 
 class SettingsController extends Notifier<AppSettings> {
   @override
-  AppSettings build() => ref.read(settingsRepositoryProvider).load();
+  AppSettings build() {
+    final settings = ref.read(settingsRepositoryProvider).load();
+    _applyFeedback(settings);
+    return settings;
+  }
+
+  void _applyFeedback(AppSettings settings) {
+    AppFeedback.configure(
+      haptics: settings.hapticsEnabled,
+      sound: settings.soundEffectsEnabled,
+    );
+  }
 
   Future<void> update(
     AppSettings Function(AppSettings current) transform,
   ) async {
     final before = state;
     state = transform(before);
+    _applyFeedback(state);
     await ref.read(settingsRepositoryProvider).save(state);
     ref.read(downloadServiceProvider).notificationsEnabled =
         state.notifyDownloads;
@@ -270,6 +283,7 @@ class SettingsController extends Notifier<AppSettings> {
   /// Re-reads preferences after a cloud pull.
   Future<void> reloadFromStore() async {
     state = ref.read(settingsRepositoryProvider).load();
+    _applyFeedback(state);
     ref.read(downloadServiceProvider).notificationsEnabled =
         state.notifyDownloads;
     await configureNewEpisodeWorker(state);

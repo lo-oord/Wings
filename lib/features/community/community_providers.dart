@@ -521,8 +521,10 @@ final feedSignalsProvider = Provider<FeedSignals>((ref) {
   );
 });
 
-final postLikedProvider =
-    FutureProvider.family<bool, ({String postId, String uid})>(
+/// `autoDispose`: one entry per post ever seen would otherwise live for the
+/// whole session. The card keeps its own optimistic value while it is visible.
+final postLikedProvider = FutureProvider.autoDispose
+    .family<bool, ({String postId, String uid})>(
       (ref, key) =>
           ref.watch(communityRepositoryProvider).isLiked(key.postId, key.uid),
     );

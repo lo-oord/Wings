@@ -394,6 +394,8 @@ class AppSettings {
     this.notifyGeneral = false,
     this.onboardingDone = false,
     this.guestMode = false,
+    this.hapticsEnabled = true,
+    this.soundEffectsEnabled = true,
     this.syncInterval = SyncInterval.hourly,
   });
 
@@ -409,6 +411,10 @@ class AppSettings {
   final bool notifyGeneral;
   final bool onboardingDone;
   final bool guestMode;
+
+  /// Device-only feedback switches: they never travel to the account document.
+  final bool hapticsEnabled;
+  final bool soundEffectsEnabled;
 
   /// Background sync cadence. A device preference, so it is not published to
   /// the account document.
@@ -429,6 +435,8 @@ class AppSettings {
     bool? notifyGeneral,
     bool? onboardingDone,
     bool? guestMode,
+    bool? hapticsEnabled,
+    bool? soundEffectsEnabled,
     SyncInterval? syncInterval,
   }) {
     return AppSettings(
@@ -444,6 +452,8 @@ class AppSettings {
       notifyGeneral: notifyGeneral ?? this.notifyGeneral,
       onboardingDone: onboardingDone ?? this.onboardingDone,
       guestMode: guestMode ?? this.guestMode,
+      hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
+      soundEffectsEnabled: soundEffectsEnabled ?? this.soundEffectsEnabled,
       syncInterval: syncInterval ?? this.syncInterval,
     );
   }
@@ -461,6 +471,8 @@ class AppSettings {
     'notifyGeneral': notifyGeneral,
     'onboardingDone': onboardingDone,
     'guestMode': guestMode,
+    'hapticsEnabled': hapticsEnabled,
+    'soundEffectsEnabled': soundEffectsEnabled,
     'syncInterval': syncInterval.name,
   };
 
@@ -480,6 +492,8 @@ class AppSettings {
     notifyGeneral: json['notifyGeneral'] as bool? ?? false,
     onboardingDone: json['onboardingDone'] as bool? ?? false,
     guestMode: json['guestMode'] as bool? ?? false,
+    hapticsEnabled: json['hapticsEnabled'] as bool? ?? true,
+    soundEffectsEnabled: json['soundEffectsEnabled'] as bool? ?? true,
     syncInterval: SyncInterval.values.firstWhere(
       (value) => value.name == json['syncInterval'],
       orElse: () => SyncInterval.fallback,

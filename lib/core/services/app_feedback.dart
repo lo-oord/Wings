@@ -23,6 +23,16 @@ class AppFeedback {
 
   static DateTime? _last;
 
+  /// Applied once from the stored settings, so a disabled switch silences both
+  /// the clip and the vibration without every caller re-checking it.
+  static bool hapticsEnabled = true;
+  static bool soundEffectsEnabled = true;
+
+  static void configure({required bool haptics, required bool sound}) {
+    hapticsEnabled = haptics;
+    soundEffectsEnabled = sound;
+  }
+
   /// One reusable player per clip.
   static final Map<String, AudioPlayer> _players = <String, AudioPlayer>{};
 
@@ -52,11 +62,16 @@ class AppFeedback {
   }
 
   static Future<void> _cue({String? clip, required bool strong}) async {
+    if (!hapticsEnabled && !soundEffectsEnabled) return;
     if (!_ready) return;
     final cues = <Future<void>>[
-      if (clip != null) _play(clip),
-      strong ? HapticFeedback.mediumImpact() : HapticFeedback.selectionClick(),
+      if (clip != null && soundEffectsEnabled) _play(clip),
+      if (hapticsEnabled)
+        strong
+            ? HapticFeedback.mediumImpact()
+            : HapticFeedback.selectionClick(),
     ];
+    if (cues.isEmpty) return;
     for (final cue in cues) {
       try {
         await cue;
@@ -83,4 +98,14 @@ class AppFeedback {
 
   /// A light confirmation for secondary actions (save, copy, share).
   static Future<void> tap() => _cue(strong: false);
+
+  /// Vibration only, for presses where a sound would be noise.
+  static Future<void> hapticLight() async {
+    if (!hapticsEnabled) return;
+    try {
+      await HapticFeedback.selectionClick();
+    } on Object {
+      // A device without a vibration motor stays still.
+    }
+  }
 }

@@ -472,6 +472,49 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             WingsSettingsGroup(
+              title: Tr.of(context, ar: 'الحركة واللمس', en: 'Motion & touch'),
+              children: <Widget>[
+                WingsSettingsTile(
+                  icon: Icons.vibration_rounded,
+                  title: Tr.of(
+                    context,
+                    ar: 'اهتزاز خفيف عند التفاعل',
+                    en: 'Light haptics on interaction',
+                  ),
+                  subtitle: Tr.of(
+                    context,
+                    ar: 'الإعجاب والحفظ والتفاعلات المهمة فقط',
+                    en: 'Only likes, saves and important actions',
+                  ),
+                  trailing: Switch(
+                    value: settings.hapticsEnabled,
+                    onChanged: (value) => ref
+                        .read(settingsProvider.notifier)
+                        .update(
+                          (current) => current.copyWith(hapticsEnabled: value),
+                        ),
+                  ),
+                ),
+                WingsSettingsTile(
+                  icon: Icons.volume_up_outlined,
+                  title: Tr.of(
+                    context,
+                    ar: 'مؤثرات صوتية قصيرة',
+                    en: 'Short sound effects',
+                  ),
+                  trailing: Switch(
+                    value: settings.soundEffectsEnabled,
+                    onChanged: (value) => ref
+                        .read(settingsProvider.notifier)
+                        .update(
+                          (current) =>
+                              current.copyWith(soundEffectsEnabled: value),
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            WingsSettingsGroup(
               title: Tr.of(
                 context,
                 ar: 'الخصوصية والبيانات',
