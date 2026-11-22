@@ -95,7 +95,10 @@ def main() -> None:
         if not os.path.exists(source):
             print(f"missing build output: {artifact}")
             continue
-        target_name = f"wings-{version}-{abi}.apk"
+        # The V1.0 release uses the compact asset prefix (1.0), while the
+        # application version remains 1.0.0 in pubspec.yaml.
+        asset_version = version[:-2] if version.endswith(".0") else version
+        target_name = f"wings-{asset_version}-{abi}.apk"
         files[abi] = f"https://github.com/lo-oord/Wings/releases/download/{tag}/{target_name}"
         sizes[abi] = os.path.getsize(source)
         print(f"packaged {target_name} ({os.path.getsize(source) // 1024} KiB)")
